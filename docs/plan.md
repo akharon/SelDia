@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~95%). Phase 10 ⚠️ partial.
+> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~98%). Phase 10 ⚠️ partial.
 
 ### Overall Status Summary
 
@@ -23,7 +23,7 @@
 | **9d** | VS Code: Bidirectional Sync | ✅ Complete |
 | **9e** | VS Code: MD→PDF Export | ✅ Complete |
 | **9f** | VS Code: Copilot Skill Deployment | ✅ Mostly done |
-| **9g** | VS Code: Polish (snippets, keybindings, marketplace) | ❌ Not started |
+| **9g** | VS Code: Polish (snippets, keybindings, marketplace) | ✅ Mostly done |
 | **10** | Documentation & Release | ⚠️ Partial |
 
 ---
@@ -344,15 +344,15 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 
 | ID | Task | Est. | Status |
 |----|------|------|--------|
-| Z1 | Code snippets library (`.seldia` + Markdown) | 3h | ❌ |
-| Z2 | Diagram scaffold templates (one per type) | 3h | ❌ (folder empty) |
-| Z3 | Context menus (editor/context, editor/title) | 2h | ❌ |
-| Z4 | Keybindings (toggle view, cycle theme, export) | 1h | ❌ |
-| Z5 | Extension walkthrough (VS Code walkthrough contribution) | 3h | ❌ |
-| Z6 | Marketplace publication prep (README, changelog, screenshots) | 4h | ❌ |
+| Z1 | Code snippets library (`.sld` + Markdown) | 3h | ✅ |
+| Z2 | Diagram scaffold templates (one per type) | 3h | ✅ |
+| Z3 | Context menus (editor/context, editor/title) | 2h | ✅ |
+| Z4 | Keybindings (toggle view, cycle theme, export) | 1h | ✅ |
+| Z5 | Extension walkthrough (VS Code walkthrough contribution) | 3h | ✅ |
+| Z6 | Marketplace publication prep (README, changelog, screenshots) | 4h | ⚠️ (icon done, README/changelog/screenshots pending) |
 | Z7 | Final integration testing | 4h | ❌ |
 
-**Deliverable:** Published VS Code extension with full Markdown integration, visual editing, MD→PDF export, and Copilot skill. ❌ Not started
+**Deliverable:** Published VS Code extension with full Markdown integration, visual editing, MD→PDF export, and Copilot skill. ⚠️ Partial (Z6 marketplace prep partial, Z7 testing pending)
 
 ---
 

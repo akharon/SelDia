@@ -8,10 +8,15 @@
   "engines": {
     "vscode": "^1.96.0"
   },
+  "icon": "./media/icon.svg",
   "categories": [
     "Visualization",
     "Programming Languages",
     "Other"
+  ],
+  "keywords": [
+    "diagram", "flowchart", "sequence", "class", "c4", "bpmn", "uml",
+    "roughjs", "sketchy", "architecture", "visualization", "dsl"
   ],
   "activationEvents": [
     "onLanguage:seldia",
@@ -77,6 +82,125 @@
       { "command": "seldia.deploySkill", "title": "SelDiA: Deploy Copilot Skill" },
       { "command": "seldia.checkSkillStatus", "title": "SelDiA: Check Skill Status" }
     ],
+    "snippets": [
+      {
+        "language": "seldia",
+        "path": "./snippets/seldia.code-snippets"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "seldia.toggleView",
+          "when": "editorLangId == seldia",
+          "group": "seldia@1"
+        },
+        {
+          "command": "seldia.openPreview",
+          "when": "editorLangId == seldia",
+          "group": "seldia@2"
+        },
+        {
+          "command": "seldia.exportDiagram",
+          "when": "editorLangId == seldia",
+          "group": "seldia@3"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "seldia.toggleView",
+          "when": "editorLangId == seldia || seldiaMarkdownActive",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "seldia.toggleView",
+          "when": "editorLangId == seldia"
+        },
+        {
+          "command": "seldia.openPreview",
+          "when": "editorLangId == seldia || editorLangId == markdown"
+        },
+        {
+          "command": "seldia.insertDiagram",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "seldia.exportDiagram",
+          "when": "editorLangId == seldia"
+        },
+        {
+          "command": "seldia.exportMarkdownToPdf",
+          "when": "editorLangId == markdown"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "seldia.toggleView",
+        "key": "ctrl+shift+v",
+        "when": "editorLangId == seldia"
+      },
+      {
+        "command": "seldia.openPreview",
+        "key": "ctrl+k v",
+        "when": "editorLangId == seldia"
+      },
+      {
+        "command": "seldia.insertDiagram",
+        "key": "ctrl+shift+i",
+        "when": "editorLangId == markdown"
+      }
+    ],
+    "walkthroughs": {
+      "start": {
+        "title": "Get Started with SelDiA",
+        "description": "Learn how to create diagrams with SelDiA's unified DSL",
+        "steps": [
+          {
+            "id": "createDiagram",
+            "title": "Create a .sld file",
+            "description": "Create a new file with the `.sld` extension and start typing. SelDiA's language server provides autocomplete, hover info, and real-time diagnostics.",
+            "media": {
+              "markdown": "media/walkthrough/create-diagram.md"
+            }
+          },
+          {
+            "id": "previewDiagram",
+            "title": "Preview your diagram",
+            "description": "Press `Ctrl+Shift+V` to toggle between code and rendered diagram view. Use `Ctrl+K V` to open the preview side-by-side.",
+            "media": {
+              "markdown": "media/walkthrough/preview-diagram.md"
+            }
+          },
+          {
+            "id": "markdownIntegration",
+            "title": "Use diagrams in Markdown",
+            "description": "In any `.md` file, wrap your SelDiA DSL in a ` ```seldia ` fenced code block. The diagram will auto-render inline.",
+            "media": {
+              "markdown": "media/walkthrough/markdown-integration.md"
+            }
+          },
+          {
+            "id": "exportPdf",
+            "title": "Export to PDF",
+            "description": "Run the 'SelDiA: Export Markdown to PDF' command to convert Markdown files with SelDiA diagrams to professional PDF documents.",
+            "media": {
+              "markdown": "media/walkthrough/export-pdf.md"
+            }
+          },
+          {
+            "id": "copilotSkill",
+            "title": "Enable Copilot Integration",
+            "description": "Deploy the SelDiA DSL Copilot skill so GitHub Copilot can generate, modify, and explain SelDiA diagrams. Run 'SelDiA: Deploy Copilot Skill' from the command palette.",
+            "media": {
+              "markdown": "media/walkthrough/copilot-skill.md"
+            }
+          }
+        ]
+      }
+    },
     "configuration": {
       "title": "SelDiA",
       "properties": {
@@ -94,6 +218,22 @@
           "type": "boolean",
           "default": true,
           "description": "Enable deployment of the SelDiA DSL Copilot skill"
+        },
+        "seldia.interactive.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable interactive editing (drag, double-click to edit)"
+        },
+        "seldia.interactive.undoStackSize": {
+          "type": "number",
+          "default": 50,
+          "description": "Maximum number of undo steps for visual edits"
+        },
+        "seldia.export.defaultFormat": {
+          "type": "string",
+          "default": "svg",
+          "enum": ["svg", "png", "pdf"],
+          "description": "Default export format"
         }
       }
     }

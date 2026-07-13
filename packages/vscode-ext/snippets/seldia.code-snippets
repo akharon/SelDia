@@ -1,0 +1,277 @@
+{
+  "Flowchart": {
+    "prefix": "seldia-flowchart",
+    "body": [
+      "diagram flowchart \"${1:My Flowchart}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark,clean-light,clean-dark,mono|}\"",
+      "",
+      "\t// Nodes",
+      "\tstart: (${3:Start})",
+      "\tprocess: [${4:Process}]",
+      "\tdecision: {${5:Decision?}}",
+      "\tend: (${6:End})",
+      "",
+      "\t// Edges",
+      "\tstart --> process",
+      "\tprocess --> decision",
+      "\tdecision -->|yes| end",
+      "\tdecision -->|no| process",
+      "}"
+    ],
+    "description": "Flowchart diagram"
+  },
+  "Sequence Diagram": {
+    "prefix": "seldia-sequence",
+    "body": [
+      "diagram sequence \"${1:OAuth Flow}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\t// Participants",
+      "\tparticipant ${3:client}: ${4:Client}",
+      "\tparticipant ${5:server}: ${6:Server}",
+      "",
+      "\t// Messages",
+      "\t${3:client} -> ${5:server}: ${7:request}",
+      "\t${5:server} --> ${3:client}: ${8:response}",
+      "}"
+    ],
+    "description": "Sequence diagram"
+  },
+  "Class Diagram": {
+    "prefix": "seldia-class",
+    "body": [
+      "diagram class \"${1:Order System}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\t// Classes",
+      "\tclass ${3:Order} {",
+      "\t\t+${4:id}: ${5:UUID}",
+      "\t\t+${6:status}: ${7:string}",
+      "\t\t+${8:calculateTotal()}(): ${9:Money}",
+      "\t}",
+      "",
+      "\t// Relationships",
+      "\t${3:Order} \"1\" --> \"*\" ${10:OrderItem}",
+      "}"
+    ],
+    "description": "Class diagram"
+  },
+  "C4 Context Diagram": {
+    "prefix": "seldia-c4-context",
+    "body": [
+      "diagram c4 context \"${1:System Context}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\tperson ${3:user}: \"${4:User}\" \"${5:A user of the system}\"",
+      "\tsystem ${6:app}: \"${7:My System}\" \"${8:Description}\"",
+      "\tsystem_Ext ${9:ext}: \"${10:External System}\" \"${11:External service}\"",
+      "",
+      "\t${3:user} --> ${6:app}: \"${12:Uses}\"",
+      "\t${6:app} --> ${9:ext}: \"${13:Integrates}\"",
+      "}"
+    ],
+    "description": "C4 Context diagram"
+  },
+  "C4 Container Diagram": {
+    "prefix": "seldia-c4-container",
+    "body": [
+      "diagram c4 container \"${1:Container View}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\tcontainer ${3:spa}: \"${4:SPA}\" \"${5:React}\" \"${6:Client app}\"",
+      "\tcontainer ${7:api}: \"${8:API}\" \"${9:Go}\" \"${10:REST API}\"",
+      "\tcontainerDb ${11:db}: \"${12:Database}\" \"${13:PostgreSQL}\" \"${14:Stores data}\"",
+      "",
+      "\t${3:spa} --> ${7:api}: \"${15:JSON/HTTPS}\"",
+      "\t${7:api} --> ${11:db}: \"${16:SQL/TCP}\"",
+      "}"
+    ],
+    "description": "C4 Container diagram"
+  },
+  "State Diagram": {
+    "prefix": "seldia-state",
+    "body": [
+      "diagram state \"${1:Order State}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\t[*] --> ${3:Pending}: ${4:create}",
+      "\t${3:Pending} --> ${5:Approved}: ${6:approve}",
+      "\t${3:Pending} --> ${7:Cancelled}: ${8:cancel}",
+      "\t${5:Approved} --> ${9:Shipped}: ${10:ship}",
+      "\t${9:Shipped} --> [*]: ${11:deliver}",
+      "}"
+    ],
+    "description": "State diagram"
+  },
+  "Entity Relationship Diagram": {
+    "prefix": "seldia-er",
+    "body": [
+      "diagram er \"${1:Data Model}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\tentity ${3:User} {",
+      "\t\tid: UUID PK",
+      "\t\tname: string",
+      "\t\temail: string",
+      "\t}",
+      "",
+      "\tentity ${4:Order} {",
+      "\t\tid: UUID PK",
+      "\t\tuserId: UUID FK",
+      "\t\ttotal: decimal",
+      "\t}",
+      "",
+      "\t${3:User} 1--* ${4:Order}",
+      "}"
+    ],
+    "description": "Entity-Relationship diagram"
+  },
+  "Gantt Chart": {
+    "prefix": "seldia-gantt",
+    "body": [
+      "diagram gantt \"${1:Project Plan}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\tsection \"${3:Phase 1}\" {",
+      "\t\ttask ${4:t1}: \"${5:Task 1}\" ${6:2025-01-06} to ${7:2025-01-17}",
+      "\t\ttask ${8:t2}: \"${9:Task 2}\" ${10:2025-01-20} to ${11:2025-01-31}",
+      "\t}",
+      "",
+      "\tmilestone ${12:m1}: \"${13:Milestone}\" at ${14:2025-02-01}",
+      "}"
+    ],
+    "description": "Gantt chart"
+  },
+  "Mind Map": {
+    "prefix": "seldia-mindmap",
+    "body": [
+      "diagram mindmap \"${1:Mind Map}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\troot \"${3:Topic}\"",
+      "\t\tbranch \"${4:Category 1}\"",
+      "\t\t\tleaf \"${5:Item 1}\"",
+      "\t\t\tleaf \"${6:Item 2}\"",
+      "\t\tbranch \"${7:Category 2}\"",
+      "\t\t\tleaf \"${8:Item 3}\"",
+      "}"
+    ],
+    "description": "Mind map"
+  },
+  "BPMN Diagram": {
+    "prefix": "seldia-bpmn",
+    "body": [
+      "diagram bpmn \"${1:Process}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\tstartEvent ${3:start}: \"${4:Start}\"",
+      "\ttask ${5:task1}: \"${6:Do Something}\"",
+      "\tgateway ${7:gate}: \"${8:Decision?}\"",
+      "\tendEvent ${9:end}: \"${10:End}\"",
+      "",
+      "\t${3:start} --> ${5:task1}",
+      "\t${5:task1} --> ${7:gate}",
+      "\t${7:gate} -->|yes| ${9:end}",
+      "}"
+    ],
+    "description": "BPMN diagram"
+  },
+  "Markdown Fenced Block": {
+    "prefix": "seldia-markdown",
+    "body": [
+      "```seldia",
+      "diagram ${1|flowchart,sequence,class,c4-context,state,er,gantt,mindmap,bpmn,chart-bar,dmn,network,component,deployment,usecase,activity,gitgraph,form,sankey,block,timeline|} \"${2:Title}\" {",
+      "\t$0",
+      "}",
+      "```"
+    ],
+    "description": "SelDiA diagram fenced code block for Markdown"
+  },
+  "Bar Chart": {
+    "prefix": "seldia-chart-bar",
+    "body": [
+      "diagram chart bar \"${1:Sales}\" {",
+      "\tdata {",
+      "\t\tcategories: [${2:\"Jan\",\"Feb\",\"Mar\"}]",
+      "\t\tseries \"${3:Revenue}\" { ${4:100, 200, 150} }",
+      "\t}",
+      "\toptions {",
+      "\t\txAxis { title: \"${5:Month}\" }",
+      "\t\tyAxis { title: \"${6:Amount}\" }",
+      "\t}",
+      "}"
+    ],
+    "description": "Bar chart"
+  },
+  "Network Diagram": {
+    "prefix": "seldia-network",
+    "body": [
+      "diagram network \"${1:Network Topology}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\t${3:internet}: [Internet]",
+      "\t${4:firewall}: {Firewall}",
+      "\t${5:switch}: [Switch]",
+      "\t${6:server}: [Server]",
+      "",
+      "\t${3:internet} --> ${4:firewall}",
+      "\t${4:firewall} --> ${5:switch}",
+      "\t${5:switch} --> ${6:server}",
+      "}"
+    ],
+    "description": "Network diagram"
+  },
+  "DMN Decision Table": {
+    "prefix": "seldia-dmn",
+    "body": [
+      "diagram dmn \"${1:Loan Approval}\" {",
+      "\tinput ${2:age}: ${3:number} \"${4:Age}\"",
+      "\tinput ${5:income}: ${6:number} \"${7:Income}\"",
+      "",
+      "\trule ${8:r1}: ${2:age} >= 18 and ${5:income} > 30000 => \"${9:APPROVE}\"",
+      "\trule ${10:r2}: ${2:age} < 18 => \"${11:DENY}\"",
+      "",
+      "\thitPolicy: first",
+      "}"
+    ],
+    "description": "DMN decision table"
+  },
+  "Component Diagram": {
+    "prefix": "seldia-component",
+    "body": [
+      "diagram component \"${1:Architecture}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\t${3:web}: [Web Frontend]",
+      "\t${4:api}: [API Gateway]",
+      "\t${5:auth}: [Auth Service]",
+      "\t${6:db}: [Database]",
+      "",
+      "\t${3:web} --> ${4:api}",
+      "\t${4:api} --> ${5:auth}",
+      "\t${4:api} --> ${6:db}",
+      "}"
+    ],
+    "description": "Component diagram"
+  },
+  "Deployment Diagram": {
+    "prefix": "seldia-deployment",
+    "body": [
+      "diagram deployment \"${1:Deployment}\" {",
+      "\ttheme \"${2|sketchy-light,sketchy-dark|}\"",
+      "",
+      "\tnode \"${3:Production}\" {",
+      "\t\t${4:app}: [App Server]",
+      "\t\t${5:db}: [Database]",
+      "\t}",
+      "",
+      "\tnode \"${6:CDN}\" {",
+      "\t\t${7:cdn}: [Static Assets]",
+      "\t}",
+      "",
+      "\t${7:cdn} --> ${4:app}: \"${8:API calls}\"",
+      "}"
+    ],
+    "description": "Deployment diagram"
+  }
+}

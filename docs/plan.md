@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~90%). Phase 10 ⚠️ partial.
+> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~95%). Phase 10 ⚠️ partial.
 
 ### Overall Status Summary
 
@@ -21,7 +21,7 @@
 | **9b** | VS Code: Markdown Detection | ✅ Complete |
 | **9c** | VS Code: Interactive Editing | ✅ Mostly done |
 | **9d** | VS Code: Bidirectional Sync | ✅ Complete |
-| **9e** | VS Code: MD→PDF Export | ❌ Not started |
+| **9e** | VS Code: MD→PDF Export | ✅ Complete |
 | **9f** | VS Code: Copilot Skill Deployment | ✅ Mostly done |
 | **9g** | VS Code: Polish (snippets, keybindings, marketplace) | ❌ Not started |
 | **10** | Documentation & Release | ⚠️ Partial |
@@ -316,16 +316,16 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 
 | ID | Task | Est. | Status |
 |----|------|------|--------|
-| P1 | `marked` custom renderer for ` ```seldia ` blocks | 4h | ❌ |
-| P2 | Diagram injector: compile DSL → inline SVG in HTML | 3h | ❌ |
-| P3 | HTML assembler with print-optimized CSS | 4h | ❌ |
-| P4 | Puppeteer wrapper: HTML → PDF | 3h | ❌ |
-| P5 | Table of Contents generator | 2h | ❌ |
-| P6 | Error fallback rendering (broken diagrams → error box) | 2h | ❌ |
-| P7 | Progress reporter (VS Code notification integration) | 2h | ❌ |
+| P1 | `marked` custom renderer for ` ```seldia ` blocks | 4h | ✅ |
+| P2 | Diagram injector: compile DSL → inline SVG in HTML | 3h | ✅ |
+| P3 | HTML assembler with print-optimized CSS | 4h | ✅ |
+| P4 | Puppeteer wrapper: HTML → PDF | 3h | ✅ |
+| P5 | Table of Contents generator | 2h | ✅ |
+| P6 | Error fallback rendering (broken diagrams → error box) | 2h | ✅ |
+| P7 | Progress reporter (VS Code notification integration) | 2h | ✅ |
 | P8 | CLI integration: `seldia md2pdf` command | 2h | ❌ (stub exists) |
 
-> **Status: ❌ Not started (only `types.ts` scaffold)**
+> **Status: ✅ Complete** — Full MD→PDF pipeline: `marked` custom renderer intercepts ```seldia blocks, compiles DSL → SVG, assembles HTML with print-optimized CSS + TOC, renders PDF via Puppeteer. Error fallback, progress reporting included.
 
 ### 11.6 Sub-Phase 9f: Copilot Skill Deployment (Week 23, second half)
 

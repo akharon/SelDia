@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~98%). Phase 10 ⚠️ partial.
+> **Status as of 2026-07-13:** Phases 0–7 ✅ complete. Phase 8 ⚠️ partial (I2,I3,I5). Phase 9 ✅ mostly done (~98%, Z7 testing pending). Phase 10 ✅ mostly done (docs site + reference + plugin guide complete; publish pending).
 
 ### Overall Status Summary
 
@@ -24,7 +24,7 @@
 | **9e** | VS Code: MD→PDF Export | ✅ Complete |
 | **9f** | VS Code: Copilot Skill Deployment | ✅ Mostly done |
 | **9g** | VS Code: Polish (snippets, keybindings, marketplace) | ✅ Mostly done |
-| **10** | Documentation & Release | ⚠️ Partial |
+| **10** | Documentation & Release | ✅ Mostly done |
 
 ---
 
@@ -362,14 +362,14 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 
 | ID | Task | Est. | Status |
 |----|------|------|--------|
-| X1 | VitePress documentation site scaffold | 4h | ❌ |
-| X2 | DSL reference with examples for all 21 diagram types | 8h | ❌ |
-| X3 | Plugin development guide | 4h | ❌ |
+| X1 | VitePress documentation site scaffold | 4h | ✅ |
+| X2 | DSL reference with examples for all 21 diagram types | 8h | ✅ |
+| X3 | Plugin development guide | 4h | ✅ |
 | X4 | Curated example diagrams in `examples/` | 4h | ✅ |
 | X5 | Public npm release of all packages | 2h | ❌ |
 | X6 | VS Code Marketplace publication | 2h | ❌ |
 
-> **Status: ⚠️ Partial (examples done, rest not started)**
+> **Status: ⚠️ Partial (docs site ✅, DSL reference ✅, plugin guide ✅, examples ✅; npm/marketplace publish ❌)**
 
 ---
 
@@ -432,7 +432,7 @@ P0 → P1 → P2 → P3 → P9 → P10
 | **M7: Interactive** | 18 | Zoom, pan, drag, tooltip, ARIA | Accessibility audit | ⚠️ (zoom/pan/drag ✅, tooltip/ARIA ❌) |
 | **M8: VS Code Preview** | 22 | Markdown detection + visual editing + bidirectional sync | Manual QA on sample `.md` files | ⚠️ (markdown detection ✅, visual editing/sync ❌) |
 | **M9: VS Code Complete** | 24 | MD→PDF, Copilot skill, polish, marketplace ready | Extension acceptance criteria | ⚠️ (skill ✅, MD→PDF/polish/marketplace ❌) |
-| **M10: Released** | 24 | npm packages + VS Code Marketplace | Public install & use | ❌ |
+| **M10: Released** | 24 | npm packages + VS Code Marketplace | Public install & use | ⚠️ (docs ready, publish pending) |
 
 ---
 

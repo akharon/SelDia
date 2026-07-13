@@ -90,6 +90,8 @@
       { "command": "seldia.exportDiagram", "title": "SelDiA: Export Diagram" },
       { "command": "seldia.exportMarkdownToPdf", "title": "SelDiA: Export Markdown to PDF" },
       { "command": "seldia.deploySkill", "title": "SelDiA: Deploy Copilot Skill" },
+      { "command": "seldia.updateSkill", "title": "SelDiA: Update Copilot Skill" },
+      { "command": "seldia.uninstallSkill", "title": "SelDiA: Uninstall Copilot Skill" },
       { "command": "seldia.checkSkillStatus", "title": "SelDiA: Check Skill Status" }
     ],
     "snippets": [

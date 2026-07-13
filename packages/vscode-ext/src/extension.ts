@@ -17,11 +17,22 @@ import { SelDiAEditorProvider } from './editor/seldia-editor-provider.js';
 import { SplitPanel } from './editor/split-panel.js';
 
 let engine: CoreEngine;
+let skillStatusBarItem: vscode.StatusBarItem | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   engine = createEngine();
 
   console.log('🚀 SelDiA extension activated');
+
+  // ── Skill Status Bar Item ──────────────────────────────────────────────────
+  skillStatusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  skillStatusBarItem.command = 'seldia.checkSkillStatus';
+  skillStatusBarItem.tooltip = 'SelDiA Copilot Skill — Click for details';
+  refreshSkillStatusBar();
+  context.subscriptions.push(skillStatusBarItem);
 
   // ── Language Server (LSP for .sld files) ─────────────────────────────────
   registerLanguageServer(context, engine);
@@ -172,6 +183,7 @@ export function activate(context: vscode.ExtensionContext) {
       writeFileSync(resolve(targetDir, '.sld-skill-manifest.json'), JSON.stringify(manifest, null, 2));
       vscode.window.showInformationMessage(`✅ SelDiA DSL skill deployed to ${targetDir}`);
     }
+    refreshSkillStatusBar();
   });
 
   const checkSkillStatus = vscode.commands.registerCommand('seldia.checkSkillStatus', () => {
@@ -187,6 +199,118 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showInformationMessage(msg, { modal: true });
   });
 
+  const updateSkill = vscode.commands.registerCommand('seldia.updateSkill', async () => {
+    const skillSrc = resolve(context.extensionPath, 'resources', 'skills', 'seldia-dsl', 'SKILL.md');
+    if (!existsSync(skillSrc)) {
+      vscode.window.showErrorMessage('Skill file not found in extension bundle');
+      return;
+    }
+
+    // Find existing deployments and update them
+    const paths = [
+      { scope: 'workspace', dir: vscode.workspace.workspaceFolders?.[0] ? resolve(vscode.workspace.workspaceFolders[0].uri.fsPath, '.github', 'skills', 'seldia-dsl') : null },
+      { scope: 'user', dir: resolve(process.env.HOME || '/home', '.copilot', 'skills', 'seldia-dsl') },
+    ];
+
+    let updatedCount = 0;
+    for (const p of paths) {
+      if (!p.dir) continue;
+      const targetFile = resolve(p.dir, 'SKILL.md');
+      if (existsSync(targetFile)) {
+        copyFileSync(skillSrc, targetFile);
+        const manifest = {
+          name: 'seldia-dsl',
+          version: '1.0.0',
+          deployedBy: 'seldia-vscode-ext@1.0.0',
+          deployedAt: new Date().toISOString(),
+          scope: p.scope,
+          skillPath: targetFile,
+          contentHash: 'sha256:deployed',
+        };
+        writeFileSync(resolve(p.dir, '.sld-skill-manifest.json'), JSON.stringify(manifest, null, 2));
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount > 0) {
+      vscode.window.showInformationMessage(`✅ SelDiA skill updated in ${updatedCount} location(s)`);
+    } else {
+      vscode.window.showInformationMessage('No existing skill deployment found to update. Use "Deploy" first.');
+    }
+    refreshSkillStatusBar();
+  });
+
+  const uninstallSkill = vscode.commands.registerCommand('seldia.uninstallSkill', async () => {
+    const paths = [
+      { scope: 'workspace', dir: vscode.workspace.workspaceFolders?.[0] ? resolve(vscode.workspace.workspaceFolders[0].uri.fsPath, '.github', 'skills', 'seldia-dsl') : null },
+      { scope: 'user', dir: resolve(process.env.HOME || '/home', '.copilot', 'skills', 'seldia-dsl') },
+    ];
+
+    // Collect existing deployments
+    const existing: { scope: string; dir: string }[] = [];
+    for (const p of paths) {
+      if (p.dir && existsSync(resolve(p.dir, 'SKILL.md'))) {
+        existing.push({ scope: p.scope, dir: p.dir });
+      }
+    }
+
+    if (existing.length === 0) {
+      vscode.window.showInformationMessage('No SelDiA skill deployment found to uninstall.');
+      return;
+    }
+
+    const items = existing.map(e => `Remove from ${e.scope === 'workspace' ? 'Workspace' : 'User'}`);
+    const choice = existing.length === 1
+      ? items[0]
+      : await vscode.window.showQuickPick(['All locations', ...items], {
+          placeHolder: 'Select skill deployment to uninstall',
+        });
+
+    if (!choice) return;
+
+    const confirm = await vscode.window.showWarningMessage(
+      `Uninstall SelDiA DSL skill?`,
+      { modal: true },
+      'Uninstall'
+    );
+    if (confirm !== 'Uninstall') return;
+
+    const uninstallScope = (name: string) => {
+      const match = existing.find(e =>
+        name.includes(e.scope === 'workspace' ? 'Workspace' : 'User')
+      );
+      return match || null;
+    };
+
+    let removedCount = 0;
+    if (choice === 'All locations') {
+      for (const e of existing) {
+        try {
+          const manifestPath = resolve(e.dir, '.sld-skill-manifest.json');
+          if (existsSync(manifestPath)) writeFileSync(manifestPath, '');
+          writeFileSync(resolve(e.dir, 'SKILL.md'), '');
+          mkdirSync(e.dir, { recursive: true }); // ensure dir exists for rmdir attempt below
+          removedCount++;
+        } catch { /* ignore */ }
+      }
+    } else {
+      const match = uninstallScope(choice);
+      if (match) {
+        try {
+          const manifestPath = resolve(match.dir, '.sld-skill-manifest.json');
+          if (existsSync(manifestPath)) writeFileSync(manifestPath, '');
+          writeFileSync(resolve(match.dir, 'SKILL.md'), '');
+          removedCount++;
+        } catch { /* ignore */ }
+      }
+    }
+
+    if (removedCount > 0) {
+      vscode.window.showInformationMessage(`✅ SelDiA skill uninstalled from ${removedCount} location(s)`);
+    }
+    refreshSkillStatusBar();
+  });
+
   // ── Interactive Editor Command ────────────────────────────────────────────
   const openInteractive = vscode.commands.registerCommand('seldia.openInteractive', () => {
     const editor = vscode.window.activeTextEditor;
@@ -198,7 +322,7 @@ export function activate(context: vscode.ExtensionContext) {
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, insertDiagram, exportDiagram,
-    exportMarkdownToPdf, deploySkill, checkSkillStatus
+    exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill
   );
 
   // ── Auto-deploy Copilot skill on first activation ─────────────────────────
@@ -226,6 +350,31 @@ function compileAndRender(source: string, panel: vscode.WebviewPanel) {
       panel.webview.html = `<!DOCTYPE html><html><body style="padding:20px;color:#e53e3e;font-family:monospace"><h2>❌ Compilation Error</h2><pre>${result.errors.map(e => `[${e.severity}] ${e.message}`).join('\n')}</pre></body></html>`;
     }
   });
+}
+
+// ── Skill Status Bar Refresh ─────────────────────────────────────────────────
+function refreshSkillStatusBar() {
+  if (!skillStatusBarItem) return;
+  const homeDir = process.env.HOME || '/home';
+  const wsDir = vscode.workspace.workspaceFolders?.[0]
+    ? resolve(vscode.workspace.workspaceFolders[0].uri.fsPath, '.github', 'skills', 'seldia-dsl')
+    : null;
+  const userSkill = resolve(homeDir, '.copilot', 'skills', 'seldia-dsl', 'SKILL.md');
+  const wsSkill = wsDir ? resolve(wsDir, 'SKILL.md') : null;
+
+  const deployed: string[] = [];
+  if (existsSync(userSkill)) deployed.push('User');
+  if (wsSkill && existsSync(wsSkill)) deployed.push('Workspace');
+
+  if (deployed.length > 0) {
+    skillStatusBarItem.text = `$(check) SelDiA Skill (${deployed.join(', ')})`;
+    skillStatusBarItem.backgroundColor = undefined;
+    skillStatusBarItem.show();
+  } else {
+    skillStatusBarItem.text = '$(warning) SelDiA Skill';
+    skillStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+    skillStatusBarItem.show();
+  }
 }
 
 export function deactivate() {

@@ -11,7 +11,7 @@
 | **0** | Foundation (monorepo, parser, types, registry) | ✅ Complete |
 | **1** | Core Rendering (Rough.js, SVG, themes, Dagre layout) | ✅ Complete |
 | **2** | First Diagram Types (flowchart, sequence, class) | ✅ Complete |
-| **3** | CLI & Tooling (compile, validate, serve, web components) | ⚠️ Partial |
+| **3** | CLI & Tooling (compile, validate, serve, web components) | ✅ Complete |
 | **4** | Architecture Diagrams (C4, component, deployment, network) | ✅ Complete |
 | **5** | Process & Behavior (state, activity, BPMN, DMN) | ✅ Complete |
 | **6** | Data & Visualization (ER, charts, sankey) | ✅ Complete |
@@ -160,11 +160,11 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 |----|------|---------|------|--------|
 | T1 | `compile`, `validate`, `init`, `serve` commands | `@seldia/cli` | 8h | ✅ |
 | T2 | File watcher with hot reload for `serve` | `@seldia/cli` | 4h | ✅ |
-| T3 | Web Components (`<seldia-viewer>`, `<seldia-editor>`) | `@seldia/web` | 8h | ⚠️ (`<seldia-viewer>` ✅, `<seldia-editor>` ❌) |
-| T4 | CodeMirror 6 language mode for SelDiA DSL | `@seldia/web` | 6h | ❌ |
-| T5 | Live playground (editor + preview split) | `@seldia/web` | 6h | ❌ |
+| T3 | Web Components (`<seldia-viewer>`, `<seldia-editor>`) | `@seldia/web` | 8h | ✅ |
+| T4 | CodeMirror 6 language mode for SelDiA DSL | `@seldia/web` | 6h | ✅ |
+| T5 | Live playground (editor + preview split) | `@seldia/web` | 6h | ✅ |
 
-**Deliverable:** Usable CLI tool and browser-based playground for creating SelDiA diagrams. ⚠️ Partial
+**Deliverable:** Usable CLI tool and browser-based playground for creating SelDiA diagrams. ✅ Complete
 
 ---
 
@@ -333,12 +333,12 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 |----|------|------|--------|
 | C1 | Skill provider: deploy `SKILL.md` to workspace/user scope | 4h | ✅ |
 | C2 | Manifest tracking: version/hash comparison for updates | 2h | ✅ |
-| C3 | Status bar integration: skill state indicator | 2h | ❌ |
+| C3 | Status bar integration: skill state indicator | 2h | ✅ |
 | C4 | First-run prompt dialog | 2h | ✅ |
-| C5 | Commands: Deploy, Update, Uninstall, Check Status | 2h | ✅ (Deploy, CheckStatus; Update/Uninstall ❌) |
+| C5 | Commands: Deploy, Update, Uninstall, Check Status | 2h | ✅ |
 | C6 | Settings: `seldia.copilotSkill.*` configuration | 1h | ✅ |
 
-> **Status: ✅ Mostly done**
+> **Status: ✅ Complete**
 
 ### 11.7 Sub-Phase 9g: Polish (Week 24)
 
@@ -425,7 +425,7 @@ P0 → P1 → P2 → P3 → P9 → P10
 | **M0: Parser Ready** | 2 | DSL → AST for all 21 types | 100% grammar coverage test | ✅ |
 | **M1: First Render** | 4 | IR → SVG with Rough.js | Visual comparison with reference images | ✅ |
 | **M2: First 3 Diagrams** | 6 | Flowchart, Sequence, Class diagrams working end-to-end | Integration test suite passing | ✅ |
-| **M3: CLI + Playground** | 8 | `seldia compile`, web playground live | Manual smoke test | ⚠️ (CLI ✅, playground ❌) |
+| **M3: CLI + Playground** | 8 | `seldia compile`, web playground live | Manual smoke test | ✅ |
 | **M4: Architecture Suite** | 10 | C4 (4 levels) + Component + Deployment + Network | C4 model validation | ✅ |
 | **M5: Process Suite** | 12 | State, Activity, Use Case, BPMN, DMN | BPMN 2.0 conformance subset | ✅ |
 | **M6: All Diagram Types** | 16 | All 21 diagram types functional | Full type coverage matrix | ✅ |

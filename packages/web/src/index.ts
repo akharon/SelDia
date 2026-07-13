@@ -1,5 +1,5 @@
 // =============================================================================
-// SelDiA — Web Components Entry Point
+// SelDiA — Web Components & CodeMirror Language Mode Entry Point
 // =============================================================================
 
 import { LitElement, html, css } from 'lit';
@@ -153,3 +153,6 @@ declare global {
     'seldia-live': SelDiALive;
   }
 }
+
+// ── CodeMirror 6 Language Mode Exports ───────────────────────────────────────
+export { seldiaLanguage, seldiaAutocomplete, seldiaIndent } from './codemirror/seldia-language.js';

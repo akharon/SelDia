@@ -1,0 +1,28 @@
+{
+  "name": "@seldia/core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SelDiA core: parser, engine, types, plugin system",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./types/*": "./dist/types/*.js",
+    "./ir/types": "./dist/ir/types.js",
+    "./ast/nodes": "./dist/ast/nodes.js",
+    "./plugin/types": "./dist/plugin/types.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "lint": "echo lint",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

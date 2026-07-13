@@ -1,0 +1,39 @@
+{
+  "name": "seldia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-Diagramming Architecture — A unified text-based Diagram-as-Code tool",
+  "workspaces": [
+    "packages/core",
+    "packages/layout",
+    "packages/render",
+    "packages/interaction",
+    "packages/cli",
+    "packages/web",
+    "packages/vscode-ext"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "build:core": "turbo run build --filter=@seldia/core",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean",
+    "cli": "node packages/cli/dist/index.js",
+    "script:build": "bash scripts/build.sh",
+    "script:debug": "bash scripts/debug.sh",
+    "script:test": "bash scripts/test.sh",
+    "script:deploy": "bash scripts/deploy.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.4.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "npm@10.9.0"
+}

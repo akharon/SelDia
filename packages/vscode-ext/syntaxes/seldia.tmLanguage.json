@@ -1,0 +1,62 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "SelDiA",
+  "scopeName": "source.seldia",
+  "patterns": [
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#shapes" },
+    { "include": "#strings" },
+    { "include": "#comments" },
+    { "include": "#arrows" },
+    { "include": "#numbers" },
+    { "include": "#properties" }
+  ],
+  "repository": {
+    "keywords": {
+      "patterns": [{
+        "name": "keyword.control.seldia",
+        "match": "\\b(diagram|theme|layout|style|group|section|partition|boundary|participant|actor|class|interface|enum|entity|component|node|database|queue|artifact|container|person|system|system_Ext|containerDb|container_Ext|componentDb|state|task|gateway|event|startEvent|endEvent|flow|messageFlow|branch|leaf|root|block|source|sink|field|submit|reset|commit|merge|branch|milestone|note|opt|alt|else|loop|par|critical|break|end|pool|lane|port|interface|service|device|cloud|server|workstation|firewall|switch|router)\\b"
+      }]
+    },
+    "types": {
+      "patterns": [{
+        "name": "entity.name.type.seldia",
+        "match": "\\b(flowchart|sequence|class|er|state|usecase|activity|component|deployment|bpmn|dmn|gantt|mindmap|network|gitgraph|form|sankey|block|timeline|c4\\s+(context|container|component|code)|chart\\s+(bar|line|pie|radar|scatter))\\b"
+      }]
+    },
+    "shapes": {
+      "patterns": [
+        { "name": "storage.type.shape.seldia", "match": "[\\(\\[\\{<][\\(\\[\\{<]?[^\\]\\}\\)>]*[\\]\\}\\)>]?[\\]\\}\\)>]" }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.seldia",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [{ "name": "constant.character.escape.seldia", "match": "\\\\." }]
+    },
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.seldia", "match": "//.*$" },
+        { "name": "comment.block.seldia", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "arrows": {
+      "patterns": [{
+        "name": "keyword.operator.arrow.seldia",
+        "match": "(-->|<--|<-->|---|\\.\\.>|==>|-\\.\\.\\.->)"
+      }]
+    },
+    "numbers": {
+      "name": "constant.numeric.seldia",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+    "properties": {
+      "patterns": [{
+        "name": "support.type.property-name.seldia",
+        "match": "\\b(fill|stroke|strokeWidth|roughness|bowing|fontSize|fontFamily|textColor|opacity|shadow|padding|minWidth|minHeight|borderRadius|label|description|technology|type|color|shape)\\b"
+      }]
+    }
+  }
+}

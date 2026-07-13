@@ -1,0 +1,26 @@
+{
+  "name": "@seldia/layout",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SelDiA layout engine: dagre, ELK.js, d3-force",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@seldia/core": "*",
+    "dagre": "^0.8.5",
+    "d3-force": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/dagre": "^0.7.52",
+    "@types/d3-force": "^3.0.10",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

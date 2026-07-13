@@ -1,0 +1,88 @@
+{
+  "name": "@seldia/vscode-ext",
+  "version": "1.0.0",
+  "private": true,
+  "displayName": "SelDiA",
+  "description": "Self-Diagramming Architecture — Unified Diagram-as-Code with Rough.js",
+  "publisher": "seldia",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Visualization",
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:seldia",
+    "onLanguage:markdown"
+  ],
+  "main": "./dist/extension.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@seldia/core": "*",
+    "@seldia/interaction": "*",
+    "@seldia/layout": "*",
+    "@seldia/render": "*",
+    "marked": "^15.0.0",
+    "puppeteer": "^24.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.96.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "seldia",
+        "extensions": [".seldia"],
+        "aliases": ["SelDiA", "seldia"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "seldia",
+        "scopeName": "source.seldia",
+        "path": "./syntaxes/seldia.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      { "command": "seldia.toggleView", "title": "SelDiA: Toggle Code / Diagram View" },
+      { "command": "seldia.openPreview", "title": "SelDiA: Open Preview to the Side" },
+      { "command": "seldia.insertDiagram", "title": "SelDiA: Insert Diagram Block" },
+      { "command": "seldia.exportDiagram", "title": "SelDiA: Export Diagram" },
+      { "command": "seldia.exportMarkdownToPdf", "title": "SelDiA: Export Markdown to PDF" },
+      { "command": "seldia.deploySkill", "title": "SelDiA: Deploy Copilot Skill" },
+      { "command": "seldia.checkSkillStatus", "title": "SelDiA: Check Skill Status" }
+    ],
+    "configuration": {
+      "title": "SelDiA",
+      "properties": {
+        "seldia.defaultTheme": {
+          "type": "string",
+          "default": "sketchy-light",
+          "description": "Default theme for rendered diagrams"
+        },
+        "seldia.markdown.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SelDiA diagram detection in Markdown files"
+        },
+        "seldia.copilotSkill.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable deployment of the SelDiA DSL Copilot skill"
+        }
+      }
+    }
+  }
+}

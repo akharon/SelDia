@@ -3,8 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "displayName": "SelDiA",
-  "description": "Self-Diagramming Architecture — Unified Diagram-as-Code with Rough.js",
+  "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
   "publisher": "seldia",
+  "license": "MIT",
+  "author": "SelDiA",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seldia/seldia.git"
+  },
+  "bugs": {
+    "url": "https://github.com/seldia/seldia/issues"
+  },
+  "homepage": "https://seldia.dev",
   "engines": {
     "vscode": "^1.96.0"
   },

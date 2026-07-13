@@ -1,8 +1,7 @@
 {
   "name": "@seldia/core",
   "version": "1.0.0",
-  "private": true,
-  "description": "SelDiA core: parser, engine, types, plugin system",
+  "description": "SelDiA core: parser, engine, types, plugin system for 21+ diagram types",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,6 +18,22 @@
     "test": "vitest run",
     "lint": "echo lint",
     "clean": "rm -rf dist"
+  },
+  "license": "MIT",
+  "author": "SelDiA",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seldia/seldia.git"
+  },
+  "bugs": {
+    "url": "https://github.com/seldia/seldia/issues"
+  },
+  "homepage": "https://seldia.dev",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {},
   "devDependencies": {

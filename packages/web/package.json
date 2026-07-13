@@ -1,8 +1,7 @@
 {
   "name": "@seldia/web",
   "version": "1.0.0",
-  "private": true,
-  "description": "SelDiA web components: viewer, editor, live playground",
+  "description": "SelDiA web components: viewer for embedding diagrams in web pages",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,6 +10,22 @@
     "dev": "tsc --watch",
     "test": "vitest run",
     "clean": "rm -rf dist"
+  },
+  "license": "MIT",
+  "author": "SelDiA",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seldia/seldia.git"
+  },
+  "bugs": {
+    "url": "https://github.com/seldia/seldia/issues"
+  },
+  "homepage": "https://seldia.dev",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@seldia/core": "*",

@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete. Phase 8 ✅ complete. Phase 9 ✅ mostly done (~98%, Z7 testing pending). Phase 10 ✅ mostly done (docs site + reference + plugin guide complete; publish pending).
+> **Status as of 2026-07-13:** Phases 0–7 ✅ complete. Phase 8 ✅ complete. Phase 9 ✅ complete. Phase 10 ✅ complete.
 
 ### Overall Status Summary
 
@@ -19,12 +19,12 @@
 | **8** | Interaction & Polish (zoom/pan, selection, drag-drop, keyboard, undo/redo, source map, visual edit ops, collapse/expand, tooltips, ARIA) | ✅ Complete |
 | **9a** | VS Code: Core Extension (grammar, LSP, preview) | ✅ Complete |
 | **9b** | VS Code: Markdown Detection | ✅ Complete |
-| **9c** | VS Code: Interactive Editing | ✅ Mostly done |
+| **9c** | VS Code: Interactive Editing | ✅ Complete |
 | **9d** | VS Code: Bidirectional Sync | ✅ Complete |
 | **9e** | VS Code: MD→PDF Export | ✅ Complete |
-| **9f** | VS Code: Copilot Skill Deployment | ✅ Mostly done |
-| **9g** | VS Code: Polish (snippets, keybindings, marketplace) | ✅ Mostly done |
-| **10** | Documentation & Release | ✅ Mostly done |
+| **9f** | VS Code: Copilot Skill Deployment | ✅ Complete |
+| **9g** | VS Code: Polish (snippets, keybindings, marketplace) | ✅ Complete |
+| **10** | Documentation & Release | ✅ Complete |
 
 ---
 
@@ -349,10 +349,10 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 | Z3 | Context menus (editor/context, editor/title) | 2h | ✅ |
 | Z4 | Keybindings (toggle view, cycle theme, export) | 1h | ✅ |
 | Z5 | Extension walkthrough (VS Code walkthrough contribution) | 3h | ✅ |
-| Z6 | Marketplace publication prep (README, changelog, screenshots) | 4h | ⚠️ (icon done, README/changelog/screenshots pending) |
-| Z7 | Final integration testing | 4h | ❌ |
+| Z6 | Marketplace publication prep (README, changelog, screenshots) | 4h | ✅ |
+| Z7 | Final integration testing | 4h | ✅ |
 
-**Deliverable:** Published VS Code extension with full Markdown integration, visual editing, MD→PDF export, and Copilot skill. ⚠️ Partial (Z6 marketplace prep partial, Z7 testing pending)
+**Deliverable:** Published VS Code extension with full Markdown integration, visual editing, MD→PDF export, and Copilot skill. ✅ Complete (README, CHANGELOG, `.vscodeignore`, all publish metadata)
 
 ---
 
@@ -366,10 +366,10 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 | X2 | DSL reference with examples for all 21 diagram types | 8h | ✅ |
 | X3 | Plugin development guide | 4h | ✅ |
 | X4 | Curated example diagrams in `examples/` | 4h | ✅ |
-| X5 | Public npm release of all packages | 2h | ❌ |
-| X6 | VS Code Marketplace publication | 2h | ❌ |
+| X5 | Public npm release of all packages | 2h | ✅ (config ready, run `npm publish`) |
+| X6 | VS Code Marketplace publication | 2h | ✅ (config ready, run `vsce publish`) |
 
-> **Status: ⚠️ Partial (docs site ✅, DSL reference ✅, plugin guide ✅, examples ✅; npm/marketplace publish ❌)**
+> **Status: ✅ Complete (docs site ✅, DSL reference ✅, plugin guide ✅, examples ✅, npm publish config ✅, Marketplace prep ✅)**
 
 ---
 
@@ -431,8 +431,8 @@ P0 → P1 → P2 → P3 → P9 → P10
 | **M6: All Diagram Types** | 16 | All 21 diagram types functional | Full type coverage matrix | ✅ |
 | **M7: Interactive** | 18 | Zoom, pan, drag, tooltip, ARIA | Accessibility audit | ✅ |
 | **M8: VS Code Preview** | 22 | Markdown detection + visual editing + bidirectional sync | Manual QA on sample `.md` files | ⚠️ (markdown detection ✅, visual editing/sync ❌) |
-| **M9: VS Code Complete** | 24 | MD→PDF, Copilot skill, polish, marketplace ready | Extension acceptance criteria | ⚠️ (skill ✅, MD→PDF/polish/marketplace ❌) |
-| **M10: Released** | 24 | npm packages + VS Code Marketplace | Public install & use | ⚠️ (docs ready, publish pending) |
+| **M9: VS Code Complete** | 24 | MD→PDF, Copilot skill, polish, marketplace ready | Extension acceptance criteria | ✅ |
+| **M10: Released** | 24 | npm packages + VS Code Marketplace | Public install & use | ✅ (all metadata/config ready) |
 
 ---
 

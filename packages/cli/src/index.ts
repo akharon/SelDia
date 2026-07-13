@@ -8,12 +8,24 @@ import { createEngine } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename } from 'path';
 
+// ── Banner ────────────────────────────────────────────────────────────────────
+function printBanner(): void {
+  const banner = `
+\x1b[38;5;99m     ┌─────────────────────────────┐
+     │   SelDiA v1.0.0              │
+     │   Diagram-as-Code w/ Rough.js │
+     └─────────────────────────────┘\x1b[0m
+  `;
+  console.log(banner);
+}
+
 const program = new Command();
 
 program
   .name('seldia')
   .description('Self-Diagramming Architecture — Diagram-as-Code with Rough.js')
-  .version('1.0.0');
+  .version('1.0.0')
+  .hook('preAction', printBanner);
 
 // ── compile ──────────────────────────────────────────────────────────────────
 program

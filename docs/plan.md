@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete. Phase 8 ✅ complete. Phase 9 ✅ complete. Phase 10 ✅ complete.
+> **Status as of 2026-07-13:** Phases 0–10 ✅ all complete. All items implemented, tested, and committed.
 
 ### Overall Status Summary
 

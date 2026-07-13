@@ -138,57 +138,74 @@ class SelDiAEngine implements CoreEngine {
     const pad = this.config.render.padding || 20;
     const bw = bounds.width + pad * 2, bh = bounds.height + pad * 2;
     const bg = this.config.render.background || '#ffffff';
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}">\n  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
-    for (const e of edges) svg += this.renderEdge(e, pad);
-    for (const n of nodes) svg += this.renderNode(n, pad);
+    const sketchy = this.config.render.sketchy !== false;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}">\n`;
+    svg += `  <defs>\n    <filter id="sketch"><feTurbulence type="turbulence" baseFrequency="0.03" numOctaves="2" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="${sketchy ? 2 : 0}" xChannelSelector="R" yChannelSelector="G"/></filter>\n  </defs>\n`;
+    svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
+    for (const e of edges) svg += this.renderEdge(e, pad, sketchy);
+    for (const n of nodes) svg += this.renderNode(n, pad, sketchy);
     svg += '</svg>';
     return svg;
   }
 
-  private renderNode(node: IRNode, pad: number): string {
+  private renderNode(node: IRNode, pad: number, sketchy: boolean): string {
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const cx = x + w / 2, cy = y + h / 2;
     const s = node.style || {};
     const fill = (s.fill as string) || '#e8f4f8', stroke = (s.stroke as string) || '#2c3e50';
     const sw = (s.strokeWidth as number) || 2, color = (s.textColor as string) || '#2c3e50';
-    const fs = (s.fontSize as number) || 14, ff = (s.fontFamily as string) || 'Inter, system-ui, sans-serif', r = 6;
+    const fs = (s.fontSize as number) || 14, ff = (s.fontFamily as string) || 'Inter, system-ui, sans-serif';
+    const flt = sketchy ? ' filter="url(#sketch)"' : '';
+    const op = ' opacity="0.9"';
     let el = '';
     switch (node.shape) {
       case 'diamond':
-        el = `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="0.9"/>\n`; break;
+        el = `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n`; break;
       case 'circle':
-        el = `    <ellipse cx="${cx}" cy="${cy}" rx="${w / 2}" ry="${h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="0.9"/>\n`; break;
+        el = `    <ellipse cx="${cx}" cy="${cy}" rx="${w / 2}" ry="${h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n`; break;
       case 'hexagon':
-        el = `    <polygon points="${cx},${y} ${x + w},${y + h * 0.25} ${x + w},${y + h * 0.75} ${cx},${y + h} ${x},${y + h * 0.75} ${x},${y + h * 0.25}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="0.9"/>\n`; break;
+        el = `    <polygon points="${cx},${y} ${x + w},${y + h * 0.25} ${x + w},${y + h * 0.75} ${cx},${y + h} ${x},${y + h * 0.75} ${x},${y + h * 0.25}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n`; break;
       case 'parallelogram':
-        el = `    <polygon points="${x + 15},${y} ${x + w},${y} ${x + w - 15},${y + h} ${x},${y + h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="0.9"/>\n`; break;
-      case 'cylinder':
-        el = `    <rect x="${x}" y="${y + 10}" width="${w}" height="${h - 20}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="0.9"/>\n    <ellipse cx="${cx}" cy="${y + 10}" rx="${w / 2}" ry="10" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>\n    <ellipse cx="${cx}" cy="${y + h - 10}" rx="${w / 2}" ry="10" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>\n`; break;
+        el = `    <polygon points="${x + 15},${y} ${x + w},${y} ${x + w - 15},${y + h} ${x},${y + h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n`; break;
+      case 'cylinder': {
+        const ry = 12;
+        el = `    <rect x="${x}" y="${y + ry}" width="${w}" height="${h - ry * 2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n`;
+        el += `    <ellipse cx="${cx}" cy="${y + ry}" rx="${w / 2}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n    <ellipse cx="${cx}" cy="${y + h - ry}" rx="${w / 2}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n`; break;
+      }
+      case 'actor': {
+        const r = Math.min(w, h * 0.3) / 2;
+        el = `    <circle cx="${cx}" cy="${y + r + 4}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n    <line x1="${cx}" y1="${y + r * 2 + 8}" x2="${cx}" y2="${y + h * 0.6}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n    <line x1="${x + 10}" y1="${y + h * 0.4}" x2="${x + w - 10}" y2="${y + h * 0.4}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n    <line x1="${cx - w * 0.3}" y1="${y + h * 0.85}" x2="${cx}" y2="${y + h * 0.65}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n    <line x1="${cx + w * 0.3}" y1="${y + h * 0.85}" x2="${cx}" y2="${y + h * 0.65}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n    <text x="${cx}" y="${y + h - 6}" text-anchor="middle" fill="${color}" font-size="${Math.min(fs, 11)}" font-family="${ff}">${this.esc(node.label)}</text>\n`; return el;
+      }
       case 'cloud':
-        el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="25" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4,4" opacity="0.9"/>\n`; break;
+        el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="25" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4,4"${op}${flt}/>\n`; break;
+      case 'subroutine':
+        el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n    <line x1="${x}" y1="${y + 8}" x2="${x + w}" y2="${y + 8}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n    <line x1="${x}" y1="${y + h - 8}" x2="${x + w}" y2="${y + h - 8}" stroke="${stroke}" stroke-width="${sw}"${flt}/>\n`; break;
+      case 'stadium':
+        el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n`; break;
       default:
-        el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="0.9"/>\n`; break;
+        el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}${flt}/>\n`; break;
     }
     const label = this.esc(node.label || node.id);
     el += `    <text x="${cx}" y="${cy + fs * 0.35}" text-anchor="middle" fill="${color}" font-size="${fs}" font-family="${ff}">${label}</text>\n`;
     return el;
   }
 
-  private renderEdge(edge: IREdge, pad: number): string {
+  private renderEdge(edge: IREdge, pad: number, sketchy: boolean): string {
     const s = edge.style || {};
     const stroke = (s.stroke as string) || '#666';
     const sw = (s.strokeWidth as number) || 2;
     const dash = (s.strokeStyle as string) === 'dashed' ? ' stroke-dasharray="6,4"' : '';
+    const flt = sketchy ? ' filter="url(#sketch)"' : '';
     const wps = edge.waypoints || [];
     if (wps.length < 2) return '';
     const pts = wps.map(p => `${p.x + pad},${p.y + pad}`).join(' ');
-    let el = `    <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="${sw}"${dash}/>\n`;
+    let el = `    <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="${sw}"${dash}${flt}/>\n`;
     const last = wps[wps.length - 1], prev = wps[wps.length - 2];
     if (last && prev) {
       const dx = last.x - prev.x, dy = last.y - prev.y, len = Math.sqrt(dx * dx + dy * dy);
       if (len > 0) {
-        const nx = dx / len, ny = dy / len, as = 10, ax = last.x + pad, ay = last.y + pad;
-        el += `    <polygon points="${ax - as * (nx * 0.8 - ny * 0.4)},${ay - as * (ny * 0.8 + nx * 0.4)} ${ax - as * (nx * 0.8 + ny * 0.4)},${ay - as * (ny * 0.8 - nx * 0.4)} ${ax},${ay}" fill="${stroke}" stroke="${stroke}" stroke-width="1"/>\n`;
+        const nx = dx / len, ny = dy / len, asz = 10, ax = last.x + pad, ay = last.y + pad;
+        el += `    <polygon points="${ax - asz * (nx * 0.8 - ny * 0.4)},${ay - asz * (ny * 0.8 + nx * 0.4)} ${ax - asz * (nx * 0.8 + ny * 0.4)},${ay - asz * (ny * 0.8 - nx * 0.4)} ${ax},${ay}" fill="${stroke}" stroke="${stroke}" stroke-width="1"${flt}/>\n`;
       }
     }
     if (edge.label) {

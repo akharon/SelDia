@@ -522,10 +522,69 @@ class Parser {
         });
         continue;
       }
+      // Handle chained edges: a --> b --> c
+      // After an edge declaration, if next token is ARROW, chain to target
+      if (this.peek().type === TokenType.ARROW && stmts.length > 0) {
+        const prev = stmts[stmts.length - 1];
+        if (prev.kind === 'EdgeDecl') {
+          const prevEdge = prev as ASTEdgeDecl;
+          const srcId = Array.isArray(prevEdge.targetId) ? prevEdge.targetId[0] : prevEdge.targetId;
+          stmts.push(this.parseChainedEdge(srcId));
+          continue;
+        }
+      }
       const stmt = this.parseStatement();
       if (stmt) stmts.push(stmt);
     }
     return stmts;
+  }
+
+  /** Parse a chained edge after another edge: `--> target [... more chains]` */
+  parseChainedEdge(sourceId: string): ASTEdgeDecl {
+    const arrowTok = this.expect(TokenType.ARROW, 'Expected arrow in chained edge');
+    let direction: 'right' | 'left' | 'both' | 'none' = 'right';
+    switch (arrowTok.value) {
+      case '-->': direction = 'right'; break;
+      case '->':  direction = 'right'; break;
+      case '<--': direction = 'left'; break;
+      case '<-->': direction = 'both'; break;
+      case '---': direction = 'none'; break;
+      case '..>': direction = 'right'; break;
+      case '==>': direction = 'right'; break;
+    }
+    let label: string | undefined;
+    if (this.peek().type === TokenType.PIPE) {
+      this.consume();
+      const labelTok = this.expect(TokenType.STRING, 'Expected string in edge label');
+      this.expect(TokenType.PIPE, 'Expected closing pipe');
+      label = labelTok.value;
+    }
+    let tgtId: string;
+    if (this.peek().type === TokenType.SHAPE) {
+      const shapeTok = this.consume();
+      const detected = detectShape(shapeTok.value);
+      tgtId = detected.label.replace(/[^a-zA-Z0-9_-]/g, '_') || 'target';
+    } else {
+      const tgtTok = this.expect(TokenType.IDENT, 'Expected target identifier in chained edge');
+      tgtId = tgtTok.value;
+    }
+    if (!label && this.peek().type === TokenType.COLON) {
+      this.consume();
+      if (this.peek().type === TokenType.STRING) {
+        label = this.consume().value;
+      } else if (this.peek().type === TokenType.IDENT) {
+        let parts = '';
+        while (this.peek().type !== TokenType.EOF && this.peek().type !== TokenType.RBRACE) {
+          parts += this.consume().value + ' ';
+        }
+        label = parts.trim();
+      }
+    }
+    return {
+      kind: 'EdgeDecl', sourceId, targetId: tgtId,
+      direction, label, style: undefined, routing: 'straight',
+      loc: { file: '<unknown>', startLine: arrowTok.line, startColumn: arrowTok.col, endLine: arrowTok.line, endColumn: arrowTok.col + arrowTok.value.length, offset: arrowTok.offset },
+    };
   }
 
   parseStatement(): ASTStatement | null {

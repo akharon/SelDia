@@ -3,4 +3,5 @@
 // =============================================================================
 
 export * from './types';
-export { DagreLayoutEngine } from './engine';
+export { DagreLayoutEngine } from './engine.js';
+export { GridLayoutEngine } from './grid.js';

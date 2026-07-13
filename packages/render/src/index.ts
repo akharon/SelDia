@@ -3,5 +3,6 @@
 // =============================================================================
 
 export * from './types';
-export { SvgRenderer } from './svg-renderer';
+export { SvgRenderer } from './svg-renderer.js';
+export * from './rough/index.js';
 

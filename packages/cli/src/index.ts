@@ -118,7 +118,7 @@ program
       : resolve(process.cwd(), `diagram.${type}.seldia`);
 
     const templates: Record<string, string> = {
-      flowchart: `diagram flowchart "${title}" {\n    start: (Start)\n    process: [Process]\n    decision: {Decision?}\n    end: (End)\n\n    start --> process --> decision\n    decision -->|yes| end\n    decision -->|no| process\n}\n`,
+      flowchart: `diagram flowchart "${title}" {\n    start: (Start)\n    process: [Process]\n    decision: {Decision?}\n    end: (End)\n\n    start --> process\n    process --> decision\n    decision -->|"yes"| end\n    decision -->|"no"| process\n}\n`,
       sequence: `diagram sequence "${title}" {\n    participant user: "User"\n    participant system: "System"\n\n    user -> system: "Request"\n    system --> user: "Response"\n}\n`,
       class: `diagram class "${title}" {\n    class MyClass {\n        +attribute: string\n        +method(): void\n    }\n}\n`,
       'c4-context': `diagram c4 context "${title}" {\n    person user: "User"\n    system mySystem: "My System"\n    system_Ext external: "External System"\n\n    user --> mySystem: "Uses"\n    mySystem --> external: "Integrates"\n}\n`,

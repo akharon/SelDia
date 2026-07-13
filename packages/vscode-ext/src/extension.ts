@@ -7,6 +7,10 @@ import { createEngine } from '@seldia/core';
 import type { CoreEngine } from '@seldia/core';
 import { readFileSync, existsSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { resolve, dirname } from 'path';
+import { BlockDetector, type SelDiABlock } from './markdown/detector.js';
+import { SelDiADecorator } from './markdown/decorator.js';
+import { SelDiACodeLensProvider } from './markdown/codelens.js';
+import { SelDiAPreviewPanel } from './markdown/preview-panel.js';
 
 let engine: CoreEngine;
 
@@ -15,16 +19,71 @@ export function activate(context: vscode.ExtensionContext) {
 
   console.log('🚀 SelDiA extension activated');
 
+  // ── Markdown Detection ────────────────────────────────────────────────────
+  const decorator = new SelDiADecorator(engine);
+  const codeLensProvider = new SelDiACodeLensProvider();
+  let activeDetector: BlockDetector | null = null;
+
+  // Register CodeLens provider for markdown files
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      { language: 'markdown', pattern: '**/*.{md,mdx}' },
+      codeLensProvider
+    )
+  );
+
+  // Watch active editor for markdown files
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+      // Clean up previous detector
+      if (activeDetector) {
+        activeDetector.dispose();
+        activeDetector = null;
+      }
+
+      if (!editor || !editor.document.fileName.match(/\.(md|mdx|rst)$/)) return;
+      if (!vscode.workspace.getConfiguration('seldia').get('markdown.enabled', true)) return;
+
+      // Create detector for this document
+      const detector = new BlockDetector(editor.document);
+      activeDetector = detector;
+
+      detector.onBlocksDetected(async (blocks) => {
+        codeLensProvider.updateBlocks(blocks);
+        await decorator.updateDecorations(editor, blocks);
+      });
+
+      detector.start();
+    })
+  );
+
+  // Also scan the initially active editor
+  if (vscode.window.activeTextEditor?.document.fileName.match(/\.(md|mdx|rst)$/)) {
+    const detector = new BlockDetector(vscode.window.activeTextEditor.document);
+    activeDetector = detector;
+    detector.onBlocksDetected(async (blocks) => {
+      codeLensProvider.updateBlocks(blocks);
+      if (vscode.window.activeTextEditor) {
+        await decorator.updateDecorations(vscode.window.activeTextEditor, blocks);
+      }
+    });
+    detector.start();
+  }
+
   // ── Commands ───────────────────────────────────────────────────────────────
   const toggleView = vscode.commands.registerCommand('seldia.toggleView', () => {
-    vscode.window.showInformationMessage('SelDiA: Toggle Code / Diagram View');
-  });
-
-  const openPreview = vscode.commands.registerCommand('seldia.openPreview', () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) { vscode.window.showWarningMessage('No active editor'); return; }
-    const panel = vscode.window.createWebviewPanel('seldiaPreview', 'SelDiA Preview', vscode.ViewColumn.Beside, { enableScripts: true });
-    compileAndRender(editor.document.getText(), panel);
+
+    // Toggle between diagram preview and code view
+    const source = editor.document.getText();
+    SelDiAPreviewPanel.createOrShow(source);
+  });
+
+  const openPreview = vscode.commands.registerCommand('seldia.openPreview', (sourceArg?: string) => {
+    const source = sourceArg || vscode.window.activeTextEditor?.document.getText();
+    if (!source) { vscode.window.showWarningMessage('No source to preview'); return; }
+    SelDiAPreviewPanel.createOrShow(source);
   });
 
   const insertDiagram = vscode.commands.registerCommand('seldia.insertDiagram', () => {
@@ -36,16 +95,16 @@ export function activate(context: vscode.ExtensionContext) {
     });
   });
 
-  const exportDiagram = vscode.commands.registerCommand('seldia.exportDiagram', async () => {
+  const exportDiagram = vscode.commands.registerCommand('seldia.exportDiagram', async (sourceArg?: string) => {
     const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
-    const source = editor.document.getText();
-    const result = await engine.compile(source, editor.document.fileName);
+    if (!editor && !sourceArg) return;
+    const source = sourceArg || editor!.document.getText();
+    const result = await engine.compile(source, editor?.document.fileName);
     if (!result.ok) {
       vscode.window.showErrorMessage('Compilation failed: ' + result.errors.map(e => e.message).join(', '));
       return;
     }
-    const uri = await vscode.window.showSaveDialog({ filters: { 'SVG': ['svg'] } });
+    const uri = await vscode.window.showSaveDialog({ filters: { 'SVG': ['svg'], 'PNG': ['png'], 'PDF': ['pdf'] } });
     if (uri) {
       writeFileSync(uri.fsPath, result.value.svg);
       vscode.window.showInformationMessage(`✅ Exported to ${uri.fsPath}`);

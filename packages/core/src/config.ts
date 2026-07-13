@@ -54,6 +54,9 @@ export interface RenderConfig {
   /** Whether to embed fonts in SVG */
   embedFonts: boolean;
 
+  /** Whether to use hand-drawn (sketchy) rendering style */
+  sketchy: boolean;
+
   /** Whether to include Rough.js annotation data in output */
   includeRoughAnnotations: boolean;
 
@@ -154,6 +157,7 @@ export const DEFAULT_CONFIG: SelDiAConfig = {
     scale: 1,
     background: 'transparent',
     embedFonts: true,
+    sketchy: true,
     includeRoughAnnotations: false,
     padding: 20,
   },

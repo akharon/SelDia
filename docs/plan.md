@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete. Phase 8 ⚠️ partial (I2,I3,I5). Phase 9 ✅ mostly done (~98%, Z7 testing pending). Phase 10 ✅ mostly done (docs site + reference + plugin guide complete; publish pending).
+> **Status as of 2026-07-13:** Phases 0–7 ✅ complete. Phase 8 ✅ complete. Phase 9 ✅ mostly done (~98%, Z7 testing pending). Phase 10 ✅ mostly done (docs site + reference + plugin guide complete; publish pending).
 
 ### Overall Status Summary
 
@@ -16,7 +16,7 @@
 | **5** | Process & Behavior (state, activity, BPMN, DMN) | ✅ Complete |
 | **6** | Data & Visualization (ER, charts, sankey) | ✅ Complete |
 | **7** | Project Management (gantt, timeline, mindmap, etc.) | ✅ Complete |
-| **8** | Interaction & Polish (zoom/pan, selection, drag-drop, keyboard, undo/redo, source map, visual edit ops) | ⚠️ Partial |
+| **8** | Interaction & Polish (zoom/pan, selection, drag-drop, keyboard, undo/redo, source map, visual edit ops, collapse/expand, tooltips, ARIA) | ✅ Complete |
 | **9a** | VS Code: Core Extension (grammar, LSP, preview) | ✅ Complete |
 | **9b** | VS Code: Markdown Detection | ✅ Complete |
 | **9c** | VS Code: Interactive Editing | ✅ Mostly done |
@@ -239,15 +239,15 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 | ID | Task | Package | Est. | Status |
 |----|------|---------|------|--------|
 | I1 | Zoom, pan, selection, drag-drop | `@seldia/interaction` | 8h | ✅ |
-| I2 | Expand/collapse for groups and C4 containers | `@seldia/interaction` | 4h | ❌ |
-| I3 | Tooltip system | `@seldia/interaction` | 3h | ❌ |
+| I2 | Expand/collapse for groups and C4 containers | `@seldia/interaction` | 4h | ✅ |
+| I3 | Tooltip system | `@seldia/interaction` | 3h | ✅ |
 | I4 | Keyboard navigation | `@seldia/interaction` | 3h | ✅ |
-| I5 | ARIA accessibility annotations | `@seldia/interaction` | 4h | ❌ |
+| I5 | ARIA accessibility annotations | `@seldia/interaction` | 4h | ✅ |
 | I6 | Visual edit operations (14 gesture types) | `@seldia/interaction` | 6h | ✅ |
 | I7 | Source map generation (IR ↔ DSL) | `@seldia/interaction` | 4h | ✅ |
 | I8 | Undo/redo manager | `@seldia/interaction` | 3h | ✅ |
 
-**Deliverable:** Fully interactive diagrams with accessibility support and visual editing primitives. ⚠️ Partial (I2 expand/collapse, I3 tooltips, I5 ARIA remaining)
+**Deliverable:** Fully interactive diagrams with accessibility support and visual editing primitives. ✅ Complete
 
 ---
 
@@ -429,7 +429,7 @@ P0 → P1 → P2 → P3 → P9 → P10
 | **M4: Architecture Suite** | 10 | C4 (4 levels) + Component + Deployment + Network | C4 model validation | ✅ |
 | **M5: Process Suite** | 12 | State, Activity, Use Case, BPMN, DMN | BPMN 2.0 conformance subset | ✅ |
 | **M6: All Diagram Types** | 16 | All 21 diagram types functional | Full type coverage matrix | ✅ |
-| **M7: Interactive** | 18 | Zoom, pan, drag, tooltip, ARIA | Accessibility audit | ⚠️ (zoom/pan/drag ✅, tooltip/ARIA ❌) |
+| **M7: Interactive** | 18 | Zoom, pan, drag, tooltip, ARIA | Accessibility audit | ✅ |
 | **M8: VS Code Preview** | 22 | Markdown detection + visual editing + bidirectional sync | Manual QA on sample `.md` files | ⚠️ (markdown detection ✅, visual editing/sync ❌) |
 | **M9: VS Code Complete** | 24 | MD→PDF, Copilot skill, polish, marketplace ready | Extension acceptance criteria | ⚠️ (skill ✅, MD→PDF/polish/marketplace ❌) |
 | **M10: Released** | 24 | npm packages + VS Code Marketplace | Public install & use | ⚠️ (docs ready, publish pending) |

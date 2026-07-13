@@ -32,3 +32,19 @@ export type { SelectableItem, SelectionCallbacks } from './selection.js';
 // Drag & Drop
 export { DragDropHandler } from './drag-drop.js';
 export type { DragCallbacks } from './drag-drop.js';
+
+// Collapse / Expand
+export { CollapseExpandHandler } from './collapse-expand.js';
+export type {
+  CollapseExpandOptions,
+  CollapseExpandCallbacks,
+  CollapsibleGroup,
+} from './collapse-expand.js';
+
+// Tooltips
+export { TooltipManager } from './tooltips.js';
+export type { TooltipOptions, TooltipContent } from './tooltips.js';
+
+// ARIA Accessibility
+export { AriaManager } from './aria.js';
+export type { AriaOptions, AriaAnnotation, AriaAnnouncement } from './aria.js';

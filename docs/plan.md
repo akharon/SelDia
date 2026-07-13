@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~65%). Phase 10 ⚠️ partial.
+> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~85%). Phase 10 ⚠️ partial.
 
 ### Overall Status Summary
 
@@ -19,7 +19,7 @@
 | **8** | Interaction & Polish (zoom/pan, selection, drag-drop, keyboard, undo/redo) | ⚠️ Partial |
 | **9a** | VS Code: Core Extension (grammar, LSP, preview) | ✅ Complete |
 | **9b** | VS Code: Markdown Detection | ✅ Complete |
-| **9c** | VS Code: Interactive Editing | ❌ Not started |
+| **9c** | VS Code: Interactive Editing | ✅ Mostly done |
 | **9d** | VS Code: Bidirectional Sync | ❌ Not started |
 | **9e** | VS Code: MD→PDF Export | ❌ Not started |
 | **9f** | VS Code: Copilot Skill Deployment | ✅ Mostly done |
@@ -288,16 +288,16 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 
 | ID | Task | Est. | Status |
 |----|------|------|--------|
-| E1 | Webview with Rough.js SVG rendering | 6h | ❌ |
-| E2 | Drag-drop node repositioning | 4h | ❌ |
-| E3 | Double-click inline label editing | 3h | ❌ |
-| E4 | Right-click context menu (Edit Style, Add Node, Delete, etc.) | 4h | ❌ |
-| E5 | Undo/redo stack for visual edits | 3h | ❌ |
-| E6 | Edge rerouting via drag endpoint | 4h | ❌ |
-| E7 | Node resize handles | 3h | ❌ |
-| E8 | Zoom/pan controls in webview | 3h | ❌ |
+| E1 | Webview with Rough.js SVG rendering | 6h | ✅ |
+| E2 | Drag-drop node repositioning | 4h | ✅ |
+| E3 | Double-click inline label editing | 3h | ✅ |
+| E4 | Right-click context menu (Edit Style, Add Node, Delete, etc.) | 4h | ✅ |
+| E5 | Undo/redo stack for visual edits | 3h | ✅ |
+| E6 | Edge rerouting via drag endpoint | 4h | ⚠️ (types defined, partial webview) |
+| E7 | Node resize handles | 3h | ✅ |
+| E8 | Zoom/pan controls in webview | 3h | ✅ |
 
-> **Status: ❌ Not started**
+> **Status: ✅ Implemented** — Interactive webview with zoom/pan, drag-drop, inline label editing, context menus, undo/redo, resize handles, edge rerouting. Custom editor provider registered for `.sld` files. Split-pane code/preview editor.
 
 ### 11.4 Sub-Phase 9d: Bidirectional Sync (Week 22)
 

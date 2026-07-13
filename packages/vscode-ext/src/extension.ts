@@ -12,6 +12,9 @@ import { SelDiADecorator } from './markdown/decorator.js';
 import { SelDiACodeLensProvider } from './markdown/codelens.js';
 import { SelDiAPreviewPanel } from './markdown/preview-panel.js';
 import { registerLanguageServer } from './language-server/index.js';
+import { SelDiAInteractiveProvider } from './webview/provider.js';
+import { SelDiAEditorProvider } from './editor/seldia-editor-provider.js';
+import { SplitPanel } from './editor/split-panel.js';
 
 let engine: CoreEngine;
 
@@ -22,6 +25,11 @@ export function activate(context: vscode.ExtensionContext) {
 
   // ── Language Server (LSP for .sld files) ─────────────────────────────────
   registerLanguageServer(context, engine);
+
+  // ── Interactive Webview Editor (Phase 9c) ─────────────────────────────────
+  context.subscriptions.push(
+    SelDiAEditorProvider.register(context, engine)
+  );
 
   // ── Markdown Detection ────────────────────────────────────────────────────
   const decorator = new SelDiADecorator(engine);
@@ -81,13 +89,18 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Toggle between diagram preview and code view
     const source = editor.document.getText();
-    SelDiAPreviewPanel.createOrShow(source);
+    const isSldFile = editor.document.fileName.endsWith('.sld');
+    if (isSldFile) {
+      SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
+    } else {
+      SelDiAPreviewPanel.createOrShow(source);
+    }
   });
 
   const openPreview = vscode.commands.registerCommand('seldia.openPreview', (sourceArg?: string) => {
     const source = sourceArg || vscode.window.activeTextEditor?.document.getText();
     if (!source) { vscode.window.showWarningMessage('No source to preview'); return; }
-    SelDiAPreviewPanel.createOrShow(source);
+    SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, vscode.window.activeTextEditor?.document.uri);
   });
 
   const insertDiagram = vscode.commands.registerCommand('seldia.insertDiagram', () => {
@@ -174,9 +187,17 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showInformationMessage(msg, { modal: true });
   });
 
+  // ── Interactive Editor Command ────────────────────────────────────────────
+  const openInteractive = vscode.commands.registerCommand('seldia.openInteractive', () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) { vscode.window.showWarningMessage('No active editor'); return; }
+    const source = editor.document.getText();
+    SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
+  });
+
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
-    toggleView, openPreview, insertDiagram, exportDiagram,
+    toggleView, openPreview, openInteractive, insertDiagram, exportDiagram,
     exportMarkdownToPdf, deploySkill, checkSkillStatus
   );
 

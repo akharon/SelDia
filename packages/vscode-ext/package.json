@@ -55,9 +55,22 @@
         "path": "./syntaxes/seldia.tmLanguage.json"
       }
     ],
+    "customEditors": [
+      {
+        "viewType": "seldia.seldiaEditor",
+        "displayName": "SelDiA Diagram Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.sld"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "commands": [
       { "command": "seldia.toggleView", "title": "SelDiA: Toggle Code / Diagram View" },
       { "command": "seldia.openPreview", "title": "SelDiA: Open Preview to the Side" },
+      { "command": "seldia.openInteractive", "title": "SelDiA: Open Interactive Diagram" },
       { "command": "seldia.insertDiagram", "title": "SelDiA: Insert Diagram Block" },
       { "command": "seldia.exportDiagram", "title": "SelDiA: Export Diagram" },
       { "command": "seldia.exportMarkdownToPdf", "title": "SelDiA: Export Markdown to PDF" },

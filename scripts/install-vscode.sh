@@ -39,7 +39,7 @@ echo ""
 # ── Step 1: Build the extension ──────────────────────────────────────────────
 echo "📦 Step 1: Building extension..."
 if [ "$DEV_MODE" = true ]; then
-  npx turbo run build --filter=@seldia/vscode-ext 2>&1 | tail -3
+  npx turbo run build --filter=seldia-vscode 2>&1 | tail -3
 else
   npm run build 2>&1 | tail -3
 fi
@@ -66,7 +66,8 @@ else
   rm -f "$VSIX_FILE"
   
   # vsce packaging (output goes to parent dir)
-  npx -y @vscode/vsce package --out "$VSIX_FILE" 2>&1
+  # --no-dependencies: prevents following npm workspace symlinks into parent dirs
+  npx -y @vscode/vsce package --allow-missing-repository --no-dependencies --out "$VSIX_FILE" 2>&1
   echo "   ✅ Packaged: $VSIX_FILE"
 fi
 cd "$ROOT_DIR"

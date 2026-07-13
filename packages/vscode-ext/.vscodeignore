@@ -1,9 +1,11 @@
 .vscode/**
 .vscode-test/**
 src/**
-node_modules/**
+scripts/**
+.turbo/**
 .gitignore
 tsconfig.json
 **/*.ts
 **/*.map
-!dist/**
+node_modules/**
+../**

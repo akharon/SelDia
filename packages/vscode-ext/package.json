@@ -1,5 +1,5 @@
 {
-  "name": "@seldia/vscode-ext",
+  "name": "seldia-vscode",
   "version": "1.0.0",
   "private": true,
   "displayName": "SelDiA",
@@ -18,15 +18,25 @@
   "engines": {
     "vscode": "^1.96.0"
   },
-  "icon": "./media/icon.svg",
+  "icon": "./media/icon.png",
   "categories": [
     "Visualization",
     "Programming Languages",
     "Other"
   ],
   "keywords": [
-    "diagram", "flowchart", "sequence", "class", "c4", "bpmn", "uml",
-    "roughjs", "sketchy", "architecture", "visualization", "dsl"
+    "diagram",
+    "flowchart",
+    "sequence",
+    "class",
+    "c4",
+    "bpmn",
+    "uml",
+    "roughjs",
+    "sketchy",
+    "architecture",
+    "visualization",
+    "dsl"
   ],
   "activationEvents": [
     "onLanguage:seldia",
@@ -35,8 +45,8 @@
   "main": "./dist/extension.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
     "test": "vitest run",
     "clean": "rm -rf dist"
   },
@@ -49,8 +59,9 @@
     "puppeteer": "^24.0.0"
   },
   "devDependencies": {
-    "@types/vscode": "^1.96.0",
     "@types/node": "^22.0.0",
+    "@types/vscode": "^1.96.0",
+    "esbuild": "^0.28.1",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   },
@@ -58,8 +69,13 @@
     "languages": [
       {
         "id": "seldia",
-        "extensions": [".sld"],
-        "aliases": ["SelDiA", "seldia"],
+        "extensions": [
+          ".sld"
+        ],
+        "aliases": [
+          "SelDiA",
+          "seldia"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -83,16 +99,46 @@
       }
     ],
     "commands": [
-      { "command": "seldia.toggleView", "title": "SelDiA: Toggle Code / Diagram View" },
-      { "command": "seldia.openPreview", "title": "SelDiA: Open Preview to the Side" },
-      { "command": "seldia.openInteractive", "title": "SelDiA: Open Interactive Diagram" },
-      { "command": "seldia.insertDiagram", "title": "SelDiA: Insert Diagram Block" },
-      { "command": "seldia.exportDiagram", "title": "SelDiA: Export Diagram" },
-      { "command": "seldia.exportMarkdownToPdf", "title": "SelDiA: Export Markdown to PDF" },
-      { "command": "seldia.deploySkill", "title": "SelDiA: Deploy Copilot Skill" },
-      { "command": "seldia.updateSkill", "title": "SelDiA: Update Copilot Skill" },
-      { "command": "seldia.uninstallSkill", "title": "SelDiA: Uninstall Copilot Skill" },
-      { "command": "seldia.checkSkillStatus", "title": "SelDiA: Check Skill Status" }
+      {
+        "command": "seldia.toggleView",
+        "title": "SelDiA: Toggle Code / Diagram View"
+      },
+      {
+        "command": "seldia.openPreview",
+        "title": "SelDiA: Open Preview to the Side"
+      },
+      {
+        "command": "seldia.openInteractive",
+        "title": "SelDiA: Open Interactive Diagram"
+      },
+      {
+        "command": "seldia.insertDiagram",
+        "title": "SelDiA: Insert Diagram Block"
+      },
+      {
+        "command": "seldia.exportDiagram",
+        "title": "SelDiA: Export Diagram"
+      },
+      {
+        "command": "seldia.exportMarkdownToPdf",
+        "title": "SelDiA: Export Markdown to PDF"
+      },
+      {
+        "command": "seldia.deploySkill",
+        "title": "SelDiA: Deploy Copilot Skill"
+      },
+      {
+        "command": "seldia.updateSkill",
+        "title": "SelDiA: Update Copilot Skill"
+      },
+      {
+        "command": "seldia.uninstallSkill",
+        "title": "SelDiA: Uninstall Copilot Skill"
+      },
+      {
+        "command": "seldia.checkSkillStatus",
+        "title": "SelDiA: Check Skill Status"
+      }
     ],
     "snippets": [
       {
@@ -244,7 +290,11 @@
         "seldia.export.defaultFormat": {
           "type": "string",
           "default": "svg",
-          "enum": ["svg", "png", "pdf"],
+          "enum": [
+            "svg",
+            "png",
+            "pdf"
+          ],
           "description": "Default export format"
         }
       }

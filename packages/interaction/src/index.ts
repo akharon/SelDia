@@ -8,6 +8,15 @@ export * from './visual-edit-types.js';
 // Source Map & Code Generation Types
 export * from './source-map-types.js';
 
+// Source Map Builder
+export { buildSourceMap } from './source-map-builder.js';
+
+// Code Generator
+export { SelDiACodeGenerator } from './code-generator.js';
+
+// Diff Patcher
+export { SelDiADiffPatcher } from './diff-patcher.js';
+
 // Interaction Manager
 export { InteractionManager } from './manager.js';
 export type { InteractionOptions, InteractionCallbacks } from './manager.js';

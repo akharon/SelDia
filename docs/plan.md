@@ -2,7 +2,7 @@
 
 > **24-week roadmap** for building the unified Diagram-as-Code tool with Rough.js hand-drawn aesthetics.
 
-> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~85%). Phase 10 ⚠️ partial.
+> **Status as of 2026-07-13:** Phases 0–7 ✅ complete (core engine, all 21 diagram types, CLI, rendering, layout). Phase 8 ⚠️ partial. Phase 9 ⚠️ partial (~90%). Phase 10 ⚠️ partial.
 
 ### Overall Status Summary
 
@@ -16,11 +16,11 @@
 | **5** | Process & Behavior (state, activity, BPMN, DMN) | ✅ Complete |
 | **6** | Data & Visualization (ER, charts, sankey) | ✅ Complete |
 | **7** | Project Management (gantt, timeline, mindmap, etc.) | ✅ Complete |
-| **8** | Interaction & Polish (zoom/pan, selection, drag-drop, keyboard, undo/redo) | ⚠️ Partial |
+| **8** | Interaction & Polish (zoom/pan, selection, drag-drop, keyboard, undo/redo, source map, visual edit ops) | ⚠️ Partial |
 | **9a** | VS Code: Core Extension (grammar, LSP, preview) | ✅ Complete |
 | **9b** | VS Code: Markdown Detection | ✅ Complete |
 | **9c** | VS Code: Interactive Editing | ✅ Mostly done |
-| **9d** | VS Code: Bidirectional Sync | ❌ Not started |
+| **9d** | VS Code: Bidirectional Sync | ✅ Complete |
 | **9e** | VS Code: MD→PDF Export | ❌ Not started |
 | **9f** | VS Code: Copilot Skill Deployment | ✅ Mostly done |
 | **9g** | VS Code: Polish (snippets, keybindings, marketplace) | ❌ Not started |
@@ -243,11 +243,11 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 | I3 | Tooltip system | `@seldia/interaction` | 3h | ❌ |
 | I4 | Keyboard navigation | `@seldia/interaction` | 3h | ✅ |
 | I5 | ARIA accessibility annotations | `@seldia/interaction` | 4h | ❌ |
-| I6 | Visual edit operations (14 gesture types) | `@seldia/interaction` | 6h | ⚠️ (types defined, no runtime) |
-| I7 | Source map generation (IR ↔ DSL) | `@seldia/interaction` | 4h | ⚠️ (types defined, no runtime) |
+| I6 | Visual edit operations (14 gesture types) | `@seldia/interaction` | 6h | ✅ |
+| I7 | Source map generation (IR ↔ DSL) | `@seldia/interaction` | 4h | ✅ |
 | I8 | Undo/redo manager | `@seldia/interaction` | 3h | ✅ |
 
-**Deliverable:** Fully interactive diagrams with accessibility support and visual editing primitives. ⚠️ Partial
+**Deliverable:** Fully interactive diagrams with accessibility support and visual editing primitives. ⚠️ Partial (I2 expand/collapse, I3 tooltips, I5 ARIA remaining)
 
 ---
 
@@ -303,14 +303,14 @@ Phase:   0      1      2      3      4      5      6      7      8      9      9
 
 | ID | Task | Est. | Status |
 |----|------|------|--------|
-| S1 | Visual edit → DSL source round-trip via source map | 6h | ❌ |
-| S2 | Code diff generator (minimal text edits) | 4h | ❌ |
-| S3 | Formatting preservation (comments, whitespace outside edits) | 4h | ❌ |
-| S4 | DSL edit → re-render trigger (change handler) | 3h | ❌ |
-| S5 | Sync controller: manage webview ↔ editor state | 4h | ❌ |
-| S6 | Conflict resolution when both views are modified | 4h | ❌ |
+| S1 | Visual edit → DSL source round-trip via source map | 6h | ✅ |
+| S2 | Code diff generator (minimal text edits) | 4h | ✅ |
+| S3 | Formatting preservation (comments, whitespace outside edits) | 4h | ✅ |
+| S4 | DSL edit → re-render trigger (change handler) | 3h | ✅ |
+| S5 | Sync controller: manage webview ↔ editor state | 4h | ✅ |
+| S6 | Conflict resolution when both views are modified | 4h | ⚠️ (basic detection, prefer-source strategy) |
 
-> **Status: ❌ Not started (only source-map types exist)**
+> **Status: ✅ Implemented** — Source map builder (DSL ↔ IR), code generator (idiomatic DSL from IR changes), diff patcher (minimal text edits with formatting preservation), sync controller (visual→source + source→visual round-trip, document watcher, conflict detection)
 
 ### 11.5 Sub-Phase 9e: MD-to-PDF Export (Week 23, first half)
 

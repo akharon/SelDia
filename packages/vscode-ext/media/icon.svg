@@ -8,29 +8,22 @@
   <!-- Rounded square background -->
   <rect width="128" height="128" rx="24" fill="url(#bg)"/>
   
-  <!-- Stylized "S" made of diagram nodes and edges -->
-  <!-- Top-left node -->
-  <rect x="22" y="18" width="32" height="18" rx="4" fill="#ffffff" opacity="0.95"/>
-  <!-- Top-right node -->
-  <rect x="74" y="18" width="32" height="18" rx="4" fill="#ffffff" opacity="0.95"/>
-  <!-- Center diamond -->
-  <polygon points="64,52 82,66 64,80 46,66" fill="#ffffff" opacity="0.9"/>
-  <!-- Bottom-left node -->
-  <rect x="22" y="92" width="32" height="18" rx="4" fill="#ffffff" opacity="0.95"/>
-  <!-- Bottom-right node -->
-  <rect x="74" y="92" width="32" height="18" rx="4" fill="#ffffff" opacity="0.95"/>
+  <!-- Stylized "S" made of connected diagram nodes and edges -->
   
-  <!-- Connecting edges with arrowheads -->
-  <!-- Top-left → Top-right -->
-  <line x1="54" y1="27" x2="74" y2="27" stroke="#ffffff" stroke-width="2.5" opacity="0.8"/>
-  <polygon points="71,23 80,27 71,31" fill="#ffffff" opacity="0.8"/>
-  <!-- Top-right → Center -->
-  <line x1="90" y1="36" x2="82" y2="52" stroke="#ffffff" stroke-width="2.5" opacity="0.8"/>
-  <polygon points="84,49 80,57 77,50" fill="#ffffff" opacity="0.8"/>
-  <!-- Center → Bottom-left -->
-  <line x1="46" y1="66" x2="38" y2="92" stroke="#ffffff" stroke-width="2.5" opacity="0.8"/>
-  <polygon points="40,89 36,97 34,89" fill="#ffffff" opacity="0.8"/>
-  <!-- Bottom-left → Bottom-right -->
-  <line x1="54" y1="101" x2="74" y2="101" stroke="#ffffff" stroke-width="2.5" opacity="0.8"/>
-  <polygon points="71,97 80,101 71,105" fill="#ffffff" opacity="0.8"/>
+  <!-- Top pill (left side, horizontal rounded rectangle) -->
+  <rect x="26" y="18" width="48" height="16" rx="8" fill="#ffffff" opacity="0.95"/>
+  
+  <!-- Edge: top pill ➔ diamond (down-right diagonally) -->
+  <line x1="74" y1="27" x2="86" y2="54" stroke="#ffffff" stroke-width="2.5" opacity="0.8"/>
+  <polygon points="84,51 89,58 81,57" fill="#ffffff" opacity="0.8"/>
+  
+  <!-- Center diamond (slightly larger) -->
+  <polygon points="64,52 90,68 64,84 38,68" fill="#ffffff" opacity="0.92"/>
+  
+  <!-- Edge: diamond ➔ bottom pill (down-left diagonally) -->
+  <line x1="42" y1="82" x2="30" y2="101" stroke="#ffffff" stroke-width="2.5" opacity="0.8"/>
+  <polygon points="32,98 27,105 25,97" fill="#ffffff" opacity="0.8"/>
+  
+  <!-- Bottom pill (right side, horizontal rounded rectangle) -->
+  <rect x="26" y="94" width="48" height="16" rx="8" fill="#ffffff" opacity="0.95"/>
 </svg>

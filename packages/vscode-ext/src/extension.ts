@@ -11,6 +11,7 @@ import { BlockDetector, type SelDiABlock } from './markdown/detector.js';
 import { SelDiADecorator } from './markdown/decorator.js';
 import { SelDiACodeLensProvider } from './markdown/codelens.js';
 import { SelDiAPreviewPanel } from './markdown/preview-panel.js';
+import { registerLanguageServer } from './language-server/index.js';
 
 let engine: CoreEngine;
 
@@ -18,6 +19,9 @@ export function activate(context: vscode.ExtensionContext) {
   engine = createEngine();
 
   console.log('🚀 SelDiA extension activated');
+
+  // ── Language Server (LSP for .sld files) ─────────────────────────────────
+  registerLanguageServer(context, engine);
 
   // ── Markdown Detection ────────────────────────────────────────────────────
   const decorator = new SelDiADecorator(engine);
@@ -152,7 +156,7 @@ export function activate(context: vscode.ExtensionContext) {
       copyFileSync(skillSrc, targetFile);
       // Write manifest
       const manifest = { name: 'seldia-dsl', version: '1.0.0', deployedBy: 'seldia-vscode-ext@1.0.0', deployedAt: new Date().toISOString(), scope: choice?.includes('Workspace') ? 'workspace' : 'user', skillPath: targetFile, contentHash: 'sha256:deployed' };
-      writeFileSync(resolve(targetDir, '.seldia-skill-manifest.json'), JSON.stringify(manifest, null, 2));
+      writeFileSync(resolve(targetDir, '.sld-skill-manifest.json'), JSON.stringify(manifest, null, 2));
       vscode.window.showInformationMessage(`✅ SelDiA DSL skill deployed to ${targetDir}`);
     }
   });

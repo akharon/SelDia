@@ -18,8 +18,8 @@ program
 // ── compile ──────────────────────────────────────────────────────────────────
 program
   .command('compile')
-  .description('Compile a .seldia file to SVG/PNG/PDF/HTML')
-  .argument('<input>', 'Path to .seldia file or directory')
+  .description('Compile a .sld file to SVG/PNG/PDF/HTML')
+  .argument('<input>', 'Path to .sld file or directory')
   .option('-o, --output <path>', 'Output path')
   .option('--theme <name>', 'Theme name', 'sketchy-light')
   .option('--scale <n>', 'Scale factor', parseFloat, 1)
@@ -32,7 +32,7 @@ program
     if (options.batch) {
       const { readdirSync } = await import('fs');
       const dir = resolve(process.cwd(), input);
-      const files = readdirSync(dir).filter(f => f.endsWith('.seldia'));
+      const files = readdirSync(dir).filter(f => f.endsWith('.sld'));
       const outDir = resolve(process.cwd(), options.output || dir);
       if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
@@ -40,7 +40,7 @@ program
         const source = readFileSync(resolve(dir, file), 'utf-8');
         const result = await engine.compile(source, file);
         if (result.ok) {
-          const outFile = resolve(outDir, file.replace('.seldia', '.svg'));
+          const outFile = resolve(outDir, file.replace('.sld', '.svg'));
           writeFileSync(outFile, result.value.svg);
           console.log(`✅ ${file} → ${basename(outFile)}`);
         } else {
@@ -59,7 +59,7 @@ program
     const source = readFileSync(inPath, 'utf-8');
     const outPath = options.output
       ? resolve(process.cwd(), options.output)
-      : resolve(dirname(inPath), basename(inPath, '.seldia') + '.svg');
+      : resolve(dirname(inPath), basename(inPath, '.sld') + '.svg');
 
     const start = Date.now();
     const result = await engine.compile(source, inPath);
@@ -86,8 +86,8 @@ program
 // ── validate ──────────────────────────────────────────────────────────────────
 program
   .command('validate')
-  .description('Validate a .seldia file without rendering')
-  .argument('<file>', 'Path to .seldia file')
+  .description('Validate a .sld file without rendering')
+  .argument('<file>', 'Path to .sld file')
   .action((file) => {
     const inPath = resolve(process.cwd(), file);
     if (!existsSync(inPath)) { console.error(`❌ File not found: ${inPath}`); process.exit(1); }
@@ -115,7 +115,7 @@ program
     const title = options.title || `My ${type.charAt(0).toUpperCase() + type.slice(1)}`;
     const outPath = options.output
       ? resolve(process.cwd(), options.output)
-      : resolve(process.cwd(), `diagram.${type}.seldia`);
+      : resolve(process.cwd(), `diagram.${type}.sld`);
 
     const templates: Record<string, string> = {
       flowchart: `diagram flowchart "${title}" {\n    start: (Start)\n    process: [Process]\n    decision: {Decision?}\n    end: (End)\n\n    start --> process\n    process --> decision\n    decision -->|"yes"| end\n    decision -->|"no"| process\n}\n`,
@@ -140,7 +140,7 @@ program
 program
   .command('serve')
   .description('Start a live preview server')
-  .argument('<file>', 'Path to .seldia file')
+  .argument('<file>', 'Path to .sld file')
   .option('--port <n>', 'Port number', parseFloat, 3000)
   .action(async (file, options) => {
     const inPath = resolve(process.cwd(), file);

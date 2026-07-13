@@ -43,7 +43,7 @@
     "languages": [
       {
         "id": "seldia",
-        "extensions": [".seldia"],
+        "extensions": [".sld"],
         "aliases": ["SelDiA", "seldia"],
         "configuration": "./language-configuration.json"
       }

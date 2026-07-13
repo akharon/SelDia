@@ -8,7 +8,7 @@
 #   --scope <pkg>  Debug a specific package only
 #   --verbose      Enable verbose debug output (TRACE level)
 #   --break        Add inspector breakpoint (node --inspect-brk)
-#   --diagram      Path to a .seldia file to compile and inspect debug output
+#   --diagram      Path to a .sld file to compile and inspect debug output
 # =============================================================================
 
 set -euo pipefail
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
     --verbose|-v)   VERBOSE=true; shift ;;
     --break|-b)     BREAK=true; shift ;;
     --diagram|-d)   DIAGRAM="$2"; shift 2 ;;
-    --help|-h)      echo "Usage: ./scripts/debug.sh [--scope <pkg>] [--verbose] [--break] [--diagram <file.seldia>]"; exit 0 ;;
+    --help|-h)      echo "Usage: ./scripts/debug.sh [--scope <pkg>] [--verbose] [--break] [--diagram <file.sld>]"; exit 0 ;;
     *)              echo "Unknown: $1"; exit 1 ;;
   esac
 done

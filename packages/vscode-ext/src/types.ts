@@ -56,7 +56,7 @@ export interface BlockError {
 }
 
 // -----------------------------------------------------------------------------
-// View Mode — controls the display of a .seldia document or markdown block
+// View Mode — controls the display of a .sld document or markdown block
 // -----------------------------------------------------------------------------
 
 export enum DiagramViewMode {
@@ -75,7 +75,7 @@ export enum DiagramViewMode {
 // -----------------------------------------------------------------------------
 
 export interface ExtensionState {
-  /** Current view mode for .seldia files */
+  /** Current view mode for .sld files */
   fileViewMode: DiagramViewMode;
 
   /** Current view mode for markdown blocks */

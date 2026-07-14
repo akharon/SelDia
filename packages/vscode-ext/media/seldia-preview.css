@@ -216,6 +216,32 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
+/* Editable DSL source (Code mode) — a real textarea so edits flow back to the
+   Markdown document and re-render the diagram live. */
+.seldia-source-edit {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 160px;
+  resize: vertical;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--vscode-textCodeBlock-background, #0d0d0d);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  outline: none;
+}
+.seldia-source-edit:focus {
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #007fd4);
+}
+
 /* ── Error State ──────────────────────────────────────────────────────── */
 .seldia-diagram.seldia-error {
   border-color: #e53e3e;

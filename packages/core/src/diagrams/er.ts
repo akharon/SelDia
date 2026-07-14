@@ -19,7 +19,7 @@ export const erPlugin: DiagramPlugin = {
     for (const stmt of ast.body) {
       if (stmt.kind === 'NodeDecl') {
         const nd = stmt as ASTNodeDecl;
-        nodes.push({ id: nd.id, label: nd.label, shape: ShapeType.RECTANGLE, position: { x: 0, y: 0 }, size: { width: 200, height: 120 }, style: { ...(nd.style || {}), fill: '#fefce8', stroke: '#a16207' }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
+        nodes.push({ id: nd.id, label: nd.label, shape: ShapeType.RECTANGLE, position: { x: 0, y: 0 }, size: { width: 200, height: 120 }, style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;

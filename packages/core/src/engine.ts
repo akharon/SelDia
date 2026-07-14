@@ -26,6 +26,7 @@ import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPl
 import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
+import { DS, typeSwatch, roleSwatch, type Swatch, type SemanticRole } from './render/design-system.js';
 
 // -----------------------------------------------------------------------------
 // Core Engine Interface
@@ -60,12 +61,6 @@ export interface CoreEngine {
   listThemes(): Theme[];
 }
 
-/** Per-diagram-type default fill/stroke, used when a plugin/node doesn't set
- *  its own style — keeps diagram types visually distinguishable across all
- *  themes instead of every type falling through to one hardcoded color
- *  (docs/improvement_request.md item 3). Individual plugins may still set
- *  their own defaults (e.g. bpmn.ts, misc.ts already do); this is the
- *  final fallback for types that don't. */
 /** Split a label into display lines on both real newlines and the literal
  *  two-character escape `\n` that authors type inside `[...]` node labels
  *  (the bracket tokenizer keeps it verbatim, so it never became a real
@@ -74,16 +69,37 @@ function splitLabelLines(label: string): string[] {
   return (label || '').replace(/\\n/g, '\n').split('\n');
 }
 
-function defaultPaletteFor(type: DiagramType): { fill: string; stroke: string } {
-  switch (type) {
-    case DiagramType.CLASS: return { fill: '#eef2ff', stroke: '#3730a3' };
-    case DiagramType.FLOWCHART: return { fill: '#eef2ff', stroke: '#4338ca' };
-    case DiagramType.ER: return { fill: '#ecfeff', stroke: '#0e7490' };
-    case DiagramType.STATE: return { fill: '#f0fdf4', stroke: '#15803d' };
-    case DiagramType.SEQUENCE: return { fill: '#fdf4ff', stroke: '#86198f' };
-    case DiagramType.BPMN: return { fill: '#f0fdf4', stroke: '#166534' };
-    default: return { fill: '#e8f4f8', stroke: '#2c3e50' };
-  }
+/** Infer a diagram-type-independent semantic role for a node from its shape
+ *  and plugin `data.kind`, so start/stop/decision/etc. get their conventional
+ *  color in every diagram type. Returns undefined for ordinary nodes, which
+ *  then fall back to the diagram type's signature accent. */
+function roleFor(node: IRNode): SemanticRole | undefined {
+  const kind = String((node.data as any)?.kind || '').toLowerCase();
+  const shape = String(node.shape || '').toLowerCase();
+  const id = String(node.id || '').toLowerCase();
+  const label = String(node.label || '').toLowerCase();
+
+  if (kind === 'note') return 'note';
+  if (kind === 'start' || kind === 'initial' || /^start$|^begin$/.test(id) || /^start$|^begin$/.test(label)) return 'start';
+  if (kind === 'end' || kind === 'stop' || kind === 'final' || kind === 'terminate' || /^end$|^stop$|^done$/.test(id) || /^end$|^stop$|^done$/.test(label)) return 'stop';
+  if (kind === 'error' || kind === 'exception' || /error|fail|reject|invalid/.test(label)) return 'error';
+  if (kind === 'decision' || kind === 'gateway' || shape === 'diamond') return 'decision';
+  if (kind === 'actor' || kind === 'external' || kind === 'person' || shape === 'actor') return 'external';
+  return undefined;
+}
+
+/** Resolve the final swatch for a node: an explicit author style wins, then a
+ *  semantic role, then the diagram type's signature accent. This is what keeps
+ *  every diagram in one document visually harmonious while still meaningful. */
+function nodeSwatch(node: IRNode, type: DiagramType): Swatch {
+  const base = roleFor(node) ? roleSwatch(roleFor(node)!) : typeSwatch(type);
+  const s = (node.style || {}) as Record<string, any>;
+  return {
+    stroke: (s.stroke as string) || base.stroke,
+    fill: (s.fill as string) || base.fill,
+    text: (s.textColor as string) || base.text,
+    accent: base.accent,
+  };
 }
 
 export interface EngineOptions {
@@ -279,8 +295,9 @@ class SelDiAEngine implements CoreEngine {
     const bg = this.config.render.background || '#ffffff';
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
-    for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy)}  </g>\n`;
-    for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType)}  </g>\n`;
+    const typeAccent = typeSwatch(diagramType);
+    for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent)}  </g>\n`;
+    for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
     svg += '</svg>';
     return svg;
   }
@@ -294,23 +311,22 @@ class SelDiAEngine implements CoreEngine {
     return `    <text text-anchor="${anchor}" fill="${color}" font-size="${fs}" font-family="${ff}">${tspans}</text>\n`;
   }
 
-  private renderNode(node: IRNode, pad: number, sketchy: boolean, diagramType: DiagramType): string {
+  private renderNode(node: IRNode, pad: number, sketchy: boolean, diagramType: DiagramType, swatch: Swatch): string {
     const kind = (node.data as any)?.kind as string | undefined;
     if (diagramType === DiagramType.CLASS && kind === 'note') return this.renderNoteNode(node, pad, sketchy);
     if (diagramType === DiagramType.CLASS && kind === 'class' && (node.data as any)?.compartments) {
-      return this.renderClassNode(node, pad, sketchy);
+      return this.renderClassNode(node, pad, sketchy, swatch);
     }
 
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const cx = x + w / 2, cy = y + h / 2;
     const s = node.style || {};
-    const palette = defaultPaletteFor(diagramType);
-    const fill = (s.fill as string) || palette.fill, stroke = (s.stroke as string) || palette.stroke;
-    const sw = (s.strokeWidth as number) || 2, color = (s.textColor as string) || palette.stroke;
-    const fs = (s.fontSize as number) || 14, ff = (s.fontFamily as string) || 'Inter, system-ui, sans-serif';
-    const op = ' opacity="0.9"';
+    const fill = swatch.fill, stroke = swatch.stroke, color = swatch.text;
+    const sw = (s.strokeWidth as number) || DS.stroke.node;
+    const fs = (s.fontSize as number) || DS.fontSize.label, ff = (s.fontFamily as string) || DS.fontFamily;
+    const op = ' opacity="0.95"';
     const seed = seedFor(node.id);
-    const roughStyle: RoughStyle = { stroke, strokeWidth: sw, fill, roughness: (s.roughness as number) ?? 1.2, fillStyle: (s.fillStyle as string) || 'hachure', seed };
+    const roughStyle: RoughStyle = { stroke, strokeWidth: sw, fill, roughness: (s.roughness as number) ?? DS.roughness, fillStyle: (s.fillStyle as string) || 'solid', seed };
     let el = '';
     switch (node.shape) {
       case 'diamond':
@@ -397,13 +413,14 @@ class SelDiAEngine implements CoreEngine {
   private renderNoteNode(node: IRNode, pad: number, sketchy: boolean): string {
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const s = node.style || {};
-    const fill = (s.fill as string) || '#fef9c3', stroke = (s.stroke as string) || '#a16207';
-    const sw = (s.strokeWidth as number) || 1.5, color = (s.textColor as string) || '#713f12';
-    const fs = (s.fontSize as number) || 12, ff = (s.fontFamily as string) || 'Inter, system-ui, sans-serif';
+    const note = roleSwatch('note');
+    const fill = (s.fill as string) || note.fill, stroke = (s.stroke as string) || note.stroke;
+    const sw = (s.strokeWidth as number) || DS.stroke.divider, color = (s.textColor as string) || note.text;
+    const fs = (s.fontSize as number) || DS.fontSize.meta, ff = (s.fontFamily as string) || DS.fontFamily;
     const fold = 12;
     let el: string;
     if (sketchy) {
-      const style: RoughStyle = { stroke, strokeWidth: sw, fill, roughness: 1.2, fillStyle: 'hachure', seed: seedFor(node.id) };
+      const style: RoughStyle = { stroke, strokeWidth: sw, fill, roughness: DS.roughness, fillStyle: 'solid', seed: seedFor(node.id) };
       el = roughPolygon([[x, y], [x + w - fold, y], [x + w, y + fold], [x + w, y + h], [x, y + h]], style);
       el += roughLine(x + w - fold, y, x + w, y + fold, { stroke, strokeWidth: sw, seed: seedFor(node.id) });
     } else {
@@ -420,40 +437,42 @@ class SelDiAEngine implements CoreEngine {
   /** UML class box: name compartment (bold, centered, tinted header),
    *  divider, attributes compartment (left-aligned, visibility markers kept
    *  verbatim), divider, operations compartment — reference image B. */
-  private renderClassNode(node: IRNode, pad: number, sketchy: boolean): string {
+  private renderClassNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch): string {
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const s = node.style || {};
-    const fill = (s.fill as string) || '#eef2ff', stroke = (s.stroke as string) || '#3730a3';
-    const sw = (s.strokeWidth as number) || 2, color = (s.textColor as string) || '#1e1b4b';
-    const fs = (s.fontSize as number) || 14, ff = (s.fontFamily as string) || 'Inter, system-ui, sans-serif';
+    const fill = swatch.fill, stroke = swatch.stroke, color = swatch.text;
+    const sw = (s.strokeWidth as number) || DS.stroke.node;
+    const fs = (s.fontSize as number) || DS.fontSize.label, ff = (s.fontFamily as string) || DS.fontFamily;
+    // Members are code-like — render them in the monospace family for legibility.
+    const memberFf = DS.monoFamily;
     const { name, attributes, operations } = (node.data as any).compartments as { name: string; attributes: string[]; operations: string[] };
 
-    const lineHeight = Math.round((fs - 2) * 1.35);
+    const lineHeight = Math.round((fs - 2) * 1.4);
     const nameHeight = fs + 18;
     const attrHeight = attributes.length > 0 ? attributes.length * lineHeight + 12 : 0;
     const opHeight = operations.length > 0 ? operations.length * lineHeight + 12 : 0;
 
     let el: string;
     if (sketchy) {
-      el = roughRect(x, y, w, h, { stroke, strokeWidth: sw, fill, roughness: 1, fillStyle: 'hachure', seed: seedFor(node.id) });
+      el = roughRect(x, y, w, h, { stroke, strokeWidth: sw, fill: DS.neutral.surface, roughness: DS.roughness, fillStyle: 'solid', seed: seedFor(node.id) });
     } else {
-      el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="0.9"/>\n`;
+      el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${DS.neutral.surface}" stroke="${stroke}" stroke-width="${sw}"/>\n`;
     }
-    // Name compartment — tinted header, bold, centered.
-    el += `    <rect x="${x}" y="${y}" width="${w}" height="${nameHeight}" rx="4" fill="${stroke}" opacity="0.15"/>\n`;
-    el += `    <text x="${x + w / 2}" y="${y + nameHeight / 2 + fs * 0.35}" text-anchor="middle" font-weight="bold" fill="${color}" font-size="${fs}" font-family="${ff}">${this.esc(name)}</text>\n`;
+    // Name compartment — tinted header (accent fill), bold, centered.
+    el += `    <path d="M ${x} ${y + DS.radius} Q ${x} ${y} ${x + DS.radius} ${y} H ${x + w - DS.radius} Q ${x + w} ${y} ${x + w} ${y + DS.radius} V ${y + nameHeight} H ${x} Z" fill="${fill}"/>\n`;
+    el += `    <text x="${x + w / 2}" y="${y + nameHeight / 2 + fs * 0.35}" text-anchor="middle" font-weight="700" fill="${color}" font-size="${fs}" font-family="${ff}">${this.esc(name)}</text>\n`;
 
     let cursorY = y + nameHeight;
     if (attrHeight > 0) {
-      el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="1"/>\n`;
+      el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="${DS.stroke.divider}"/>\n`;
       const startY = cursorY + lineHeight;
-      el += `    <text text-anchor="start" fill="${color}" font-size="${fs - 2}" font-family="${ff}">${attributes.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
+      el += `    <text text-anchor="start" fill="${DS.neutral.text}" font-size="${fs - 2}" font-family="${memberFf}">${attributes.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
       cursorY += attrHeight;
     }
     if (opHeight > 0) {
-      el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="1"/>\n`;
+      el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="${DS.stroke.divider}"/>\n`;
       const startY = cursorY + lineHeight;
-      el += `    <text text-anchor="start" fill="${color}" font-size="${fs - 2}" font-family="${ff}">${operations.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
+      el += `    <text text-anchor="start" fill="${DS.neutral.text}" font-size="${fs - 2}" font-family="${memberFf}">${operations.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
     }
     return el;
   }
@@ -470,10 +489,13 @@ class SelDiAEngine implements CoreEngine {
     return [a, { x: a.x, y: midY }, { x: b.x, y: midY }, b];
   }
 
-  private renderEdge(edge: IREdge, pad: number, sketchy: boolean): string {
+  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch): string {
     const s = edge.style || {};
-    const stroke = (s.stroke as string) || '#666';
-    const sw = (s.strokeWidth as number) || 2;
+    // Edges take a muted tint of the diagram's signature accent so they read as
+    // connective tissue (quieter than nodes) while still belonging to the same
+    // colour family — never a jarring flat gray.
+    const stroke = (s.stroke as string) || DS.neutral.edge;
+    const sw = (s.strokeWidth as number) || DS.stroke.edge;
     const dash = (s.strokeStyle as string) === 'dashed' ? [6, 4] : undefined;
     const rawWps = edge.waypoints || [];
     if (rawWps.length < 2) return '';
@@ -484,7 +506,7 @@ class SelDiAEngine implements CoreEngine {
       el = '';
       for (let i = 0; i < wps.length - 1; i++) {
         const a = wps[i], b = wps[i + 1];
-        el += roughLine(a.x + pad, a.y + pad, b.x + pad, b.y + pad, { stroke, strokeWidth: sw, roughness: 1, seed: seed + i });
+        el += roughLine(a.x + pad, a.y + pad, b.x + pad, b.y + pad, { stroke, strokeWidth: sw, roughness: DS.roughness, seed: seed + i });
       }
     } else {
       const pts = wps.map(p => `${p.x + pad},${p.y + pad}`).join(' ');
@@ -505,9 +527,10 @@ class SelDiAEngine implements CoreEngine {
         const labelText = edge.label;
         const chipW = Math.max(24, labelText.length * 6.5 + 12);
         // Small neutral background chip so the label stays readable where it
-        // crosses the edge line (reference image C).
-        el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="4" fill="var(--seldia-label-bg, #ffffff)" fill-opacity="0.92" stroke="#d1d5db" stroke-width="1"/>\n`;
-        el += `    <text x="${lx}" y="${ly - 2}" text-anchor="middle" fill="#374151" font-size="11" font-family="Inter, sans-serif">${this.esc(labelText)}</text>\n`;
+        // crosses the edge line. Chip border uses the diagram accent so the
+        // label belongs to the same colour family as its nodes.
+        el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="4" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${typeAccent.stroke}" stroke-opacity="0.35" stroke-width="1"/>\n`;
+        el += `    <text x="${lx}" y="${ly - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${this.esc(labelText)}</text>\n`;
       }
     }
     return el;

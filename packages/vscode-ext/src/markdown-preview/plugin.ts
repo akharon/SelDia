@@ -125,12 +125,12 @@ ${ICON_SPRITE}
   </div>
   <div class="seldia-diagram-source">
     <div class="seldia-diagram-source-header">
-      <span>SelDiA DSL Source</span>
+      <span>SelDiA DSL Source — edit here to update the diagram</span>
       <span class="seldia-toolbar-spacer"></span>
       <a class="seldia-btn seldia-btn-icon" title="Reveal this block in the editor" aria-label="Open in editor" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('open-in-editor')}</a>
       <button class="seldia-btn seldia-btn-icon seldia-btn-copy-source" title="Copy source to clipboard" aria-label="Copy source to clipboard">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button>
     </div>
-    <pre><code class="language-seldia">${escapeHtml(code)}</code></pre>
+    <textarea class="seldia-source-edit" spellcheck="false" wrap="off" aria-label="SelDiA DSL source (editable)">${escapeHtml(code)}</textarea>
   </div>
 </div>`;
 }

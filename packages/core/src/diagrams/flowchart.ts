@@ -31,7 +31,7 @@ export const flowchartPlugin: DiagramPlugin = {
           shape: nd.shape as ShapeType,
           position: { x: 0, y: 0 },
           size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 100, 50),
-          style: nd.style ? { fill: '#eef2ff', stroke: '#4338ca', ...nd.style } : { fill: '#eef2ff', stroke: '#4338ca' },
+          style: nd.style ? { ...nd.style } : {},
           ports: [],
           classList: nd.classList || [],
           collapsed: false,

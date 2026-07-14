@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -163,6 +163,10 @@
       {
         "command": "seldia.autoLayout",
         "title": "SelDiA: Auto Layout (clear manual positions)"
+      },
+      {
+        "command": "seldia.replaceBlockSource",
+        "title": "SelDiA: Replace Diagram Source (internal)"
       }
     ],
     "snippets": [

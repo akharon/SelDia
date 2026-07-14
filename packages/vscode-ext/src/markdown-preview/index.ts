@@ -67,6 +67,13 @@
     if (btn.classList.contains('seldia-mode-btn')) {
       e.preventDefault();
       const mode = btn.dataset.seldiaTargetMode || 'preview';
+      const prevMode = container.dataset.seldiaMode;
+      // Leaving Code mode: flush the edited DSL back to the document so the
+      // diagram re-renders with the changes. Done on mode-switch (not on every
+      // keystroke) so typing stays smooth and the caret isn't lost mid-edit.
+      if (prevMode === 'code' && mode !== 'code') {
+        flushSourceEdit(container);
+      }
       container.dataset.seldiaMode = mode;
       container
         .querySelectorAll('.seldia-mode-btn')
@@ -114,6 +121,26 @@
     { passive: false }
   );
 
+  // ── Live source editing (Code mode) ──────────────────────────────────────
+  // The DSL textarea is written back to the Markdown document only when the
+  // user leaves Code mode (clicks Preview or Edit) — see the mode-switch
+  // handler above — so typing never triggers a mid-edit re-render that would
+  // reset the caret. The document change then re-renders the diagram.
+  function flushSourceEdit(container: HTMLElement) {
+    const ta = container.querySelector('.seldia-source-edit') as HTMLTextAreaElement | null;
+    if (!ta) return;
+    const blockId = container.dataset.seldiaBlock || container.id;
+    const original = ta.defaultValue; // server-rendered source (pre-edit)
+    if (ta.value === original) return; // nothing changed — skip the write
+    runCommand('seldia.replaceBlockSource', { blockId, source: ta.value });
+  }
+
+  // Also flush if the whole preview loses focus while a diagram is in Code mode
+  // (e.g. the user clicks back into the editor) so no edit is silently dropped.
+  window.addEventListener('blur', () => {
+    document.querySelectorAll<HTMLElement>('.seldia-diagram[data-seldia-mode="code"]').forEach(flushSourceEdit);
+  });
+
   // ── Export the rendered SVG as a downloadable file ───────────────────────
   function exportSvg(container: HTMLElement) {
     const svg = svgOf(container);
@@ -133,7 +160,8 @@
 
   // ── Copy DSL source to the clipboard, flashing a check glyph ──────────────
   async function copySource(container: HTMLElement, btn: HTMLElement) {
-    const code = container.querySelector('.seldia-diagram-source code')?.textContent;
+    const ta = container.querySelector('.seldia-source-edit') as HTMLTextAreaElement | null;
+    const code = ta?.value ?? container.querySelector('.seldia-diagram-source code')?.textContent;
     if (!code) return;
     try {
       await navigator.clipboard.writeText(code);
@@ -149,65 +177,81 @@
   }
 
   // ── Edit gestures (drag to move, double-click to rename) ─────────────────
-  // These need per-node listeners on the SVG geometry, so they're (re)bound
-  // after each render. A dataset guard keeps re-binding idempotent.
-  function setupEditing() {
-    document.querySelectorAll<HTMLElement>('.seldia-diagram').forEach((container) => {
-      const svg = svgOf(container);
-      if (!svg) return;
-      const blockId = container.dataset.seldiaBlock || container.id;
-      const pad = parseFloat(container.dataset.seldiaPad || '20');
-      // Apply any remembered zoom for this block.
-      applyZoom(container, blockId, scaleOf(blockId));
+  // Bound as DELEGATED listeners on `document` — the same pattern as the
+  // toolbar buttons. VS Code's Markdown preview rebuilds the whole preview DOM
+  // on every document change, which silently discards any listener attached to
+  // a specific node; delegation on `document` survives every re-render and
+  // needs no per-node (re)binding pass. Each handler resolves the node/diagram
+  // from the event target at call time.
 
-      svg.querySelectorAll<SVGGElement>('[data-seldia-node-id]').forEach((g) => {
-        if (g.dataset.seldiaEditBound === 'true') return;
-        g.dataset.seldiaEditBound = 'true';
-        const nodeId = g.getAttribute('data-seldia-node-id') || '';
-
-        g.addEventListener('dblclick', (e) => {
-          if (container.dataset.seldiaMode !== 'edit') return;
-          e.preventDefault();
-          e.stopPropagation();
-          const current = g.querySelector('text')?.textContent || '';
-          runCommand('seldia.editNodeLabel', { blockId, nodeId, current });
-        });
-
-        g.addEventListener('mousedown', (e) => {
-          if (container.dataset.seldiaMode !== 'edit') return;
-          e.preventDefault();
-          e.stopPropagation();
-          const startUser = toUserSpace(svg, e.clientX, e.clientY);
-          const origin = g.getBBox();
-          g.style.cursor = 'grabbing';
-          let moved = false;
-
-          const onMove = (ev: MouseEvent) => {
-            const cur = toUserSpace(svg, ev.clientX, ev.clientY);
-            const dx = cur.x - startUser.x;
-            const dy = cur.y - startUser.y;
-            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) moved = true;
-            g.setAttribute('transform', `translate(${dx} ${dy})`);
-          };
-          const onUp = (ev: MouseEvent) => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-            g.style.cursor = '';
-            if (!moved) {
-              g.removeAttribute('transform');
-              return;
-            }
-            const end = toUserSpace(svg, ev.clientX, ev.clientY);
-            const nx = origin.x - pad + (end.x - startUser.x);
-            const ny = origin.y - pad + (end.y - startUser.y);
-            runCommand('seldia.moveNode', { blockId, nodeId, x: nx, y: ny });
-          };
-          window.addEventListener('mousemove', onMove);
-          window.addEventListener('mouseup', onUp);
-        });
-      });
-    });
+  /** Resolve the node <g>, its diagram container and identity from an event
+   *  target, but only while that diagram is in edit mode. */
+  function editTargetOf(target: EventTarget | null): {
+    g: SVGGElement; container: HTMLElement; svg: SVGSVGElement; blockId: string; nodeId: string; pad: number;
+  } | null {
+    const el = target as Element | null;
+    const g = el?.closest?.('[data-seldia-node-id]') as SVGGElement | null;
+    if (!g) return null;
+    const container = diagramOf(g);
+    if (!container || container.dataset.seldiaMode !== 'edit') return null;
+    const svg = svgOf(container);
+    if (!svg) return null;
+    return {
+      g,
+      container,
+      svg,
+      blockId: container.dataset.seldiaBlock || container.id,
+      nodeId: g.getAttribute('data-seldia-node-id') || '',
+      pad: parseFloat(container.dataset.seldiaPad || '20'),
+    };
   }
+
+  // Double-click a node → rename.
+  document.addEventListener('dblclick', (e) => {
+    const t = editTargetOf(e.target);
+    if (!t) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const current = t.g.querySelector('text')?.textContent || '';
+    runCommand('seldia.editNodeLabel', { blockId: t.blockId, nodeId: t.nodeId, current });
+  });
+
+  // Press on a node → drag to move; release writes the new position back.
+  document.addEventListener('mousedown', (e) => {
+    if ((e as MouseEvent).button !== 0) return;
+    const t = editTargetOf(e.target);
+    if (!t) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { g, svg, blockId, nodeId, pad } = t;
+    const startUser = toUserSpace(svg, e.clientX, e.clientY);
+    const origin = g.getBBox();
+    g.style.cursor = 'grabbing';
+    let moved = false;
+
+    const onMove = (ev: MouseEvent) => {
+      const cur = toUserSpace(svg, ev.clientX, ev.clientY);
+      const dx = cur.x - startUser.x;
+      const dy = cur.y - startUser.y;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) moved = true;
+      g.setAttribute('transform', `translate(${dx} ${dy})`);
+    };
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      g.style.cursor = '';
+      if (!moved) {
+        g.removeAttribute('transform');
+        return;
+      }
+      const end = toUserSpace(svg, ev.clientX, ev.clientY);
+      const nx = origin.x - pad + (end.x - startUser.x);
+      const ny = origin.y - pad + (end.y - startUser.y);
+      runCommand('seldia.moveNode', { blockId, nodeId, x: nx, y: ny });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
 
   /** Convert client (screen) coordinates to the SVG user coordinate system. */
   function toUserSpace(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } {
@@ -220,22 +264,41 @@
     return { x: p.x, y: p.y };
   }
 
-  /** Invoke an extension command via a command: URI (user-gesture initiated). */
+  /** Invoke an extension command via a command: URI.
+   *
+   *  In VS Code's built-in Markdown preview the reliable channel is to
+   *  NAVIGATE to the `command:` URI — the preview's navigation interceptor
+   *  catches `window.location` changes and routes them to the extension host.
+   *  A synthetic `<a>.click()` is NOT reliably intercepted (the earlier
+   *  approach), which is why drag/rename silently did nothing. We set
+   *  `window.location.href`; the preview cancels the actual navigation and
+   *  runs the command instead. */
   function runCommand(command: string, arg: unknown) {
     const uri = `command:${command}?${encodeURIComponent(JSON.stringify([arg]))}`;
-    const a = document.createElement('a');
-    a.href = uri;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    try {
+      window.location.href = uri;
+    } catch {
+      // Fallback: a real anchor the user's gesture is still attached to.
+      const a = document.createElement('a');
+      a.href = uri;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
   }
 
-  // Re-bind edit gestures whenever the preview content changes, and once now.
-  window.addEventListener('vscode.markdown.updateContent', () => setupEditing());
+  // Re-apply remembered zoom whenever the preview content changes, and now.
+  function reapplyZoom() {
+    document.querySelectorAll<HTMLElement>('.seldia-diagram').forEach((container) => {
+      const blockId = container.dataset.seldiaBlock || container.id;
+      applyZoom(container, blockId, scaleOf(blockId));
+    });
+  }
+  window.addEventListener('vscode.markdown.updateContent', () => reapplyZoom());
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setupEditing());
+    document.addEventListener('DOMContentLoaded', () => reapplyZoom());
   } else {
-    setupEditing();
+    reapplyZoom();
   }
 })();

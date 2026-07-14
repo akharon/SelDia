@@ -127,7 +127,19 @@ export function registerEditCommands(context: vscode.ExtensionContext): void {
     }
   );
 
-  context.subscriptions.push(moveNode, editNodeLabel, editNodeAttr, autoLayout);
+  // ── Replace a block's entire DSL source (live edit from Code mode) ──────
+  // The preview's editable source textarea sends the full new source; we swap
+  // it in wholesale so the diagram re-renders. Matched by the block's original
+  // id (the transform ignores its `src` argument and returns the new source).
+  const replaceBlockSource = vscode.commands.registerCommand(
+    'seldia.replaceBlockSource',
+    async (args: { blockId: string; source: string }) => {
+      if (!args?.blockId || typeof args.source !== 'string') return;
+      await applyBlockTransform(args.blockId, () => args.source);
+    }
+  );
+
+  context.subscriptions.push(moveNode, editNodeLabel, editNodeAttr, autoLayout, replaceBlockSource);
 }
 
 // Re-export for tests / callers that want block discovery.

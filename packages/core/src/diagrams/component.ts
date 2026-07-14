@@ -19,7 +19,7 @@ export const componentPlugin: DiagramPlugin = {
       if (stmt.kind === 'NodeDecl') {
         const nd = stmt as ASTNodeDecl;
         const isDb = nd.shape === ShapeType.CYLINDER || nd.id.startsWith('db');
-        nodes.push({ id: nd.id, label: nd.label, shape: isDb ? ShapeType.CYLINDER : ShapeType.RECTANGLE, position: { x: 0, y: 0 }, size: { width: 170, height: 70 }, style: { ...(nd.style || {}), fill: '#f0f4ff', stroke: '#1e40af' }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
+        nodes.push({ id: nd.id, label: nd.label, shape: isDb ? ShapeType.CYLINDER : ShapeType.RECTANGLE, position: { x: 0, y: 0 }, size: { width: 170, height: 70 }, style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;

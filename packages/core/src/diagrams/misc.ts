@@ -10,7 +10,12 @@ import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { sizeForLabel } from '../layout/text-measure.js';
 
-function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, shape: ShapeType = ShapeType.RECTANGLE, defFill = '#f8fafc', defStroke = '#334155'): DiagramPlugin {
+// Note: color is intentionally NOT set here — the central design system
+// (packages/core/src/render/design-system.ts) supplies each diagram type's
+// signature accent and any semantic-role colors. Baking defaults in here would
+// shadow that system and collapse every type to one look. Only genuine
+// author-provided `nd.style` is passed through.
+function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, shape: ShapeType = ShapeType.RECTANGLE): DiagramPlugin {
   return {
     id, name, version: '1.0.0', diagramType: dt, description: desc,
     transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR {
@@ -18,7 +23,7 @@ function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, 
       for (const stmt of ast.body) {
         if (stmt.kind === 'NodeDecl') {
           const nd = stmt as ASTNodeDecl;
-          nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 150, 60), style: { ...(nd.style || {}), fill: defFill, stroke: defStroke }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
+          nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 150, 60), style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
         }
         if (stmt.kind === 'EdgeDecl') {
           const ed = stmt as ASTEdgeDecl;
@@ -31,16 +36,16 @@ function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, 
   };
 }
 
-export const usecasePlugin = genericPlugin('seldia-usecase', 'Use Case', DiagramType.USECASE, 'Use case diagrams', ShapeType.ROUNDED_RECTANGLE, '#fff7ed', '#9a3412');
-export const activityPlugin = genericPlugin('seldia-activity', 'Activity', DiagramType.ACTIVITY, 'Activity diagrams', ShapeType.ROUNDED_RECTANGLE, '#f0f9ff', '#1e40af');
-export const deploymentPlugin = genericPlugin('seldia-deployment', 'Deployment', DiagramType.DEPLOYMENT, 'Deployment diagrams', ShapeType.RECTANGLE, '#f5f3ff', '#5b21b6');
-export const ganttPlugin = genericPlugin('seldia-gantt', 'Gantt Chart', DiagramType.GANTT, 'Gantt charts', ShapeType.RECTANGLE, '#ecfdf5', '#065f46');
-export const mindmapPlugin = genericPlugin('seldia-mindmap', 'Mind Map', DiagramType.MINDMAP, 'Mind maps', ShapeType.ROUNDED_RECTANGLE, '#fef9c3', '#a16207');
-export const networkPlugin = genericPlugin('seldia-network', 'Network', DiagramType.NETWORK, 'Network topology', ShapeType.RECTANGLE, '#f1f5f9', '#475569');
-export const chartPlugin = genericPlugin('seldia-chart', 'Charts', DiagramType.CHART_BAR, 'Charts (bar, line, pie, radar, scatter)', ShapeType.RECTANGLE, '#fef2f2', '#991b1b');
-export const gitgraphPlugin = genericPlugin('seldia-gitgraph', 'Git Graph', DiagramType.GITGRAPH, 'Git branch graphs', ShapeType.ROUNDED_RECTANGLE, '#f0fdfa', '#115e59');
-export const formPlugin = genericPlugin('seldia-form', 'Form', DiagramType.FORM, 'Form definitions', ShapeType.RECTANGLE, '#faf5ff', '#581c87');
-export const sankeyPlugin = genericPlugin('seldia-sankey', 'Sankey', DiagramType.SANKEY, 'Flow/sankey diagrams', ShapeType.RECTANGLE, '#fce7f3', '#831843');
-export const blockPlugin = genericPlugin('seldia-block', 'Block', DiagramType.BLOCK, 'System block diagrams', ShapeType.RECTANGLE, '#eef2ff', '#312e81');
-export const timelinePlugin = genericPlugin('seldia-timeline', 'Timeline', DiagramType.TIMELINE, 'Timeline charts', ShapeType.ROUNDED_RECTANGLE, '#f0fdfa', '#134e4a');
-export const dmnPlugin = genericPlugin('seldia-dmn', 'DMN Decision Table', DiagramType.DMN, 'DMN decision tables', ShapeType.RECTANGLE, '#fffbeb', '#92400e');
+export const usecasePlugin = genericPlugin('seldia-usecase', 'Use Case', DiagramType.USECASE, 'Use case diagrams', ShapeType.ROUNDED_RECTANGLE);
+export const activityPlugin = genericPlugin('seldia-activity', 'Activity', DiagramType.ACTIVITY, 'Activity diagrams', ShapeType.ROUNDED_RECTANGLE);
+export const deploymentPlugin = genericPlugin('seldia-deployment', 'Deployment', DiagramType.DEPLOYMENT, 'Deployment diagrams', ShapeType.RECTANGLE);
+export const ganttPlugin = genericPlugin('seldia-gantt', 'Gantt Chart', DiagramType.GANTT, 'Gantt charts', ShapeType.RECTANGLE);
+export const mindmapPlugin = genericPlugin('seldia-mindmap', 'Mind Map', DiagramType.MINDMAP, 'Mind maps', ShapeType.ROUNDED_RECTANGLE);
+export const networkPlugin = genericPlugin('seldia-network', 'Network', DiagramType.NETWORK, 'Network topology', ShapeType.RECTANGLE);
+export const chartPlugin = genericPlugin('seldia-chart', 'Charts', DiagramType.CHART_BAR, 'Charts (bar, line, pie, radar, scatter)', ShapeType.RECTANGLE);
+export const gitgraphPlugin = genericPlugin('seldia-gitgraph', 'Git Graph', DiagramType.GITGRAPH, 'Git branch graphs', ShapeType.ROUNDED_RECTANGLE);
+export const formPlugin = genericPlugin('seldia-form', 'Form', DiagramType.FORM, 'Form definitions', ShapeType.RECTANGLE);
+export const sankeyPlugin = genericPlugin('seldia-sankey', 'Sankey', DiagramType.SANKEY, 'Flow/sankey diagrams', ShapeType.RECTANGLE);
+export const blockPlugin = genericPlugin('seldia-block', 'Block', DiagramType.BLOCK, 'System block diagrams', ShapeType.RECTANGLE);
+export const timelinePlugin = genericPlugin('seldia-timeline', 'Timeline', DiagramType.TIMELINE, 'Timeline charts', ShapeType.ROUNDED_RECTANGLE);
+export const dmnPlugin = genericPlugin('seldia-dmn', 'DMN Decision Table', DiagramType.DMN, 'DMN decision tables', ShapeType.RECTANGLE);

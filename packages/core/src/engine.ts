@@ -66,6 +66,14 @@ export interface CoreEngine {
  *  (docs/improvement_request.md item 3). Individual plugins may still set
  *  their own defaults (e.g. bpmn.ts, misc.ts already do); this is the
  *  final fallback for types that don't. */
+/** Split a label into display lines on both real newlines and the literal
+ *  two-character escape `\n` that authors type inside `[...]` node labels
+ *  (the bracket tokenizer keeps it verbatim, so it never became a real
+ *  newline). Without this the escape rendered as visible "\n" text. */
+function splitLabelLines(label: string): string[] {
+  return (label || '').replace(/\\n/g, '\n').split('\n');
+}
+
 function defaultPaletteFor(type: DiagramType): { fill: string; stroke: string } {
   switch (type) {
     case DiagramType.CLASS: return { fill: '#eef2ff', stroke: '#3730a3' };
@@ -281,7 +289,7 @@ class SelDiAEngine implements CoreEngine {
    *  element with one `<tspan>` per line, each on its own `y` offset — SVG's
    *  `<text>` does not treat `\n` as a line break on its own (item 2). */
   private renderLabel(x: number, startY: number, lineHeight: number, fs: number, ff: string, color: string, label: string, anchor: 'middle' | 'start' = 'middle'): string {
-    const lines = (label || '').split('\n');
+    const lines = splitLabelLines(label);
     const tspans = lines.map((line, i) => `<tspan x="${x}" y="${startY + i * lineHeight}">${this.esc(line)}</tspan>`).join('');
     return `    <text text-anchor="${anchor}" fill="${color}" font-size="${fs}" font-family="${ff}">${tspans}</text>\n`;
   }
@@ -403,7 +411,7 @@ class SelDiAEngine implements CoreEngine {
       el += `    <path d="M ${x + w - fold} ${y} V ${y + fold} H ${x + w}" fill="none" stroke="${stroke}" stroke-width="${sw}"/>\n`;
     }
     const lineHeight = Math.round(fs * 1.3);
-    const lines = node.label.split('\n');
+    const lines = splitLabelLines(node.label);
     const startY = y + 16;
     el += `    <text text-anchor="start" fill="${color}" font-size="${fs}" font-family="${ff}" font-style="italic">${lines.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
     return el;

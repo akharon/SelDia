@@ -104,7 +104,12 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     const src = nodes.find((n) => n.id === e.sourceId);
     const tgt = nodes.find((n) => n.id === e.targetId);
     if (ep && ep.points && ep.points.length >= 2) {
-      const wps: Point[] = ep.points.slice(1, -1).map((p: any) => ({ x: p.x, y: p.y }));
+      // Keep dagre's full point list, including the first/last points that sit
+      // on the node borders. Stripping the endpoints (slice(1,-1)) collapsed a
+      // typical 3-point route down to a single midpoint, which the renderer
+      // discards (<2 waypoints ⇒ no line, no arrowhead) — that was the cause
+      // of missing arrows between nodes.
+      const wps: Point[] = ep.points.map((p: any) => ({ x: p.x, y: p.y }));
       return { ...e, waypoints: wps };
     }
     return { ...e, waypoints: fallbackRoute(src, tgt) };
@@ -168,14 +173,24 @@ export async function layoutWithElk(ir: DiagramIR, opts: AutoLayoutOptions): Pro
 
   const edgeBends = new Map<string, Point[]>();
   for (const re of result.edges || []) {
-    const sections = (re as any).sections as Array<{ bendPoints?: Point[] }> | undefined;
-    if (sections && sections.length) edgeBends.set(re.id!, sections[0].bendPoints ? [...sections[0].bendPoints] : []);
+    const sections = (re as any).sections as Array<{ startPoint?: Point; endPoint?: Point; bendPoints?: Point[] }> | undefined;
+    if (sections && sections.length) {
+      // ELK reports the route as startPoint → bendPoints → endPoint; keep the
+      // endpoints so the polyline actually spans the two nodes (a bends-only
+      // list is often empty for a straight edge, which left the arrow missing).
+      const sec = sections[0];
+      const pts: Point[] = [];
+      if (sec.startPoint) pts.push({ x: sec.startPoint.x, y: sec.startPoint.y });
+      if (sec.bendPoints) for (const b of sec.bendPoints) pts.push({ x: b.x, y: b.y });
+      if (sec.endPoint) pts.push({ x: sec.endPoint.x, y: sec.endPoint.y });
+      edgeBends.set(re.id!, pts);
+    }
   }
   const edges = ir.edges.map((e) => {
     const src = nodes.find((n) => n.id === e.sourceId);
     const tgt = nodes.find((n) => n.id === e.targetId);
     const bends = edgeBends.get(e.id);
-    return { ...e, waypoints: bends ?? fallbackRoute(src, tgt) };
+    return { ...e, waypoints: bends && bends.length >= 2 ? bends : fallbackRoute(src, tgt) };
   });
 
   return { nodes, edges, bounds: computeBounds(nodes) };

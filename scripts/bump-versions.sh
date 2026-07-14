@@ -42,8 +42,6 @@ echo ""
 PACKAGES=(
   "package.json"
   "packages/core/package.json"
-  "packages/layout/package.json"
-  "packages/render/package.json"
   "packages/interaction/package.json"
   "packages/cli/package.json"
   "packages/web/package.json"

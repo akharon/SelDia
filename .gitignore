@@ -2,8 +2,11 @@ node_modules
 dist/
 .turbo/
 *.log
+*.vsix
+*.svg
 .env
 .env.local
 test_seldia.mjs
 /tmp/
 
+.pairs/

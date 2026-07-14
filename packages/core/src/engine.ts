@@ -36,6 +36,9 @@ export interface CoreEngine {
   transform(ast: DiagramAST): Result<DiagramIR>;
   layout(ir: DiagramIR): Result<LayoutResult>;
   render(layoutResult: LayoutResult): Result<RenderResult>;
+  /** Synchronous full pipeline. Required by contexts that cannot await
+   *  (e.g. VS Code's markdown-it fence renderer). */
+  compileSync(source: string, filePath?: string): Result<RenderResult>;
   compile(source: string, filePath?: string): Promise<Result<RenderResult>>;
   validate(source: string, filePath?: string): Diagnostic[];
   getSupportedDiagramTypes(): string[];
@@ -91,13 +94,25 @@ class SelDiAEngine implements CoreEngine {
   layout(ir: DiagramIR): Result<LayoutResult> {
     const nodes = ir.nodes.map((n, i) => ({
       ...n,
-      position: n.position.x !== 0 || n.position.y !== 0 ? n.position : { x: 100 + (i % 3) * 220, y: 100 + Math.floor(i / 3) * 120 },
+      position: this.resolvePosition(n, i),
       size: n.size.width > 0 ? n.size : { width: 140, height: 60 },
     }));
     const edges = ir.edges.map(e => ({ ...e, waypoints: e.waypoints || this.computeWaypoints(e, nodes) }));
     const positioned: DiagramIR = { ...ir, nodes, edges };
     const bounds = this.computeBounds(nodes);
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
+  }
+
+  /** Resolve a node's position, honoring a manual override from the DSL
+   *  (`{ layout: { x, y } }` or top-level `{ x, y }`), then any position set
+   *  by the plugin transform, and finally a default grid placement. */
+  private resolvePosition(node: IRNode, index: number): Point {
+    const style = (node.style || {}) as Record<string, any>;
+    const manual = (style.layout && typeof style.layout === 'object') ? style.layout : style;
+    const mx = manual?.x, my = manual?.y;
+    if (typeof mx === 'number' && typeof my === 'number') return { x: mx, y: my };
+    if (node.position.x !== 0 || node.position.y !== 0) return node.position;
+    return { x: 100 + (index % 3) * 220, y: 100 + Math.floor(index / 3) * 120 };
   }
 
   private computeWaypoints(edge: IREdge, nodes: IRNode[]): Point[] {
@@ -142,8 +157,8 @@ class SelDiAEngine implements CoreEngine {
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}">\n`;
     svg += `  <defs>\n    <filter id="sketch"><feTurbulence type="turbulence" baseFrequency="0.03" numOctaves="2" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="${sketchy ? 2 : 0}" xChannelSelector="R" yChannelSelector="G"/></filter>\n  </defs>\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
-    for (const e of edges) svg += this.renderEdge(e, pad, sketchy);
-    for (const n of nodes) svg += this.renderNode(n, pad, sketchy);
+    for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy)}  </g>\n`;
+    for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy)}  </g>\n`;
     svg += '</svg>';
     return svg;
   }
@@ -217,12 +232,16 @@ class SelDiAEngine implements CoreEngine {
 
   private esc(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
-  async compile(source: string, filePath?: string): Promise<Result<RenderResult>> {
+  compileSync(source: string, filePath?: string): Result<RenderResult> {
     const r1 = this.parse(source, filePath); if (!r1.ok) return r1;
     const r2 = this.analyze(r1.value); if (!r2.ok) return r2;
     const r3 = this.transform(r2.value); if (!r3.ok) return r3;
     const r4 = this.layout(r3.value); if (!r4.ok) return r4;
     return this.render(r4.value);
+  }
+
+  async compile(source: string, filePath?: string): Promise<Result<RenderResult>> {
+    return this.compileSync(source, filePath);
   }
 
   validate(source: string, filePath?: string): Diagnostic[] {

@@ -3,6 +3,7 @@
 // =============================================================================
 // Bundles the extension into a single file, inlining @seldia/* workspace
 // packages (which are npm workspace symlinks that vsce can't package).
+// Also bundles the markdown preview script for in-webview rendering.
 // External: vscode (VS Code API), puppeteer (binary), marked (large).
 // =============================================================================
 
@@ -11,9 +12,9 @@ import * as esbuild from 'esbuild';
 const isWatch = process.argv.includes('--watch');
 
 /** @type {esbuild.BuildOptions} */
-const config = {
+const extensionConfig = {
   entryPoints: ['src/extension.ts'],
-  outfile: 'dist/extension.js',
+  outfile: 'dist/extension.cjs',
   bundle: true,
   platform: 'node',
   target: 'node22',
@@ -28,10 +29,25 @@ const config = {
   logLevel: 'info',
 };
 
+/** @type {esbuild.BuildOptions} */
+const previewConfig = {
+  entryPoints: ['src/markdown-preview/index.ts'],
+  outfile: 'dist/seldia-preview.js',
+  bundle: true,
+  platform: 'browser',
+  target: 'es2020',
+  format: 'iife',
+  sourcemap: false,
+  minify: true,
+  logLevel: 'info',
+};
+
 async function main() {
   if (isWatch) {
-    const ctx = await esbuild.context(config);
-    await ctx.watch();
+    const extCtx = await esbuild.context(extensionConfig);
+    await extCtx.watch();
+    const prevCtx = await esbuild.context(previewConfig);
+    await prevCtx.watch();
     console.log('[esbuild] Watching for changes...');
   } else {
     // Clean old dist files (keep only esbuild output)
@@ -40,18 +56,27 @@ async function main() {
     const distDir = new URL('../dist', import.meta.url).pathname;
     if (existsSync(distDir)) {
       for (const entry of readdirSync(distDir)) {
-        if (entry !== 'extension.js' && entry !== 'extension.js.map') {
+        if (entry !== 'extension.cjs' && entry !== 'extension.cjs.map') {
           rmSync(join(distDir, entry), { recursive: true, force: true });
         }
       }
     }
 
-    const result = await esbuild.build(config);
-    if (result.errors.length > 0) {
-      console.error('[esbuild] Build failed:', result.errors);
+    // Build extension (Node.js target)
+    const extResult = await esbuild.build(extensionConfig);
+    if (extResult.errors.length > 0) {
+      console.error('[esbuild] Extension build failed:', extResult.errors);
       process.exit(1);
     }
-    console.log('[esbuild] Build complete — dist/extension.js');
+    console.log('[esbuild] Extension build complete — dist/extension.cjs');
+
+    // Build preview script (browser target for markdown preview webview)
+    const prevResult = await esbuild.build(previewConfig);
+    if (prevResult.errors.length > 0) {
+      console.error('[esbuild] Preview script build failed:', prevResult.errors);
+      process.exit(1);
+    }
+    console.log('[esbuild] Preview script build complete — dist/seldia-preview.js');
   }
 }
 

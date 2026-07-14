@@ -1,0 +1,104 @@
+// =============================================================================
+// SelDiA Core — Engine integration tests
+// =============================================================================
+import { describe, it, expect } from 'vitest';
+import { createEngine } from '../src/index.js';
+
+const engine = createEngine();
+
+const DIAGRAMS: Array<[string, string]> = [
+  ['flowchart', `diagram flowchart "Login" {
+    start: (Start)
+    validate: [Validate]
+    decision: {Valid?}
+    ok: [Dashboard]
+    err: [Error]
+    start --> validate
+    validate --> decision
+    decision -->|"Yes"| ok
+    decision -->|"No"| err
+  }`],
+  ['sequence', `diagram sequence "API" {
+    participant client: "Client"
+    participant server: "Server"
+    client -> server: "GET /x"
+    server --> client: "200"
+  }`],
+  ['class', `diagram class "M" { user: [User]\n account: [Account]\n user --> account }`],
+  ['c4-context', `diagram c4-context "Ctx" {
+    person customer: "Customer"
+    system banking: "Banking"
+    customer -> banking: "Uses"
+  }`],
+  ['state', `diagram state "S" { [*] --> A\n A --> B: go\n B --> [*] }`],
+  ['bpmn', `diagram bpmn "P" {
+    startEvent s: "Start"
+    task t: "Work"
+    endEvent e: "End"
+    s --> t --> e
+  }`],
+  ['er', `diagram er "D" { user: [User]\n account: [Account]\n user --> account }`],
+  ['mindmap', `diagram mindmap "O" { root: [Root]\n a: [A]\n b: [B]\n root --> a\n root --> b }`],
+];
+
+describe('compileSync', () => {
+  it('is synchronous and returns a result (not a Promise)', () => {
+    const r = engine.compileSync('diagram flowchart "T" { a: (Start) }');
+    expect(typeof (r as any).then).toBe('undefined');
+    expect(r.ok).toBe(true);
+  });
+
+  it('async compile() delegates to the same result', async () => {
+    const src = 'diagram flowchart "T" { a: (Start)\n b: [Do]\n a --> b }';
+    const sync = engine.compileSync(src);
+    const async = await engine.compile(src);
+    expect(async.ok).toBe(sync.ok);
+    if (sync.ok && async.ok) expect(async.value.svg).toBe(sync.value.svg);
+  });
+
+  it.each(DIAGRAMS)('compiles a %s diagram to SVG', (_type, src) => {
+    const r = engine.compileSync(src);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.svg).toContain('<svg');
+      expect(r.value.svg.length).toBeGreaterThan(100);
+      expect(r.value.stats.nodeCount).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('SVG identity attributes', () => {
+  it('stamps data-seldia-node-id on every node', () => {
+    const r = engine.compileSync('diagram flowchart "T" { alpha: (Start)\n beta: [Do]\n alpha --> beta }');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.svg).toContain('data-seldia-node-id="alpha"');
+      expect(r.value.svg).toContain('data-seldia-node-id="beta"');
+      expect(r.value.svg).toMatch(/data-seldia-edge-id="/);
+    }
+  });
+});
+
+describe('error handling', () => {
+  it('reports errors for invalid syntax without throwing', () => {
+    const r = engine.compileSync('diagram flowchart { broken {{{ }');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.length).toBeGreaterThan(0);
+      expect(r.errors[0].message.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('themes', () => {
+  it.each(['sketchy-light', 'sketchy-dark', 'clean', 'monochrome'])(
+    'renders with theme %s',
+    (theme) => {
+      const themed = createEngine({
+        config: { defaultTheme: theme, render: { sketchy: theme.startsWith('sketchy'), padding: 20, background: '#fff' } } as any,
+      });
+      const r = themed.compileSync(DIAGRAMS[0][1]);
+      expect(r.ok).toBe(true);
+    }
+  );
+});

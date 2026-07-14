@@ -4,7 +4,7 @@ Process flows and workflows with standard flowchart shapes.
 
 ## Syntax
 
-```
+```seldia
 diagram flowchart "Title" {
     start: (Start/End)
     process: [Process Step]
@@ -14,16 +14,16 @@ diagram flowchart "Title" {
 
     start --> process
     process --> decision
-    decision -->|yes| end
-    decision -->|no| process
+    decision --> end: "yes"
+    decision --> process: "no"
 }
 ```
 
 ## Example
 
-```
+```seldia
 diagram flowchart "User Login" {
-    theme "sketchy-dark"
+    theme sketchy-dark
 
     start: (Start)
     login: [Enter Credentials]
@@ -33,8 +33,8 @@ diagram flowchart "User Login" {
 
     start --> login
     login --> validate
-    validate -->|yes| dashboard
-    validate -->|no| error
+    validate --> dashboard: "yes"
+    validate --> error: "no"
     error --> login
 }
 ```

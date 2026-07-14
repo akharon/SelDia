@@ -96,9 +96,9 @@ diagram <type> ["<title>"] [<metadata>] {
 ```
 
 **Example (Flowchart):**
-```
+```seldia
 diagram flowchart "User Login" {
-    theme "sketchy-dark"
+    theme sketchy-dark
 
     start: (Start)
     login: [Enter Credentials]
@@ -108,8 +108,8 @@ diagram flowchart "User Login" {
 
     start --> login
     login --> validate
-    validate -->|yes| dashboard
-    validate -->|no| error
+    validate --> dashboard: "yes"
+    validate --> error: "no"
     error --> login
 }
 ```
@@ -190,7 +190,7 @@ boundary "Security Zone" {
 ### 3.6 Diagram-Type-Specific Syntax
 
 #### 3.6.1 Class Diagram
-```
+```seldia
 diagram class "Order System" {
     class Order {
         +id: UUID
@@ -206,45 +206,40 @@ diagram class "Order System" {
         +unitPrice: Money
     }
 
-    Order "1" --> "*" OrderItem : contains >
-    Order --> Customer : belongs to
+    Order "1" --> "*" OrderItem: "contains"
+    Order --> Customer: "belongs to"
 }
 ```
 
 #### 3.6.2 Sequence Diagram
-```
+```seldia
 diagram sequence "OAuth Flow" {
-    participant browser: Browser
-    participant server: Auth Server
-    participant db: Database
+    participant browser: "Browser"
+    participant server: "Auth Server"
+    participant db: "Database"
 
-    browser -> server: POST /login
-    server -> db: SELECT user
-    db --> server: user record
-    server -> server: validate password
-    alt success
-        server --> browser: 200 + JWT
-    else failure
-        server --> browser: 401 Unauthorized
-    end
+    browser -> server: "POST /login"
+    server -> db: "SELECT user"
+    db --> server: "user record"
+    server -> server: "validate password"
+
+    server --> browser: "200 + JWT"
 }
 ```
 
 #### 3.6.3 C4 Architecture
-```
+```seldia
 diagram c4 context "Internet Banking" {
     person customer: "Customer" "A bank customer"
     system banking: "Internet Banking" "Allows customers to manage accounts"
     system_Ext mainframe: "Mainframe Banking" "Core banking system"
-    system_Ext email: "E-mail System" "Sends notifications"
 
     customer --> banking: "Views accounts, makes payments"
     banking --> mainframe: "Uses"
-    banking --> email: "Sends e-mails using"
 }
 ```
 
-```
+```seldia
 diagram c4 container "Internet Banking" {
     container spa: "SPA" "React" "Client-side application"
     container api: "API" "Go" "RESTful API"
@@ -256,7 +251,7 @@ diagram c4 container "Internet Banking" {
 ```
 
 #### 3.6.4 BPMN 2.0
-```
+```seldia
 diagram bpmn "Order Fulfillment" {
     startEvent start: "Order Received"
     task validate: "Validate Order"
@@ -268,37 +263,37 @@ diagram bpmn "Order Fulfillment" {
 
     start --> validate
     validate --> payment
-    payment -->|yes| ship
-    payment -->|no| refund
+    payment --> ship: "yes"
+    payment --> refund: "no"
     ship --> done
     refund --> cancelled
 }
 ```
 
 #### 3.6.5 DMN Decision Table
-```
+```seldia
 diagram dmn "Loan Approval" {
     input age: number "Applicant Age"
     input income: number "Annual Income"
     input creditScore: number "Credit Score"
 
-    rule r1: age >= 18 and income > 30000 and creditScore > 700 => "APPROVE"
-    rule r2: age >= 18 and income > 30000 and creditScore <= 700 => "MANUAL_REVIEW"
-    rule r3: age < 18 => "DENY"
-    rule r4: income <= 30000 and creditScore <= 600 => "DENY"
-    rule r5: income <= 30000 and creditScore > 600 => "MANUAL_REVIEW"
+    rule "Approve" { when: age >= 18 AND income > 30000 AND creditScore > 700 output: "APPROVE" }
+    rule "Manual Review" { when: age >= 18 AND income > 30000 AND creditScore <= 700 output: "MANUAL_REVIEW" }
+    rule "Deny Age" { when: age < 18 output: "DENY" }
+    rule "Deny Low Income" { when: income <= 30000 AND creditScore <= 600 output: "DENY" }
+    rule "Manual Low Income" { when: income <= 30000 AND creditScore > 600 output: "MANUAL_REVIEW" }
 
     hitPolicy: first
 }
 ```
 
 #### 3.6.6 Chart
-```
+```seldia
 diagram chart bar "Monthly Sales" {
     data {
-        categories: ["Jan","Feb","Mar","Apr","May","Jun"]
-        series "Revenue" { 120, 200, 150, 180, 220, 250 }
-        series "Costs"   { 80,  100, 90,  95,  110, 120 }
+        categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+        series "Revenue" { values: [120, 200, 150, 180, 220, 250] color: "#4ecdc4" }
+        series "Costs"   { values: [80, 100, 90, 95, 110, 120] color: "#ff6b6b" }
     }
     options {
         xAxis { title: "Month" }
@@ -309,7 +304,7 @@ diagram chart bar "Monthly Sales" {
 ```
 
 #### 3.6.7 Gantt
-```
+```seldia
 diagram gantt "Project Alpha" {
     section "Planning" {
         task t1: "Requirements" 2025-01-06 to 2025-01-17
@@ -324,7 +319,7 @@ diagram gantt "Project Alpha" {
 ```
 
 #### 3.6.8 MindMap
-```
+```seldia
 diagram mindmap "System Features" {
     root "MyApp"
         branch "Frontend"
@@ -343,7 +338,7 @@ diagram mindmap "System Features" {
 ```
 
 #### 3.6.9 Form Definition
-```
+```seldia
 diagram form "User Registration" {
     section "Personal Info" {
         field name: text { required: true, placeholder: "Full name" }
@@ -352,14 +347,14 @@ diagram form "User Registration" {
     }
     section "Preferences" {
         field newsletter: checkbox { label: "Subscribe to newsletter" }
-        field theme: select { options: ["Light","Dark","System"], default: "System" }
+        field theme: select { options: ["Light", "Dark", "System"], default: "System" }
     }
     submit "Register" { style: primary }
 }
 ```
 
 #### 3.6.10 Sankey
-```
+```seldia
 diagram sankey "Energy Flow" {
     source "Solar"  { value: 120 }
     source "Wind"   { value: 80 }
@@ -437,84 +432,96 @@ edgeOp         ::= "-->" | "<-->" | "---" | "..>" | "==>" | "-..->"
 
 ### 4.1 High-Level Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     SelDiA Architecture                           │
-├────────────┬────────────┬────────────┬────────────┬──────────────┤
-│   CLI      │  Web App   │  VS Code   │  Library   │  REST API    │
-│  (@cli)    │  (@web)    │  (@vscode) │  (@core)   │  (future)    │
-├────────────┴────────────┴────────────┴────────────┴──────────────┤
-│                        Plugin Layer                               │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐ │
-│  │Flowchart │ │ Class    │ │ Sequence │ │    ... 20+ plugins   │ │
-│  │ Plugin   │ │ Plugin   │ │ Plugin   │ │                      │ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘ │
-├──────────────────────────────────────────────────────────────────┤
-│                        Core Layer                                 │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐ │
-│  │  Parser  │ │   AST    │ │ Semantic │ │  Plugin Manager      │ │
-│  │ (Lexer + │ │  Types   │ │ Analyzer │ │  (Registry, Lifecy)  │ │
-│  │  Parser) │ │          │ │          │ │                      │ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘ │
-├──────────────────────────────────────────────────────────────────┤
-│                      Layout Layer                                 │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐ │
-│  │  Dagre   │ │ ELK.js   │ │  Custom  │ │  Constraint Solver   │ │
-│  │ (graphs) │ │ (hierar) │ │ Layouts  │ │  (kiwi.js)          │ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘ │
-├──────────────────────────────────────────────────────────────────┤
-│                       Render Layer                                │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐ │
-│  │ Rough.js │ │  Shapes  │ │  Theme   │ │  Export (SVG/PNG/PDF)│ │
-│  │ Renderer │ │  Library │ │  Manager │ │                      │ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘ │
-├──────────────────────────────────────────────────────────────────┤
-│                    Interaction Layer                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐ │
-│  │  Zoom/   │ │ Selection│ │  Drag &  │ │  Accessibility       │
-│  │  Pan     │ │  Manager │ │  Drop    │ │  (ARIA live regions) │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘ │
-└──────────────────────────────────────────────────────────────────┘
+```seldia
+diagram block "SelDiA Architecture" {
+    // ── Entry Points ──
+    group "Entry Points" {
+        block cli: "CLI (@cli)" { style: { fill: "#bbdefb" } }
+        block web: "Web App (@web)" { style: { fill: "#bbdefb" } }
+        block vscode: "VS Code (@vscode)" { style: { fill: "#bbdefb" } }
+        block lib: "Library (@core)" { style: { fill: "#bbdefb" } }
+        block api: "REST API (future)" { style: { fill: "#bbdefb" } }
+    }
+
+    // ── Plugin Layer ──
+    group "Plugin Layer" {
+        block fc: "Flowchart Plugin" { style: { fill: "#fff9c4" } }
+        block cls: "Class Plugin" { style: { fill: "#fff9c4" } }
+        block seq: "Sequence Plugin" { style: { fill: "#fff9c4" } }
+        block more: "... 20+ plugins" { style: { fill: "#fff9c4" } }
+    }
+
+    // ── Core Layer ──
+    group "Core Layer" {
+        block parser: "Parser (Lexer + Parser)" { style: { fill: "#c8e6c9" } }
+        block ast: "AST Types" { style: { fill: "#c8e6c9" } }
+        block sem: "Semantic Analyzer" { style: { fill: "#c8e6c9" } }
+        block pm: "Plugin Manager (Registry, Lifecycle)" { style: { fill: "#c8e6c9" } }
+    }
+
+    // ── Layout Layer ──
+    group "Layout Layer" {
+        block dagre: "Dagre (graphs)" { style: { fill: "#ffccbc" } }
+        block elk: "ELK.js (hierarchical)" { style: { fill: "#ffccbc" } }
+        block custom: "Custom Layouts" { style: { fill: "#ffccbc" } }
+        block solver: "Constraint Solver (kiwi.js)" { style: { fill: "#ffccbc" } }
+    }
+
+    // ── Render Layer ──
+    group "Render Layer" {
+        block rough: "Rough.js Renderer" { style: { fill: "#e1bee7" } }
+        block shapes: "Shapes Library" { style: { fill: "#e1bee7" } }
+        block theme: "Theme Manager" { style: { fill: "#e1bee7" } }
+        block export: "Export (SVG/PNG/PDF)" { style: { fill: "#e1bee7" } }
+    }
+
+    // ── Interaction Layer ──
+    group "Interaction Layer" {
+        block zoom: "Zoom / Pan" { style: { fill: "#b2dfdb" } }
+        block sel: "Selection Manager" { style: { fill: "#b2dfdb" } }
+        block dd: "Drag & Drop" { style: { fill: "#b2dfdb" } }
+        block a11y: "Accessibility (ARIA)" { style: { fill: "#b2dfdb" } }
+    }
+
+    // ── Vertical dependencies ──
+    cli --> fc
+    web --> fc
+    vscode --> fc
+    fc --> parser
+    cls --> ast
+    parser --> dagre
+    ast --> dagre
+    sem --> dagre
+    dagre --> rough
+    elk --> shapes
+    custom --> theme
+    rough --> zoom
+    shapes --> sel
+    theme --> dd
+}
 ```
 
 ### 4.2 Data Flow (End-to-End Pipeline)
 
-```
-DSL Text
-    │
-    ▼
-┌─────────┐     ┌──────────┐     ┌───────────────┐
-│  Lexer  │────▶│  Parser  │────▶│ Semantic      │
-│ (tokens)│     │  (CST)   │     │ Analyzer      │
-└─────────┘     └──────────┘     │ (AST+Symbols) │
-                                 └───────┬───────┘
-                                         │
-                                         ▼
-                                 ┌───────────────┐
-                                 │ Plugin-Specific│
-                                 │ Model Transform│
-                                 │ (AST→IR)       │
-                                 └───────┬───────┘
-                                         │
-                                         ▼
-                                 ┌───────────────┐
-                                 │ Layout Engine │
-                                 │ (IR→Positioned │
-                                 │  Geometry)     │
-                                 └───────┬───────┘
-                                         │
-                                         ▼
-                                 ┌───────────────┐
-                                 │  Renderer     │
-                                 │ (Geometry→    │
-                                 │  SVG/Canvas)  │
-                                 └───────┬───────┘
-                                         │
-                                         ▼
-                                 ┌───────────────┐
-                                 │ Interaction   │
-                                 │ Layer (opt.)  │
-                                 └───────────────┘
+```seldia
+diagram flowchart "SelDiA Data Pipeline" {
+    dsl: [DSL Text]
+    lexer: [Lexer (tokens)]
+    parser: [Parser (CST)]
+    sem: [Semantic Analyzer (AST + Symbols)]
+    transform: [Plugin-Specific Model Transform (AST → IR)]
+    layout: [Layout Engine (IR → Positioned Geometry)]
+    renderer: [Renderer (Geometry → SVG/Canvas)]
+    interaction: [Interaction Layer (optional)]
+
+    dsl --> lexer
+    lexer --> parser
+    parser --> sem
+    sem --> transform
+    transform --> layout
+    layout --> renderer
+    renderer --> interaction
+}
 ```
 
 ### 4.3 Intermediate Representation (IR)
@@ -559,19 +566,70 @@ interface IRNode {
 - Configuration management
 
 **Key Classes:**
-```
-CoreEngine
-├── Lexer (tokenizer)
-├── Parser (CST → AST)
-├── SemanticAnalyzer
-│   ├── SymbolTable
-│   ├── TypeChecker
-│   └── ReferenceResolver
-├── PluginManager
-│   ├── PluginRegistry
-│   └── PluginLifecycle
-├── ConfigManager
-└── DiagnosticsCollector
+
+```seldia
+diagram class "CoreEngine Classes" {
+    class CoreEngine {
+        +compile(source: string): CompileResult
+        +getTheme(name: string): Theme
+        +getPlugin(type: string): DiagramPlugin
+    }
+
+    class Lexer {
+        +tokenize(source: string): Token[]
+    }
+
+    class Parser {
+        +parse(tokens: Token[]): CST
+        +toAST(cst: CST): DiagramAST
+    }
+
+    class SemanticAnalyzer {
+        +analyze(ast: DiagramAST): AnalysisResult
+    }
+    class SymbolTable {
+        +resolve(name: string): Symbol
+        +define(symbol: Symbol): void
+    }
+    class TypeChecker {
+        +check(node: ASTNode): TypeResult
+    }
+    class ReferenceResolver {
+        +resolve(ref: Reference): ASTNode
+    }
+
+    class PluginManager {
+        +register(plugin: DiagramPlugin): void
+        +get(type: DiagramType): DiagramPlugin
+    }
+    class PluginRegistry {
+        +list(): DiagramPlugin[]
+    }
+    class PluginLifecycle {
+        +init(plugin: DiagramPlugin): void
+        +destroy(plugin: DiagramPlugin): void
+    }
+
+    class ConfigManager {
+        +load(path: string): SelDiAConfig
+    }
+    class DiagnosticsCollector {
+        +report(diag: Diagnostic): void
+        +all(): Diagnostic[]
+    }
+
+    CoreEngine --> Lexer: "uses"
+    CoreEngine --> Parser: "uses"
+    CoreEngine --> SemanticAnalyzer: "uses"
+    CoreEngine --> PluginManager: "uses"
+    CoreEngine --> ConfigManager: "uses"
+    CoreEngine --> DiagnosticsCollector: "uses"
+    SemanticAnalyzer --> SymbolTable: "has"
+    SemanticAnalyzer --> TypeChecker: "has"
+    SemanticAnalyzer --> ReferenceResolver: "has"
+    PluginManager --> PluginRegistry: "has"
+    PluginManager --> PluginLifecycle: "has"
+}
 ```
 
 ### 5.2 `@seldia/layout` — The Layout Engine
@@ -604,20 +662,66 @@ CoreEngine
 | Block | Grid / freeform |
 
 **Key Classes:**
-```
-LayoutEngine (facade)
-├── HierarchicalLayout (Dagre wrapper)
-├── ForceDirectedLayout (d3-force wrapper)
-├── LayeredLayout (ELK.js wrapper)
-├── SequenceLayout
-├── RadialLayout
-├── GridLayout
-├── TimelineLayout
-├── EdgeRouter
-│   ├── SplineRouter
-│   ├── OrthogonalRouter
-│   └── StraightRouter
-└── LabelPlacer
+
+```seldia
+diagram class "LayoutEngine Classes" {
+    class LayoutEngine {
+        +layout(ir: DiagramIR): PositionedIR
+        +setAlgorithm(algo: LayoutAlgorithm): void
+    }
+
+    class HierarchicalLayout {
+        +layout(ir: DiagramIR): PositionedIR
+    }
+    class ForceDirectedLayout {
+        +layout(ir: DiagramIR): PositionedIR
+    }
+    class LayeredLayout {
+        +layout(ir: DiagramIR): PositionedIR
+    }
+    class SequenceLayout {
+        +layout(ir: DiagramIR): PositionedIR
+    }
+    class RadialLayout {
+        +layout(ir: DiagramIR): PositionedIR
+    }
+    class GridLayout {
+        +layout(ir: DiagramIR): PositionedIR
+    }
+    class TimelineLayout {
+        +layout(ir: DiagramIR): PositionedIR
+    }
+
+    class EdgeRouter {
+        +route(edges: IREdge[]): RoutedEdge[]
+    }
+    class SplineRouter {
+        +route(edges: IREdge[]): RoutedEdge[]
+    }
+    class OrthogonalRouter {
+        +route(edges: IREdge[]): RoutedEdge[]
+    }
+    class StraightRouter {
+        +route(edges: IREdge[]): RoutedEdge[]
+    }
+
+    class LabelPlacer {
+        +place(labels: Label[]): PositionedLabel[]
+    }
+
+    LayoutEngine --> HierarchicalLayout: "contains"
+    LayoutEngine --> ForceDirectedLayout: "contains"
+    LayoutEngine --> LayeredLayout: "contains"
+    LayoutEngine --> SequenceLayout: "contains"
+    LayoutEngine --> RadialLayout: "contains"
+    LayoutEngine --> GridLayout: "contains"
+    LayoutEngine --> TimelineLayout: "contains"
+    LayoutEngine --> EdgeRouter: "contains"
+    LayoutEngine --> LabelPlacer: "contains"
+    EdgeRouter --> SplineRouter: "variant"
+    EdgeRouter --> OrthogonalRouter: "variant"
+    EdgeRouter --> StraightRouter: "variant"
+}
 ```
 
 ### 5.3 `@seldia/render` — Rough.js Renderer
@@ -638,30 +742,88 @@ LayoutEngine (facade)
 - Theme system maps to Rough.js options
 
 **Key Classes:**
-```
-RenderEngine (facade)
-├── RoughRenderer
-│   ├── NodeRenderer
-│   ├── EdgeRenderer
-│   ├── GroupRenderer
-│   ├── LabelRenderer
-│   └── IconRenderer
-├── SmoothRenderer (alternative, no Rough.js)
-├── ThemeApplicator
-├── ShapeFactory
-│   ├── RectangleShape
-│   ├── DiamondShape
-│   ├── CircleShape
-│   ├── CylinderShape
-│   ├── HexagonShape
-│   ├── ParallelogramShape
-│   ├── StadiumShape
-│   ├── CloudShape
-│   ├── ActorShape (stick figure)
-│   └── CustomPathShape
-├── SVGWriter
-├── CanvasWriter
-└── Exporter (PNG, PDF)
+
+```seldia
+diagram class "RenderEngine Classes" {
+    class RenderEngine {
+        +render(ir: PositionedIR): SVGString
+        +setTheme(theme: Theme): void
+    }
+
+    class RoughRenderer {
+        +render(ir: PositionedIR): SVGString
+    }
+    class NodeRenderer {
+        +render(node: IRNode): SVGElement
+    }
+    class EdgeRenderer {
+        +render(edge: IREdge): SVGElement
+    }
+    class GroupRenderer {
+        +render(group: IRGroup): SVGElement
+    }
+    class LabelRenderer {
+        +render(label: Label): SVGElement
+    }
+    class IconRenderer {
+        +render(icon: Icon): SVGElement
+    }
+
+    class SmoothRenderer {
+        +render(ir: PositionedIR): SVGString
+    }
+
+    class ThemeApplicator {
+        +apply(theme: Theme, ir: PositionedIR): StyledIR
+    }
+
+    class ShapeFactory {
+        +create(type: ShapeType): Shape
+    }
+    class RectangleShape { }
+    class DiamondShape { }
+    class CircleShape { }
+    class CylinderShape { }
+    class HexagonShape { }
+    class ParallelogramShape { }
+    class StadiumShape { }
+    class CloudShape { }
+    class ActorShape { }
+    class CustomPathShape { }
+
+    class SVGWriter {
+        +write(elements: SVGElement[]): string
+    }
+    class CanvasWriter {
+        +write(elements: CanvasElement[]): string
+    }
+    class Exporter {
+        +export(svg: string, format: ExportFormat): Buffer
+    }
+
+    RenderEngine --> RoughRenderer: "contains"
+    RenderEngine --> SmoothRenderer: "contains"
+    RenderEngine --> ThemeApplicator: "contains"
+    RenderEngine --> ShapeFactory: "contains"
+    RenderEngine --> SVGWriter: "contains"
+    RenderEngine --> CanvasWriter: "contains"
+    RenderEngine --> Exporter: "contains"
+    RoughRenderer --> NodeRenderer: "has"
+    RoughRenderer --> EdgeRenderer: "has"
+    RoughRenderer --> GroupRenderer: "has"
+    RoughRenderer --> LabelRenderer: "has"
+    RoughRenderer --> IconRenderer: "has"
+    ShapeFactory --> RectangleShape: "creates"
+    ShapeFactory --> DiamondShape: "creates"
+    ShapeFactory --> CircleShape: "creates"
+    ShapeFactory --> CylinderShape: "creates"
+    ShapeFactory --> HexagonShape: "creates"
+    ShapeFactory --> ParallelogramShape: "creates"
+    ShapeFactory --> StadiumShape: "creates"
+    ShapeFactory --> CloudShape: "creates"
+    ShapeFactory --> ActorShape: "creates"
+    ShapeFactory --> CustomPathShape: "creates"
+}
 ```
 
 ### 5.4 `@seldia/interaction` — Interactive Layer
@@ -676,14 +838,57 @@ RenderEngine (facade)
 - ARIA annotations for accessibility
 
 **Key Classes:**
+
+```seldia
+diagram class "InteractionManager Classes" {
+    class InteractionManager {
+        +attach(target: HTMLElement): void
+        +detach(): void
+    }
+
+    class ZoomPanHandler {
+        +enable(): void
+        +setScale(scale: number): void
+    }
+    class SelectionManager {
+        +select(nodeId: string): void
+        +deselect(): void
+    }
+    class RectangularSelector {
+        +startDrag(point: Point): void
+    }
+    class ClickSelector {
+        +selectAt(point: Point): string | null
+    }
+    class DragDropHandler {
+        +startDrag(nodeId: string): void
+        +onDrop(callback: Function): void
+    }
+    class ExpandCollapseHandler {
+        +toggle(groupId: string): void
+    }
+    class TooltipManager {
+        +show(nodeId: string, content: string): void
+        +hide(): void
+    }
+    class KeyboardNavigator {
+        +handleKey(event: KeyboardEvent): void
+    }
+    class AriaAnnotator {
+        +annotate(svg: SVGElement): void
+    }
+
+    InteractionManager --> ZoomPanHandler: "has"
+    InteractionManager --> SelectionManager: "has"
+    InteractionManager --> DragDropHandler: "has"
+    InteractionManager --> ExpandCollapseHandler: "has"
+    InteractionManager --> TooltipManager: "has"
+    InteractionManager --> KeyboardNavigator: "has"
+    InteractionManager --> AriaAnnotator: "has"
+    SelectionManager --> RectangularSelector: "uses"
+    SelectionManager --> ClickSelector: "uses"
+}
 ```
-InteractionManager
-├── ZoomPanHandler
-├── SelectionManager
-│   ├── RectangularSelector
-│   └── ClickSelector
-├── DragDropHandler
-├── ExpandCollapseHandler
 ├── TooltipManager
 ├── KeyboardNavigator
 └── AriaAnnotator
@@ -757,32 +962,26 @@ The VS Code extension provides a **Mermaid-like experience**: SelDiA diagrams ar
 
 #### 5.8.1 Core User Experience
 
+```seldia
+diagram block "VS Code — Markdown + SelDiA Preview" {
+    group "VS Code Window" {
+        block editor: "README.md Editor" { style: { fill: "#e3f2fd" } }
+        block toolbar: "🔄 Preview  [</> Code]" { style: { fill: "#e8eaf6" } }
+        block preview: "Built-in Markdown Preview" { style: { fill: "#e8f5e9" } }
+
+        group "Preview renders SelDiA inline" {
+            block diagram: "📐 C4 Context Diagram (rendered SVG)\n┌──────────┐          ┌──────────┐\n│  🙋 User  │─────────▶│  💻 My App │\n└──────────┘  Uses    └──────────┘" { style: { fill: "#fff9c4" } }
+            block controls: "[ Zoom: 100% ]  [ Theme ]  [ Export ]" { style: { fill: "#f3e5f5" } }
+        }
+    }
+
+    editor --> preview: "Cmd+Shift+V"
+    preview --> diagram: "renders"
+    diagram --> controls: "toolbar"
+}
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  VS Code Window                                                      │
-├─────────────────────────────────────────────────────────────────────┤
-│  README.md                                  🔄 Preview  [</> Code]  │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ # My Architecture                                                │ │
-│ │                                                                   │ │
-│ │ ```seldia                                                         │ │
-│ │ diagram c4 context "My System" {                                  │ │
-│ │     person user: "User"                                           │ │
-│ │     system app: "My App"                                          │ │
-│ │     user --> app: "Uses"                                          │ │
-│ │ }                                                                 │ │
-│ │ ```                                                               │ │
-│ │                                                                   │ │
-│ │ ┌─────────────────────────────────────────────────────────────┐   │ │
-│ │ │  ┌──────────┐          ┌──────────┐                         │   │ │
-│ │ │  │  🙋 User  │─────────▶│  💻 My App │                       │   │ │
-│ │ │  └──────────┘  Uses    └──────────┘                         │   │ │
-│ │ │                                                               │   │ │
-│ │ │  [ Zoom: 100% ]  [ Theme: sketchy-light ]  [ Export ▼ ]     │   │ │
-│ │ └─────────────────────────────────────────────────────────────┘   │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-```
+
+*The `\`\`\`seldia` fenced block in the Markdown source is replaced by the rendered diagram inline within VS Code's built-in Markdown preview. No separate panel.*
 
 **Key behaviors (mirroring Mermaid's VS Code extension):**
 
@@ -795,36 +994,27 @@ The VS Code extension provides a **Mermaid-like experience**: SelDiA diagrams ar
 
 #### 5.8.2 Markdown Integration Architecture
 
+```seldia
+diagram flowchart "Markdown → Preview Integration" {
+    md: [Markdown Document\n(e.g., README.md)]
+    detector: [Block Detector\nScans for ```seldia blocks]
+    compile: [Core Engine\nCompile DSL → SVG]
+    plugin: [Markdown-It Plugin\nReplaces fence with SVG]
+    preview: [Built-in Markdown Preview\nRenders diagrams inline]
+    interaction: [Preview Script\nZoom, pan, export]
+    editor: [Text Editor\nDSL source remains editable]
+
+    md --> detector: "open/save"
+    detector --> compile: "extract source"
+    compile --> plugin: "SVG string"
+    plugin --> preview: "inject HTML"
+    preview --> interaction: "attach controls"
+    editor --> detector: "edit triggers rescan"
+    interaction --> editor: "click 'Edit' → reveal source"
+}
 ```
-Markdown Document (e.g., README.md)
-    │
-    ▼
-┌──────────────────────────────────┐
-│  Markdown Decorator Provider     │
-│  (vscode.TextEditorDecoration)   │
-│                                  │
-│  1. Scan document for ```seldia  │
-│     fenced code blocks           │
-│  2. Extract DSL source from each │
-│  3. Compile via @seldia/core     │
-│  4. Replace code block region    │
-│     with rendered SVG decoration │
-│  5. Register CodeLens for each   │
-│     diagram block                │
-└──────────────┬───────────────────┘
-               │
-               ▼
-┌──────────────────────────────────┐
-│  SelDiA Markdown Preview Panel   │
-│  (Custom Webview Panel)          │
-│                                  │
-│  - Receives DSL source           │
-│  - Renders interactive diagram   │
-│  - Handles visual edit gestures  │
-│  - Pushes changes back to editor │
-│  - Supports zoom/pan/export      │
-└──────────────────────────────────┘
-```
+
+*The `extendMarkdownIt` API hooks into VS Code's built-in Markdown preview — no separate webview panel is opened for markdown files.*
 
 **Detection of SelDiA blocks:**
 
@@ -870,37 +1060,18 @@ When a diagram is rendered in the VS Code webview, users can interact with it vi
 
 #### 5.8.4 Visual → DSL Code Synchronization (Round-Trip)
 
-```
-┌─────────────┐    Visual Edit     ┌──────────────┐
-│  Rendered   │ ───Drag node─────▶ │  EditHandler  │
-│  Diagram    │                    │               │
-│  (Webview)  │ ◀──Re-render────── │  1. Map visual│
-└─────────────┘                    │     change to │
-                                   │     AST diff  │
-                                   │  2. Generate  │
-                                   │     DSL patch │
-                                   │  3. Apply to  │
-                                   │     editor    │
-                                   └──────┬────────┘
-                                          │
-                                          ▼
-                                   ┌──────────────┐
-                                   │  VS Code      │
-                                   │  TextEditor   │
-                                   │  (DSL source) │
-                                   └──────┬────────┘
-                                          │ DSL edit
-                                          ▼
-                                   ┌──────────────┐
-                                   │  Change       │
-                                   │  Handler      │
-                                   │               │
-                                   │  1. Re-parse  │
-                                   │  2. Re-layout │
-                                   │  3. Push new  │
-                                   │     SVG to    │
-                                   │     webview   │
-                                   └──────────────┘
+```seldia
+diagram flowchart "Visual Edit → DSL Round-Trip" {
+    preview: [Rendered Diagram\n(Built-in Markdown Preview)]
+    editHandler: [Edit Handler\n1. Map visual change to AST diff\n2. Generate DSL patch\n3. Apply to editor]
+    editor: [VS Code TextEditor\n(DSL Source)]
+    changeHandler: [Change Handler\n1. Re-parse\n2. Re-layout\n3. Push new SVG]
+
+    preview --> editHandler: "Visual Edit\n(Drag, dbl-click, context menu)"
+    editHandler --> editor: "vscode.WorkspaceEdit"
+    editor --> changeHandler: "DSL edit detected"
+    changeHandler --> preview: "Re-render SVG"
+}
 ```
 
 **Key design constraint:** Visual edits must produce **deterministic, readable DSL code** — not machine-generated gibberish. The edit handler uses:
@@ -1161,56 +1332,60 @@ The extension can export a Markdown file (`.md`, `.mdx`) containing ` ```seldia 
 
 ##### 5.8.10.1 Pipeline
 
-```
-Markdown Source (README.md)
-    │
-    ├── 1. Detect ```seldia blocks via BlockDetector
-    │
-    ├── 2. Compile each block: DSL → @seldia/core → SVG string
-    │
-    ├── 3. Parse Markdown → HTML via `marked`
-    │       • Fenced ```seldia blocks → replaced with <seldia-diagram> wrappers
-    │
-    ├── 4. Inject compiled SVGs into HTML
-    │       • Each <seldia-diagram> placeholder → <div class="seldia-diagram"> + <svg>...</svg>
-    │
-    ├── 5. Assemble full HTML document
-    │       • Inject print-optimized CSS (page breaks, margins, fonts)
-    │       • Add header/footer via Puppeteer displayHeaderFooter
-    │       • Generate Table of Contents if > 3 diagrams detected
-    │
-    ├── 6. Launch headless Chromium via Puppeteer
-    │       • page.setContent(html)
-    │       • page.pdf({ format: 'A4', printBackground: true, ... })
-    │
-    └── 7. Write PDF to disk
-            • Save alongside the .md file (or user-specified output path)
+```seldia
+diagram flowchart "Markdown → PDF Export Pipeline" {
+    md: [Markdown Source\n(README.md)]
+    detect: [1. Detect ```seldia blocks\nvia BlockDetector]
+    compile: [2. Compile each block\nDSL → @seldia/core → SVG]
+    parse: [3. Parse Markdown → HTML\nvia marked]
+    inject: [4. Inject compiled SVGs\ninto HTML placeholders]
+    assemble: [5. Assemble full HTML\n+ print CSS, TOC, header/footer]
+    puppeteer: [6. Launch Chromium\nvia Puppeteer]
+    write: [7. Write PDF to disk]
+
+    md --> detect
+    detect --> compile
+    compile --> parse
+    parse --> inject
+    inject --> assemble
+    assemble --> puppeteer
+    puppeteer --> write
+}
 ```
 
 ##### 5.8.10.2 HTML Assembly (marked Custom Renderer)
 
 The `marked` library is configured with a **custom renderer** that intercepts fenced code blocks with `language === 'seldia'`:
 
-```
-Markdown:                          HTML Output:
-┌──────────────────────────┐       ┌──────────────────────────────────────┐
-│ # Architecture            │       │ <h1>Architecture</h1>                │
-│                           │       │                                      │
-│ ```seldia                 │       │ <div class="seldia-diagram"          │
-│ diagram c4 context "..." │  ──▶  │      data-diagram-id="block-1">      │
-│     person user: "User"  │       │   <div class="seldia-diagram__header">│
-│     system app: "My App" │       │     <span>System Context</span>       │
-│     user --> app: "Uses" │       │     <span class="type">C4 Context    │
-│ }                         │       │   </span></div>                      │
-│ ```                       │       │   <svg viewBox="..." width="...">    │
-│                           │       │     <!-- Rough.js rendered SVG -->   │
-│ Some text after.          │       │   </svg>                             │
-└──────────────────────────┘       │   <div class="seldia-diagram__caption">│
-                                   │     Fig. 1: System Context Diagram    │
-                                   │   </div>                              │
-                                   │ </div>                                │
-                                   │ <p>Some text after.</p>               │
-                                   └──────────────────────────────────────┘
+```seldia
+diagram flowchart "marked Custom Renderer" {
+    md_input: [
+        Markdown Input
+        # Architecture
+        ```seldia
+        diagram c4 context "..."
+            person user: "User"
+            system app: "My App"
+            user --> app: "Uses"
+        ```
+    ]
+
+    marked: [marked Custom Renderer\nintercepts lang=seldia fences]
+
+    html_output: [
+        HTML Output
+        <h1>Architecture</h1>
+        <div class="seldia-diagram">
+          <div class="header">System Context — C4</div>
+          <svg><!-- Rough.js SVG --></svg>
+          <div class="caption">Fig. 1</div>
+        </div>
+        <p>Some text after.</p>
+    ]
+
+    md_input --> marked: "parse"
+    marked --> html_output: "replace fence with <div> + SVG"
+}
 ```
 
 **Custom Renderer rules:**
@@ -1528,26 +1703,31 @@ This enables:
 
 ##### 5.8.11.7 User Experience Flow
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  Extension Installed / Activated                                  │
-│  ↓                                                                │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │  🔔 SelDiA: Teach Copilot to write diagrams?                 │ │
-│  │     Deploy the SelDiA DSL skill so Copilot can generate      │ │
-│  │     flowcharts, C4 models, sequence diagrams, and more.      │ │
-│  │                                                              │ │
-│  │     [Deploy to Workspace]  [Deploy for All Workspaces]       │ │
-│  │     [Not Now]                                                │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│  ↓                                                                │
-│  Skill deployed → Copilot can now:                                │
-│  • Generate SelDiA diagrams from natural language descriptions    │
-│  • Suggest diagram types for architecture questions               │
-│  • Complete SelDiA DSL code inline                                │
-│  • Explain and refactor existing diagrams                         │
-│  • Convert between diagram types (e.g., flowchart → sequence)     │
-└──────────────────────────────────────────────────────────────────┘
+```seldia
+diagram flowchart "Copilot Skill Deployment UX" {
+    install: [Extension Installed / Activated]
+    prompt: {Prompt: "Teach Copilot\nto write diagrams?"}
+    deploy_ws: [Deploy to Workspace]
+    deploy_user: [Deploy for All Workspaces]
+    not_now: [Not Now]
+    deployed: [Skill Deployed ✅]
+    capabilities: [
+        Copilot can now:
+        • Generate diagrams from NL
+        • Suggest diagram types
+        • Complete DSL code inline
+        • Explain & refactor diagrams
+        • Convert between types
+    ]
+
+    install --> prompt
+    prompt --> deploy_ws: "Workspace"
+    prompt --> deploy_user: "User-wide"
+    prompt --> not_now: "Dismiss"
+    deploy_ws --> deployed
+    deploy_user --> deployed
+    deployed --> capabilities
+}
 ```
 
 ##### 5.8.11.8 Design Decisions
@@ -1789,101 +1969,86 @@ The interaction layer supports a **visual edit mode** that enables direct manipu
 
 #### 9.4.1 Edit Operations
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Visual Edit Operations                              │
-├──────────────┬──────────────┬───────────────────────┤
-│  Drag & Drop │  Inline Edit │  Structural Edit      │
-├──────────────┼──────────────┼───────────────────────┤
-│ • Move node  │ • Edit label │ • Add node            │
-│ • Resize     │ • Edit style │ • Delete node         │
-│ • Reroute    │   properties │ • Add/remove edge     │
-│   edge       │ • Change     │ • Change shape        │
-│ • Reorder    │   shape type │ • Group/ungroup       │
-│   z-index    │              │                       │
-└──────────────┴──────────────┴───────────────────────┘
+```seldia
+diagram block "Visual Edit Operations" {
+    group "Drag & Drop" {
+        card drag_move: "Move node"
+        card drag_resize: "Resize"
+        card drag_reroute: "Reroute edge"
+        card drag_reorder: "Reorder z-index"
+    }
+
+    group "Inline Edit" {
+        card inline_label: "Edit label"
+        card inline_style: "Edit style properties"
+        card inline_shape: "Change shape type"
+    }
+
+    group "Structural Edit" {
+        card struct_add: "Add node"
+        card struct_del: "Delete node"
+        card struct_edge: "Add/remove edge"
+        card struct_group: "Group/ungroup"
+    }
+}
 ```
 
 #### 9.4.2 Edit Pipeline (Visual → IR → DSL)
 
-```
-Visual Gesture (drag, double-click, right-click)
-    │
-    ▼
-┌────────────────────┐
-│  Gesture Recognizer │  Maps DOM/Canvas events to edit intents
-└────────┬───────────┘
-         │
-         ▼
-┌────────────────────┐
-│  Edit Manager       │  Validates the edit, computes affected elements
-└────────┬───────────┘
-         │
-         ▼
-┌────────────────────┐
-│  IR Mutator         │  Applies the change to the in-memory Diagram IR
-└────────┬───────────┘
-         │
-         ▼
-┌────────────────────┐
-│  Incremental Layout │  Re-lays out only affected elements
-└────────┬───────────┘
-         │
-         ▼
-┌────────────────────┐
-│  Incremental Render │  Re-renders only changed SVG elements
-└────────┬───────────┘
-         │
-         ▼
-┌────────────────────┐
-│  Source Map → DSL   │  Converts IR change back to DSL source edit
-│  Patch Generator    │  (used in VS Code for bidirectional sync)
-└────────────────────┘
+```seldia
+diagram flowchart "Visual Edit Pipeline" {
+    gesture: [Visual Gesture\n(drag, dbl-click, right-click)]
+    recognizer: [Gesture Recognizer\nMaps DOM events to edit intents]
+    editMgr: [Edit Manager\nValidates edit, computes affected elements]
+    irMutator: [IR Mutator\nApplies change to in-memory Diagram IR]
+    incLayout: [Incremental Layout\nRe-lays out only affected elements]
+    incRender: [Incremental Render\nRe-renders only changed SVG]
+    sourceMap: [Source Map → DSL\nPatch Generator]
+    dslPatch: [DSL Source Edit\n(Minimal text edit via WorkspaceEdit)]
+
+    gesture --> recognizer
+    recognizer --> editMgr
+    editMgr --> irMutator
+    irMutator --> incLayout
+    incLayout --> incRender
+    incRender --> sourceMap
+    sourceMap --> dslPatch
+}
 ```
 
 #### 9.4.3 Interaction State Machine
 
-```
-                    ┌──────────┐
-                    │  IDLE    │ ◀────────────────────────────┐
-                    └────┬─────┘                              │
-                         │ click node                         │
-                         ▼                                    │
-                    ┌──────────┐    drag start     ┌────────┐ │
-                    │ SELECTED │─────────────────▶│DRAGGING│ │
-                    └────┬─────┘                  └───┬────┘ │
-                         │ dblClick                    │      │
-                    ┌────▼─────┐                  drag end   │
-                    │  EDITING │                       │      │
-                    │  (label) │                       ▼      │
-                    └────┬─────┘                  ┌────────┐ │
-                         │ Enter/Esc              │ IDLE   │─┘
-                         ▼                       └────────┘
-                    ┌──────────┐
-                    │  IDLE    │
-                    └──────────┘
+```seldia
+diagram state "Diagram Interaction States" {
+    [*] --> Idle
+    Idle --> Selected: "click node"
+    Selected --> Dragging: "drag start"
+    Dragging --> Idle: "drag end"
+    Selected --> Editing: "dblClick"
+    Editing --> Idle: "Enter / Esc"
 
-    Right-click on node/edge → Context Menu (always available)
-    Esc → Return to IDLE from any state
+    note right of Idle: "Esc → Return to IDLE from any state"
+    note right of Selected: "Right-click → Context Menu (always available)"
+}
 ```
 
 #### 9.4.4 Inline Property Editor
 
 Double-clicking a node opens an inline property editor overlay:
 
-```
-┌──────────────────────────────────┐
-│  Edit Node: "Payment Service"    │
-│                                  │
-│  Label:   [Payment Service    ]  │
-│  Shape:   [Rectangle ▼        ]  │
-│  Fill:    [#e1f5fe       ] [■]  │
-│  Stroke:  [#01579b       ] [■]  │
-│  Roughness: [══════○═══════] 1.2 │
-│  Font Size: [════○════════] 14   │
-│                                  │
-│  [Apply]  [Cancel]               │
-└──────────────────────────────────┘
+```seldia
+diagram form "Node Property Editor" {
+    section "Edit Node" {
+        field label: text { placeholder: "Payment Service" }
+        field shape: select { options: ["Rectangle", "Diamond", "Circle", "Cylinder", "Hexagon", "Stadium", "Cloud"] }
+        field fill: color { default: "#e1f5fe" }
+        field stroke: color { default: "#01579b" }
+        field roughness: range { min: 0, max: 5, default: 1.2 }
+        field fontSize: number { min: 8, max: 48, default: 14 }
+    }
+    submit "Apply" { style: primary }
+    submit "Cancel" { style: secondary }
+}
 ```
 
 The property editor is a lightweight HTML form rendered as an overlay on the SVG/Canvas. It reads the current IR node properties and writes changes back through the edit pipeline.

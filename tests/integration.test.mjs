@@ -215,6 +215,30 @@ for (const file of exampleFiles) {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Synchronous compile + styling + position override (Markdown preview path)
+// ---------------------------------------------------------------------------
+console.log('\n🧩 Engine capability tests:');
+
+const syncResult = engine.compileSync(flowchart);
+assert(syncResult.ok, 'compileSync() renders without awaiting');
+assert(typeof syncResult.then === 'undefined', 'compileSync() returns a value, not a Promise');
+
+const idSvg = engine.compileSync('diagram flowchart "T" { alpha: (Start)\n beta: [Do]\n alpha --> beta }');
+assert(idSvg.ok && idSvg.value.svg.includes('data-seldia-node-id="alpha"'), 'SVG carries data-seldia-node-id for interaction');
+
+const styled = engine.compileSync('diagram flowchart "T" { a: (Start) { fill: "#fff", roughness: 2 } }');
+assert(styled.ok, 'Inline node style block compiles');
+
+const moved = engine.parse('diagram flowchart "T" { a: (Start) { x: 500, y: 333 }\n b: [Do]\n a --> b }');
+if (moved.ok) {
+  const laid = engine.layout(engine.transform(engine.analyze(moved.value).value).value).value;
+  const a = laid.diagram.nodes.find((n) => n.id === 'a');
+  assert(a.position.x === 500 && a.position.y === 333, 'Flat x/y layout override positions the node');
+} else {
+  assert(false, 'Position-override DSL parses');
+}
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 console.log('\n' + '='.repeat(50));

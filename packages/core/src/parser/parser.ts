@@ -106,6 +106,10 @@ class Tokenizer {
   private readIdentOrKeyword(start: CharPos): Token {
     let value = '';
     while (this.pos < this.source.length && /[a-zA-Z0-9_-]/.test(this.peek())) {
+      // A hyphen that begins an arrow (`->`, `-->`, `---`) terminates the
+      // identifier so that `a-->b` tokenizes as `a` `-->` `b` (not `a--`).
+      // A hyphen inside an identifier (`my-node`) is followed by a name char.
+      if (this.peek() === '-' && (this.peek(1) === '-' || this.peek(1) === '>')) break;
       value += this.peek();
       this.advance();
     }
@@ -633,16 +637,18 @@ class Parser {
         if (this.peek().type === TokenType.SHAPE) {
           const shapeTok = this.consume();
           const detected = detectShape(shapeTok.value);
+          const shapeStyle = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
           return {
             kind: 'NodeDecl', id: idTok2.value, shape: detected.shape, label: detected.label,
-            description: undefined, style: undefined, loc: this.locSpan(typeTok, this.peek(-1)),
+            description: undefined, style: shapeStyle, loc: this.locSpan(typeTok, this.peek(-1)),
           };
         } else if (this.peek().type === TokenType.STRING) {
           label = this.consume().value;
         }
+        const typedStyle = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
         return {
           kind: 'NodeDecl', id: idTok2.value, shape: 'rectangle' as any, label,
-          description: undefined, style: undefined, loc: this.locSpan(typeTok, this.peek(-1)),
+          description: undefined, style: typedStyle, loc: this.locSpan(typeTok, this.peek(-1)),
         };
       }
       throw new ParseError(`Expected ":" or arrow after identifier "${idTok.value}"`, idTok);
@@ -660,9 +666,10 @@ class Parser {
         this.consume(); // :
         label = this.expect(TokenType.STRING, 'Expected participant label string').value;
       }
+      const partStyle = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
       return {
         kind: 'NodeDecl', id: idTok.value, shape: 'actor' as any,
-        label, description: undefined, style: undefined,
+        label, description: undefined, style: partStyle,
         loc: this.locSpan(idTok, this.peek(-1)),
       };
     }
@@ -694,9 +701,10 @@ class Parser {
       throw new ParseError('Expected shape or string literal after ":"', this.peek());
     }
 
+    const style = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
     return {
       kind: 'NodeDecl', id: idTok.value, shape, label,
-      description: undefined, style: undefined, loc: this.locSpan(idTok, this.peek(-1)),
+      description: undefined, style, loc: this.locSpan(idTok, this.peek(-1)),
     };
   }
 
@@ -704,9 +712,10 @@ class Parser {
     const shapeTok = this.consume();
     const detected = detectShape(shapeTok.value);
     const id = detected.label.replace(/[^a-zA-Z0-9_-]/g, '_') || 'node';
+    const style = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
     return {
       kind: 'NodeDecl', id, shape: detected.shape, label: detected.label,
-      description: undefined, style: undefined, loc: this.loc(shapeTok),
+      description: undefined, style, loc: this.loc(shapeTok),
     };
   }
 
@@ -754,6 +763,7 @@ class Parser {
       } else if (this.peek().type === TokenType.IDENT) {
         let parts = '';
         while (this.peek().type !== TokenType.EOF && this.peek().type !== TokenType.RBRACE &&
+               this.peek().type !== TokenType.LBRACE &&
                this.peek().type !== TokenType.KW_DIAGRAM && this.peek().type !== TokenType.KW_GROUP) {
           const t = this.consume();
           parts += t.value + ' ';
@@ -762,9 +772,13 @@ class Parser {
       }
     }
 
+    // Optional edge attribute/style block: { stroke: "...", label: "..." }
+    const style = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
+    if (!label && style && typeof style.label === 'string') label = style.label;
+
     return {
       kind: 'EdgeDecl', sourceId: srcTok.value, targetId: tgtId,
-      direction, label, style: undefined, routing: 'straight', loc: this.locSpan(srcTok, tgtTok),
+      direction, label, style, routing: 'straight', loc: this.locSpan(srcTok, tgtTok),
     };
   }
 
@@ -805,16 +819,77 @@ class Parser {
     return { kind: 'LayoutDecl', engine: engineTok.value, options: {}, loc: this.locSpan(kw, this.peek(-1)) };
   }
 
-  // ── Style block (stub) ───────────────────────────────────────────────────
+  // ── Style block ───────────────────────────────────────────────────────────
   parseStyleBlock(): any {
     const kw = this.consume(); // style
-    this.expect(TokenType.LBRACE, 'Expected "{" for style block');
-    // Skip style items for now
+    const style = this.parseAttrBlock();
+    return { kind: 'StyleDecl', target: 'all', style, loc: this.locSpan(kw, this.peek(-1)) };
+  }
+
+  // ── Inline attribute / style block: { key: value, ... } ───────────────────
+  // Supports scalar values (string, number, boolean, bare identifier), nested
+  // objects (e.g. `layout: { x: 300, y: 200 }`), and simple arrays. This is
+  // the shared parser for node/edge style blocks and layout hints.
+  parseAttrBlock(): Record<string, any> {
+    this.expect(TokenType.LBRACE, 'Expected "{" to open attribute block');
+    const obj: Record<string, any> = {};
     while (this.peek().type !== TokenType.RBRACE && this.peek().type !== TokenType.EOF) {
-      this.consume();
+      const keyTok = this.peek();
+      if (keyTok.type !== TokenType.IDENT && keyTok.type !== TokenType.STRING) {
+        // Skip stray tokens (e.g. leading comma) without spinning forever.
+        this.consume();
+        continue;
+      }
+      const key = this.consume().value;
+      if (this.peek().type === TokenType.COLON) {
+        this.consume(); // :
+        obj[key] = this.parseAttrValue();
+      } else {
+        obj[key] = true; // bare flag, e.g. { shadow }
+      }
+      if (this.peek().type === TokenType.COMMA) this.consume();
     }
-    this.expect(TokenType.RBRACE, 'Expected "}" after style block');
-    return { kind: 'StyleDecl', target: 'all', style: {}, loc: this.locSpan(kw, this.peek(-1)) };
+    this.expect(TokenType.RBRACE, 'Expected "}" to close attribute block');
+    return obj;
+  }
+
+  parseAttrValue(): any {
+    const t = this.peek();
+    switch (t.type) {
+      case TokenType.STRING:
+        this.consume();
+        return t.value;
+      case TokenType.NUMBER:
+        this.consume();
+        return parseFloat(t.value);
+      case TokenType.LBRACE:
+        return this.parseAttrBlock();
+      case TokenType.IDENT: {
+        this.consume();
+        const lower = t.value.toLowerCase();
+        if (lower === 'true') return true;
+        if (lower === 'false') return false;
+        return t.value;
+      }
+      case TokenType.SHAPE: {
+        // Arrays are tokenized as a single `[a, b, c]` SHAPE token.
+        this.consume();
+        const raw = t.value;
+        if (raw.startsWith('[') && raw.endsWith(']')) {
+          const inner = raw.slice(1, -1).trim();
+          if (!inner) return [];
+          return inner.split(',').map((s) => {
+            const v = s.trim().replace(/^"|"$/g, '');
+            const n = Number(v);
+            return v !== '' && !Number.isNaN(n) ? n : v;
+          });
+        }
+        return raw;
+      }
+      default:
+        this.consume();
+        return t.value;
+    }
   }
 }
 

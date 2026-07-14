@@ -1,13 +1,17 @@
 ## Preview Your Diagram
 
-Toggle between code and rendered diagram view to see your DSL come to life.
+Diagrams are rendered directly inside VS Code's built-in **Markdown preview**.
 
-### Commands:
+### To view your diagrams:
+1. Open any `.md` file containing ` ```seldia ` fenced code blocks
+2. Open the Markdown preview: **`Ctrl+Shift+V`** or **`Ctrl+K V`**
+3. Your SelDiA diagrams will appear rendered inline within the document
+
+### For `.sld` files:
 - **`Ctrl+Shift+V`** — Toggle between code and diagram view
-- **`Ctrl+K V`** — Open preview to the side
-- **`SelDiA: Open Interactive Diagram`** — Open the interactive editor with zoom/pan, drag-drop, and inline editing
+- **`Ctrl+K V`** — Open interactive diagram to the side
 
-### Interactive features:
+### Interactive features (in `.sld` editor):
 - 🔍 **Zoom** — Scroll to zoom in/out
 - ✋ **Pan** — Shift+Click and drag, or middle-mouse drag
 - 👆 **Select** — Click a node or edge to select it

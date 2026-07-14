@@ -10,11 +10,11 @@ import { resolve, dirname } from 'path';
 import { BlockDetector, type SelDiABlock } from './markdown/detector.js';
 import { SelDiADecorator } from './markdown/decorator.js';
 import { SelDiACodeLensProvider } from './markdown/codelens.js';
-import { SelDiAPreviewPanel } from './markdown/preview-panel.js';
 import { registerLanguageServer } from './language-server/index.js';
 import { SelDiAInteractiveProvider } from './webview/provider.js';
 import { SelDiAEditorProvider } from './editor/seldia-editor-provider.js';
-import { SplitPanel } from './editor/split-panel.js';
+import { createSelDiAMarkdownItPlugin } from './markdown-preview/plugin.js';
+import { registerEditCommands } from './edit/commands.js';
 
 let engine: CoreEngine;
 let skillStatusBarItem: vscode.StatusBarItem | undefined;
@@ -41,6 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     SelDiAEditorProvider.register(context, engine)
   );
+
+  // ── Markdown preview edit commands (drag / rename / attributes) ───────────
+  registerEditCommands(context);
 
   // ── Markdown Detection ────────────────────────────────────────────────────
   const decorator = new SelDiADecorator(engine);
@@ -103,15 +106,26 @@ export function activate(context: vscode.ExtensionContext) {
     const isSldFile = editor.document.fileName.endsWith('.sld');
     if (isSldFile) {
       SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
-    } else {
-      SelDiAPreviewPanel.createOrShow(source);
+    } else if (editor.document.fileName.match(/\.(md|mdx|rst)$/)) {
+      // Open the built-in markdown preview to show diagrams inline
+      vscode.commands.executeCommand('markdown.showPreview');
     }
   });
 
   const openPreview = vscode.commands.registerCommand('seldia.openPreview', (sourceArg?: string) => {
-    const source = sourceArg || vscode.window.activeTextEditor?.document.getText();
-    if (!source) { vscode.window.showWarningMessage('No source to preview'); return; }
-    SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, vscode.window.activeTextEditor?.document.uri);
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showWarningMessage('No active editor');
+      return;
+    }
+    const fileName = editor.document.fileName;
+    if (fileName.endsWith('.sld')) {
+      const source = editor.document.getText();
+      SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
+    } else if (fileName.match(/\.(md|mdx|rst)$/)) {
+      // Open the built-in markdown preview to show diagrams inline
+      vscode.commands.executeCommand('markdown.showPreviewToSide');
+    }
   });
 
   const insertDiagram = vscode.commands.registerCommand('seldia.insertDiagram', () => {
@@ -319,10 +333,74 @@ export function activate(context: vscode.ExtensionContext) {
     SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
   });
 
+  // ── Reveal Source Command (from Markdown Preview "Edit" button) ──────────
+  const revealSource = vscode.commands.registerCommand('seldia.revealSource', (args?: { blockId?: string; sourceHash?: string }) => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      // Try to find the markdown editor from visible editors
+      const mdEditor = vscode.window.visibleTextEditors.find(
+        e => e.document.fileName.match(/\.(md|mdx|rst)$/)
+      );
+      if (!mdEditor) {
+        vscode.window.showWarningMessage('No markdown editor found. Open your .md file first.');
+        return;
+      }
+      // Focus the markdown editor
+      vscode.window.showTextDocument(mdEditor.document, mdEditor.viewColumn);
+      return;
+    }
+
+    if (!editor.document.fileName.match(/\.(md|mdx|rst)$/)) {
+      vscode.window.showWarningMessage('Active file is not a Markdown document.');
+      return;
+    }
+
+    // Find all ```seldia blocks and navigate to the one that matches
+    const text = editor.document.getText();
+    const lines = text.split('\n');
+    const seldiaBlockRegex = /^```(seldia|seldia-\w+)/;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (seldiaBlockRegex.test(lines[i])) {
+        // Found a seldia block, check if it matches the hash
+        const startLine = i;
+        const sourceLines: string[] = [];
+        i++;
+        while (i < lines.length && !/^```$/.test(lines[i])) {
+          sourceLines.push(lines[i]);
+          i++;
+        }
+        const source = sourceLines.join('\n');
+        const sourceHash = Math.abs(hashString(source)).toString(36);
+
+        if (args?.sourceHash && sourceHash === args.sourceHash) {
+          // Found matching block — reveal it
+          const startPos = new vscode.Position(startLine, 0);
+          const endPos = new vscode.Position(i, 3);
+          editor.selection = new vscode.Selection(startPos, endPos);
+          editor.revealRange(new vscode.Range(startPos, endPos), vscode.TextEditorRevealType.InCenter);
+          return;
+        }
+
+        // Also match by blockId if present
+        if (args?.blockId && args.blockId === `seldia-${sourceHash}`) {
+          const startPos = new vscode.Position(startLine, 0);
+          const endPos = new vscode.Position(i, 3);
+          editor.selection = new vscode.Selection(startPos, endPos);
+          editor.revealRange(new vscode.Range(startPos, endPos), vscode.TextEditorRevealType.InCenter);
+          return;
+        }
+      }
+    }
+
+    vscode.window.showInformationMessage('Navigate to any ```seldia block in the editor to edit.');
+  });
+
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, insertDiagram, exportDiagram,
-    exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill
+    exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
+    revealSource
   );
 
   // ── Auto-deploy Copilot skill on first activation ─────────────────────────
@@ -340,16 +418,13 @@ export function activate(context: vscode.ExtensionContext) {
       });
     }, 3000);
   }
-}
 
-function compileAndRender(source: string, panel: vscode.WebviewPanel) {
-  engine.compile(source).then(result => {
-    if (result.ok) {
-      panel.webview.html = `<!DOCTYPE html><html><head><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f5f5f5}svg{max-width:100%;box-shadow:0 2px 10px rgba(0,0,0,.1);border-radius:8px}</style></head><body>${result.value.svg}</body></html>`;
-    } else {
-      panel.webview.html = `<!DOCTYPE html><html><body style="padding:20px;color:#e53e3e;font-family:monospace"><h2>❌ Compilation Error</h2><pre>${result.errors.map(e => `[${e.severity}] ${e.message}`).join('\n')}</pre></body></html>`;
-    }
-  });
+  // ── Return extendMarkdownIt for built-in Markdown preview integration ─────
+  return {
+    extendMarkdownIt(md: any) {
+      return createSelDiAMarkdownItPlugin(engine)(md);
+    },
+  };
 }
 
 // ── Skill Status Bar Refresh ─────────────────────────────────────────────────
@@ -379,4 +454,15 @@ function refreshSkillStatusBar() {
 
 export function deactivate() {
   console.log('SelDiA extension deactivated');
+}
+
+// ── Utility: simple hash for source matching ──────────────────────────
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const chr = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  return hash;
 }

@@ -32,16 +32,15 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
       const startRange = new vscode.Range(startLine, startLine);
 
       lenses.push(new vscode.CodeLens(startRange, {
-        title: '🔍 View Diagram',
-        command: 'seldia.openPreview',
-        arguments: [block.source],
-        tooltip: 'Open this SelDiA diagram in a preview panel',
+        title: '🔍 Preview Diagram',
+        command: 'markdown.showPreviewToSide',
+        tooltip: 'Open the Markdown preview to see this diagram rendered inline',
       }));
 
       lenses.push(new vscode.CodeLens(startRange, {
-        title: block.rendered ? '✏️ Edit Code' : '▶ Render',
-        command: block.rendered ? 'seldia.toggleView' : 'seldia.openPreview',
-        tooltip: block.rendered ? 'Switch to code view' : 'Render this diagram',
+        title: '▶ Render',
+        command: 'markdown.showPreview',
+        tooltip: 'Render this diagram in the Markdown preview',
       }));
 
       // "Export" lens

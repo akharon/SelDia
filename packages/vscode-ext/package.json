@@ -42,7 +42,7 @@
     "onLanguage:seldia",
     "onLanguage:markdown"
   ],
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.cjs",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -98,6 +98,13 @@
         "priority": "default"
       }
     ],
+    "markdown.markdownItPlugins": true,
+    "markdown.previewScripts": [
+      "./dist/seldia-preview.js"
+    ],
+    "markdown.previewStyles": [
+      "./media/seldia-preview.css"
+    ],
     "commands": [
       {
         "command": "seldia.toggleView",
@@ -105,7 +112,7 @@
       },
       {
         "command": "seldia.openPreview",
-        "title": "SelDiA: Open Preview to the Side"
+        "title": "SelDiA: Open Diagram in Markdown Preview"
       },
       {
         "command": "seldia.openInteractive",
@@ -138,6 +145,22 @@
       {
         "command": "seldia.checkSkillStatus",
         "title": "SelDiA: Check Skill Status"
+      },
+      {
+        "command": "seldia.revealSource",
+        "title": "SelDiA: Reveal Diagram Source"
+      },
+      {
+        "command": "seldia.moveNode",
+        "title": "SelDiA: Move Node"
+      },
+      {
+        "command": "seldia.editNodeLabel",
+        "title": "SelDiA: Rename Node"
+      },
+      {
+        "command": "seldia.editNodeAttr",
+        "title": "SelDiA: Edit Node Attribute"
       }
     ],
     "snippets": [
@@ -167,7 +190,7 @@
       "editor/title": [
         {
           "command": "seldia.toggleView",
-          "when": "editorLangId == seldia || seldiaMarkdownActive",
+          "when": "editorLangId == seldia",
           "group": "navigation"
         }
       ],
@@ -203,7 +226,7 @@
       {
         "command": "seldia.openPreview",
         "key": "ctrl+k v",
-        "when": "editorLangId == seldia"
+        "when": "editorLangId == seldia || editorLangId == markdown"
       },
       {
         "command": "seldia.insertDiagram",
@@ -271,6 +294,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable SelDiA diagram detection in Markdown files"
+        },
+        "seldia.markdown.autoPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the Markdown preview when a Markdown file with SelDiA blocks is opened"
         },
         "seldia.copilotSkill.enabled": {
           "type": "boolean",

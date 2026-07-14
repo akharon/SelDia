@@ -21,7 +21,9 @@ The diagram above is automatically rendered inline.
 ````
 
 ### Features:
-- **Auto-render** — Diagrams render automatically when you open the file
-- **CodeLens** — Click "View Diagram" above each block to open it in preview
+- **Built-in Markdown Preview** — Diagrams render directly inside VS Code's native Markdown preview
+- **CodeLens** — Click "Preview Diagram" above each block to open the Markdown preview
+- **Zoom & Pan** — Hover over a diagram and use the toolbar buttons to zoom and pan
+- **Export** — Click the 📥 Export button to download any diagram as SVG
 - **Type inference** — Use ` ```seldia-flowchart ` to specify the type
 - **Fallback detection** — Diagram blocks with `// seldia` as the first line are also detected

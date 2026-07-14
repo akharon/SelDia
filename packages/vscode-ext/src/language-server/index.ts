@@ -52,7 +52,7 @@ export function registerLanguageServer(
     )
   );
 
-  console.log('✅ SelDiA language server registered (sld)');
+  console.log('SelDiA language server registered (sld)');
 }
 
 

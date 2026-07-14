@@ -9,6 +9,7 @@ import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
+import { sizeForLabel } from '../layout/text-measure.js';
 
 export const bpmnPlugin: DiagramPlugin = {
   id: 'seldia-bpmn', name: 'BPMN Process', version: '1.0.0',
@@ -19,7 +20,7 @@ export const bpmnPlugin: DiagramPlugin = {
     for (const stmt of ast.body) {
       if (stmt.kind === 'NodeDecl') {
         const nd = stmt as ASTNodeDecl;
-        nodes.push({ id: nd.id, label: nd.label, shape: ShapeType.ROUNDED_RECTANGLE, position: { x: 0, y: 0 }, size: { width: 140, height: 60 }, style: { ...(nd.style || {}), fill: '#f0fdf4', stroke: '#166534' }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
+        nodes.push({ id: nd.id, label: nd.label, shape: ShapeType.ROUNDED_RECTANGLE, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 140, 60), style: { ...(nd.style || {}), fill: '#f0fdf4', stroke: '#166534' }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;

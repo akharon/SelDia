@@ -8,6 +8,7 @@ import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import type { ShapeType } from '../types/shapes.js';
 import { DiagramType } from '../ir/types.js';
+import { sizeForLabel } from '../layout/text-measure.js';
 
 export const flowchartPlugin: DiagramPlugin = {
   id: 'seldia-flowchart',
@@ -29,8 +30,8 @@ export const flowchartPlugin: DiagramPlugin = {
           description: nd.description || undefined,
           shape: nd.shape as ShapeType,
           position: { x: 0, y: 0 },
-          size: { width: 100, height: 50 },
-          style: nd.style ? { ...nd.style } : {},
+          size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 100, 50),
+          style: nd.style ? { fill: '#eef2ff', stroke: '#4338ca', ...nd.style } : { fill: '#eef2ff', stroke: '#4338ca' },
           ports: [],
           classList: nd.classList || [],
           collapsed: false,

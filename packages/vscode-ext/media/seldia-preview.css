@@ -6,25 +6,52 @@
    ============================================================================= */
 
 /* ── Diagram Container ─────────────────────────────────────────────────── */
+/* Chrome kept deliberately light — a thin border and minimal radius, no
+   "card" treatment — so the block reads as native Markdown content (like a
+   table or fenced code block) rather than a bolted-on third-party widget
+   (docs/improvement_request.md item 5). */
 .seldia-diagram {
-  margin: 20px 0;
-  border: 1px solid var(--vscode-editorWidget-border, #444);
-  border-radius: 10px;
+  margin: 16px 0;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #454545));
+  border-radius: 4px;
   background: var(--vscode-editor-background, #1e1e1e);
-  overflow: hidden;
+  /* Do NOT use overflow:hidden here — the toolbar is a sibling of the
+     scrollable .seldia-diagram-svg, and clipping at this level combined
+     with a zoomed SVG (which intentionally grows past 100%) slices node
+     shapes at the container edge. Only the toolbar's own corners need
+     rounding, handled per-element below. */
+  overflow: visible;
 }
 
 /* ── Toolbar ──────────────────────────────────────────────────────────── */
 .seldia-diagram-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  background: var(--vscode-editor-inactiveSelectionBackground, #2a2a2a);
-  border-bottom: 1px solid var(--vscode-editorWidget-border, #444);
+  gap: 4px;
+  padding: 4px 8px;
+  /* No distinct banded background — matches a code-fence's plain header
+     weight rather than a card's colored title bar. */
+  background: transparent;
+  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #454545));
+  border-radius: 3px 3px 0 0;
   font-size: 11px;
   flex-wrap: wrap;
   user-select: none;
+}
+
+/* ── Icons ────────────────────────────────────────────────────────────── */
+/* Material Symbols Outlined glyphs (see markdown-preview/plugin.ts
+   ICON_SPRITE / media/seldia-icons.svg) — sized and colored to match VS
+   Code's own Codicon toolbar icons (docs/improvement_request.md items 1, 5). */
+.seldia-icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  color: currentColor;
+  margin-right: 2px;
+}
+.seldia-diagram-badge .seldia-icon {
+  margin-right: 4px;
 }
 
 .seldia-diagram-badge {
@@ -35,12 +62,14 @@
 }
 
 /* ── Toolbar Buttons ──────────────────────────────────────────────────── */
+/* Transparent/flat by default, like VS Code's own toolbar icon buttons —
+   only a hover background, no permanent border/fill (item 5). */
 .seldia-btn {
-  padding: 3px 10px;
-  border: 1px solid var(--vscode-editorWidget-border, #555);
-  background: var(--vscode-button-secondaryBackground, #3a3a3a);
-  color: var(--vscode-button-secondaryForeground, #ccc);
-  border-radius: 4px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground, #ccc));
+  border-radius: 3px;
   cursor: pointer;
   font-size: 11px;
   line-height: 1.5;
@@ -49,7 +78,7 @@
 }
 
 .seldia-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #4a4a4a);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2));
   opacity: 1;
 }
 
@@ -75,14 +104,19 @@
   justify-content: center;
   align-items: flex-start;
   min-height: 100px;
+  /* This is the intended scroll/clip boundary for zoomed content (not the
+     outer .seldia-diagram). Because zoom now resizes the SVG's own
+     width/height rather than using a CSS transform, scrolling here reveals
+     the full, unclipped shape at any zoom level instead of slicing it. */
   overflow: auto;
+  border-radius: 0 0 3px 3px;
 }
 
 .seldia-diagram-svg svg {
-  max-width: 100%;
-  height: auto;
+  /* No max-width/height:auto here — zoom sets explicit width/height in JS
+     and a max-width:100% would fight that, re-introducing the clip. At the
+     default (unzoomed) scale the SVG's natural size already fits. */
   display: block;
-  border-radius: 6px;
 }
 
 /* ── Mode switch (Preview / Code / Edit) ──────────────────────────────── */

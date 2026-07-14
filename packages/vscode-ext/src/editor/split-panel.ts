@@ -5,6 +5,7 @@
 // rendered diagram on the other, with synchronized scrolling and editing.
 
 import * as vscode from 'vscode';
+import { ICON_SPRITE, icon } from '../shared/icons.js';
 
 export interface SplitPanelOptions {
   /** Initial view mode */
@@ -153,13 +154,15 @@ export class SplitPanel {
       border-top: 1px solid var(--vscode-editorWidget-border, #333);
       flex-shrink: 0;
     }
+    .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
   </style>
 </head>
 <body>
+  ${ICON_SPRITE}
   <div class="container">
     <div class="pane code-pane">
       <div class="pane-header">
-        <span class="title">📝 Code</span>
+        <span class="title">${icon('description')} Code</span>
         <button onclick="toggleView()">Toggle View</button>
       </div>
       <textarea class="code-textarea" id="codeEditor" spellcheck="false">${escapedSource}</textarea>
@@ -167,10 +170,10 @@ export class SplitPanel {
     </div>
     <div class="pane">
       <div class="pane-header">
-        <span class="title">🎨 Diagram Preview</span>
-        <button onclick="zoomIn()">🔍+</button>
-        <button onclick="zoomOut()">🔍−</button>
-        <button onclick="exportSvg()">📥 Export SVG</button>
+        <span class="title">${icon('visibility')} Diagram Preview</span>
+        <button onclick="zoomIn()" title="Zoom In">${icon('zoom-in')}</button>
+        <button onclick="zoomOut()" title="Zoom Out">${icon('zoom-out')}</button>
+        <button onclick="exportSvg()" title="Export SVG">${icon('download')} Export SVG</button>
       </div>
       <div class="preview-area" id="previewArea">
         ${previewContent}

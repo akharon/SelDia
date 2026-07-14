@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
   const layoutEngine = vscode.workspace.getConfiguration('seldia').get<'dagre' | 'elk'>('layout.engine', 'dagre');
   engine = createEngine({ config: { defaultLayoutEngine: layoutEngine } });
 
-  console.log('🚀 SelDiA extension activated');
+  console.log('SelDiA extension activated');
 
   // ── Skill Status Bar Item ──────────────────────────────────────────────────
   skillStatusBarItem = vscode.window.createStatusBarItem(
@@ -150,7 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
     const uri = await vscode.window.showSaveDialog({ filters: { 'SVG': ['svg'], 'PNG': ['png'], 'PDF': ['pdf'] } });
     if (uri) {
       writeFileSync(uri.fsPath, result.value.svg);
-      vscode.window.showInformationMessage(`✅ Exported to ${uri.fsPath}`);
+      vscode.window.showInformationMessage(`$(check) Exported to ${uri.fsPath}`);
     }
   });
 
@@ -162,7 +162,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
     const mdPath = editor.document.uri.fsPath;
     const pdfPath = mdPath.replace(/\.md$/, '.pdf');
-    vscode.window.showInformationMessage(`📄 PDF export configured: ${mdPath} → ${pdfPath}`);
+    vscode.window.showInformationMessage(`$(file-pdf) PDF export configured: ${mdPath} → ${pdfPath}`);
     vscode.window.showInformationMessage('Install puppeteer for full PDF generation: npm install puppeteer');
   });
 
@@ -196,7 +196,7 @@ export function activate(context: vscode.ExtensionContext) {
       // Write manifest
       const manifest = { name: 'seldia-dsl', version: '1.0.0', deployedBy: 'seldia-vscode-ext@1.0.0', deployedAt: new Date().toISOString(), scope: choice?.includes('Workspace') ? 'workspace' : 'user', skillPath: targetFile, contentHash: 'sha256:deployed' };
       writeFileSync(resolve(targetDir, '.sld-skill-manifest.json'), JSON.stringify(manifest, null, 2));
-      vscode.window.showInformationMessage(`✅ SelDiA DSL skill deployed to ${targetDir}`);
+      vscode.window.showInformationMessage(`$(check) SelDiA DSL skill deployed to ${targetDir}`);
     }
     refreshSkillStatusBar();
   });
@@ -206,10 +206,10 @@ export function activate(context: vscode.ExtensionContext) {
       { label: 'Workspace', path: vscode.workspace.workspaceFolders?.[0] ? resolve(vscode.workspace.workspaceFolders[0].uri.fsPath, '.github', 'skills', 'seldia-dsl', 'SKILL.md') : null },
       { label: 'User', path: resolve(process.env.HOME || '/home', '.copilot', 'skills', 'seldia-dsl', 'SKILL.md') },
     ];
-    let msg = '📋 SelDiA Skill Status:\n';
+    let msg = '$(checklist) SelDiA Skill Status:\n';
     for (const p of paths) {
       const exists = p.path ? existsSync(p.path) : false;
-      msg += `\n  ${p.label}: ${exists ? '✅ Deployed' : '❌ Not found'}`;
+      msg += `\n  ${p.label}: ${exists ? '$(check) Deployed' : '$(x) Not found'}`;
     }
     vscode.window.showInformationMessage(msg, { modal: true });
   });
@@ -248,7 +248,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     if (updatedCount > 0) {
-      vscode.window.showInformationMessage(`✅ SelDiA skill updated in ${updatedCount} location(s)`);
+      vscode.window.showInformationMessage(`$(check) SelDiA skill updated in ${updatedCount} location(s)`);
     } else {
       vscode.window.showInformationMessage('No existing skill deployment found to update. Use "Deploy" first.');
     }
@@ -321,7 +321,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     if (removedCount > 0) {
-      vscode.window.showInformationMessage(`✅ SelDiA skill uninstalled from ${removedCount} location(s)`);
+      vscode.window.showInformationMessage(`$(check) SelDiA skill uninstalled from ${removedCount} location(s)`);
     }
     refreshSkillStatusBar();
   });

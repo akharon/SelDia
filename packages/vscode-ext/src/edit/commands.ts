@@ -60,9 +60,12 @@ async function applyBlockTransform(
   const end = new vscode.Position(block.sourceEndLine, 0);
   const edit = new vscode.WorkspaceEdit();
   edit.replace(doc.uri, new vscode.Range(start, end), newSource + '\n');
-  const ok = await vscode.workspace.applyEdit(edit);
-  if (ok) await doc.save();
-  return ok;
+  // Deliberately does NOT call doc.save(): saving forces VS Code to re-run
+  // the whole Markdown preview (every fence block), causing a full-document
+  // flicker/blank on every single drag. applyEdit() alone already updates
+  // the live document, which the preview picks up via its own file-change
+  // listener without a disk write.
+  return vscode.workspace.applyEdit(edit);
 }
 
 export function registerEditCommands(context: vscode.ExtensionContext): void {

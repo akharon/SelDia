@@ -8,6 +8,7 @@ import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
+import { sizeForLabel } from '../layout/text-measure.js';
 
 function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, shape: ShapeType = ShapeType.RECTANGLE, defFill = '#f8fafc', defStroke = '#334155'): DiagramPlugin {
   return {
@@ -17,7 +18,7 @@ function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, 
       for (const stmt of ast.body) {
         if (stmt.kind === 'NodeDecl') {
           const nd = stmt as ASTNodeDecl;
-          nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: { width: 150, height: 60 }, style: { ...(nd.style || {}), fill: defFill, stroke: defStroke }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
+          nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 150, 60), style: { ...(nd.style || {}), fill: defFill, stroke: defStroke }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
         }
         if (stmt.kind === 'EdgeDecl') {
           const ed = stmt as ASTEdgeDecl;

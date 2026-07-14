@@ -10,6 +10,7 @@ import type { CoreEngine } from '@seldia/core';
 import { WebviewMessenger } from './messenger.js';
 import type { WebviewToExtMessage } from '../types.js';
 import { VisualEditHandler, type EditHandlerCallbacks } from './edit-handler.js';
+import { ICON_SPRITE, icon } from '../shared/icons.js';
 
 export class SelDiAInteractiveProvider {
   public static currentPanel: SelDiAInteractiveProvider | undefined;
@@ -250,21 +251,23 @@ export class SelDiAInteractiveProvider {
     .seldia-selected { outline: 2px solid #0e639c; outline-offset: 2px; }
     /* Edge draw mode */
     .edge-draw-line { stroke: #0e639c; stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
+    .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
   </style>
 </head>
 <body>
+  ${ICON_SPRITE}
   <div class="toolbar">
-    <span class="title">📐 SelDiA Diagram</span>
+    <span class="title">${icon('schema')} SelDiA Diagram</span>
     <span class="stats">${stats}</span>
 
     <span class="sep"></span>
-    <button id="btnUndo" onclick="handleUndo()" disabled title="Undo (Ctrl+Z)">↩ Undo</button>
-    <button id="btnRedo" onclick="handleRedo()" disabled title="Redo (Ctrl+Shift+Z)">↪ Redo</button>
+    <button id="btnUndo" onclick="handleUndo()" disabled title="Undo (Ctrl+Z)">${icon('undo')} Undo</button>
+    <button id="btnRedo" onclick="handleRedo()" disabled title="Redo (Ctrl+Shift+Z)">${icon('redo')} Redo</button>
 
     <span class="sep"></span>
-    <button onclick="zoomIn()" title="Zoom In">🔍+</button>
-    <button onclick="zoomOut()" title="Zoom Out">🔍−</button>
-    <button onclick="fitToScreen()" title="Fit to screen">⟲ Fit</button>
+    <button onclick="zoomIn()" title="Zoom In">${icon('zoom-in')}</button>
+    <button onclick="zoomOut()" title="Zoom Out">${icon('zoom-out')}</button>
+    <button onclick="fitToScreen()" title="Fit to screen">${icon('fit-screen')} Fit</button>
     <button onclick="resetZoom()" title="Reset zoom">1:1</button>
 
     <span class="sep"></span>
@@ -277,11 +280,11 @@ export class SelDiAInteractiveProvider {
     </select>
 
     <span class="sep"></span>
-    <button id="btnAddNode" onclick="handleAddNode()" title="Add node">+ Node</button>
-    <button id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)">+ Edge</button>
+    <button id="btnAddNode" onclick="handleAddNode()" title="Add node">${icon('add-node')} Node</button>
+    <button id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)">${icon('add-edge')} Edge</button>
 
     <span class="sep"></span>
-    <button onclick="exportSvg()" title="Export SVG">📥 Export</button>
+    <button onclick="exportSvg()" title="Export SVG">${icon('download')} Export</button>
   </div>
 
   <div id="container">
@@ -293,14 +296,14 @@ export class SelDiAInteractiveProvider {
 
   <!-- Context menu -->
   <div id="contextMenu">
-    <div class="menu-item" data-action="edit-label">✏️ Edit Label</div>
-    <div class="menu-item" data-action="edit-style">🎨 Edit Style</div>
-    <div class="menu-item" data-action="change-shape">🔷 Change Shape</div>
+    <div class="menu-item" data-action="edit-label">${icon('edit')} Edit Label</div>
+    <div class="menu-item" data-action="edit-style">${icon('palette')} Edit Style</div>
+    <div class="menu-item" data-action="change-shape">${icon('shape')} Change Shape</div>
     <div class="menu-sep"></div>
-    <div class="menu-item" data-action="add-connected-node">➕ Add Connected Node</div>
-    <div class="menu-item" data-action="add-edge">🔗 Add Edge</div>
+    <div class="menu-item" data-action="add-connected-node">${icon('add')} Add Connected Node</div>
+    <div class="menu-item" data-action="add-edge">${icon('link')} Add Edge</div>
     <div class="menu-sep"></div>
-    <div class="menu-item" data-action="delete">🗑️ Delete</div>
+    <div class="menu-item" data-action="delete">${icon('delete')} Delete</div>
   </div>
 
   <script>

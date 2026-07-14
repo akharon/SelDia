@@ -31,21 +31,25 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
       const startLine = new vscode.Position(block.startLine, 0);
       const startRange = new vscode.Range(startLine, startLine);
 
+      // CodeLens titles render VS Code's own Codicon set via `$(icon-id)` —
+      // the native mechanism here (not the SVG sprite used in HTML
+      // webviews), so these already match VS Code's chrome without any
+      // vendored assets. docs/improvement_request.md items 1 and 5.
       lenses.push(new vscode.CodeLens(startRange, {
-        title: '🔍 Preview Diagram',
+        title: '$(eye) Preview Diagram',
         command: 'markdown.showPreviewToSide',
         tooltip: 'Open the Markdown preview to see this diagram rendered inline',
       }));
 
       lenses.push(new vscode.CodeLens(startRange, {
-        title: '▶ Render',
+        title: '$(play) Render',
         command: 'markdown.showPreview',
         tooltip: 'Render this diagram in the Markdown preview',
       }));
 
       // "Export" lens
       lenses.push(new vscode.CodeLens(startRange, {
-        title: '📥 Export',
+        title: '$(desktop-download) Export',
         command: 'seldia.exportDiagram',
         arguments: [block.source],
         tooltip: 'Export this diagram as SVG',

@@ -8,6 +8,7 @@
 import * as vscode from 'vscode';
 import type { CoreEngine } from '@seldia/core';
 import type { SelDiABlock } from './detector.js';
+import { ICON_SPRITE, icon } from '../shared/icons.js';
 
 export class SelDiADecorator {
   /**
@@ -64,12 +65,22 @@ export class SelDiADecorator {
 
       if (result.ok) {
         svgContent = result.value.svg;
-        statusIcon = '✅';
+        // `contentText` on a TextEditorDecorationType only supports plain
+        // text (no HTML/SVG — see the comment below), so this stays a
+        // plain-text status marker rather than the icon sprite used
+        // elsewhere; deliberately not an emoji either.
+        statusIcon = '[OK]';
         statsLine = `Nodes: ${result.value.stats?.nodeCount ?? '?'} · Edges: ${result.value.stats?.edgeCount ?? '?'}`;
       } else {
         const msgs = result.errors.map(e => e.message).join('; ');
-        svgContent = `<div style="color:#e53e3e;padding:12px;background:#fff5f5;border-radius:6px;font-family:monospace;font-size:12px;white-space:pre-wrap">❌ ${msgs}</div>`;
-        statusIcon = '❌';
+        // This whole string is base64-encoded and rendered via an <img
+        // src="data:image/svg+xml;..."> — i.e. parsed as a standalone SVG
+        // document with no access to the sprite defined elsewhere, so the
+        // error icon must be a fully self-contained inline <svg>, not a
+        // `$(codicon)` (HTML-only) or a `<use>` sprite reference.
+        const errorIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px"><circle cx="12" cy="12" r="9" fill="none" stroke="#e53e3e" stroke-width="2"/><path d="M12 7v6" stroke="#e53e3e" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1.1" fill="#e53e3e"/></svg>';
+        svgContent = `<div xmlns="http://www.w3.org/1999/xhtml" style="color:#e53e3e;padding:12px;background:#fff5f5;border-radius:6px;font-family:monospace;font-size:12px;white-space:pre-wrap">${errorIconSvg} ${msgs}</div>`;
+        statusIcon = '[ERR]';
         statsLine = 'Compilation failed';
       }
 
@@ -82,10 +93,15 @@ export class SelDiADecorator {
       const hoverMd = new vscode.MarkdownString();
       hoverMd.supportHtml = true;
       hoverMd.isTrusted = true;
+      hoverMd.supportThemeIcons = true;
+      // Hover tooltips render through VS Code's Markdown hover widget, not a
+      // full webview — <svg>/<use> support there is unreliable, so this
+      // uses a Codicon (natively supported in hover Markdown via
+      // `$(icon-id)`) rather than the SVG icon sprite used in webviews.
       hoverMd.value = [
         `<div style="min-width:480px;max-width:800px;padding:12px">`,
         `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12px;color:#666;border-bottom:1px solid #e2e8f0;padding-bottom:8px">`,
-        `<span><b>📐 ${block.diagramType}</b> · #${block.index + 1}</span>`,
+        `<span><b>$(type-hierarchy) ${block.diagramType}</b> · #${block.index + 1}</span>`,
         `<span>${statsLine}</span>`,
         `</div>`,
         `<div style="background:#fff;border-radius:6px;overflow:auto;text-align:center">`,

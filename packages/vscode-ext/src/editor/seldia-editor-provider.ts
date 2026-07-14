@@ -6,6 +6,7 @@
 
 import * as vscode from 'vscode';
 import type { CoreEngine } from '@seldia/core';
+import { ICON_SPRITE, icon } from '../shared/icons.js';
 
 export class SelDiAEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = 'seldia.seldiaEditor';
@@ -213,14 +214,16 @@ export class SelDiAEditorProvider implements vscode.CustomTextEditorProvider {
       border-top: 1px solid var(--vscode-editorWidget-border, #333);
       flex-shrink: 0;
     }
+    .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
   </style>
 </head>
 <body>
+  ${ICON_SPRITE}
   <div class="split-container">
     <!-- Code Pane -->
     <div class="code-pane">
       <div class="pane-header">
-        <span>📝 DSL Code</span>
+        <span>${icon('description')} DSL Code</span>
         <div class="actions">
           <button onclick="applyEdit()">Apply</button>
           <button onclick="document.getElementById('codeEditor').value='${escapedSource.replace(/'/g, "\\'").substring(0, 100)}...'">Reset</button>
@@ -236,11 +239,11 @@ export class SelDiAEditorProvider implements vscode.CustomTextEditorProvider {
     <!-- Preview Pane -->
     <div class="preview-pane">
       <div class="pane-header">
-        <span>🎨 Preview</span>
+        <span>${icon('visibility')} Preview</span>
         <div class="actions">
-          <button onclick="zoomIn()">🔍+</button>
-          <button onclick="zoomOut()">🔍−</button>
-          <button onclick="exportSvg()">📥 SVG</button>
+          <button onclick="zoomIn()" title="Zoom In">${icon('zoom-in')}</button>
+          <button onclick="zoomOut()" title="Zoom Out">${icon('zoom-out')}</button>
+          <button onclick="exportSvg()" title="Export SVG">${icon('download')} SVG</button>
         </div>
       </div>
       <div class="preview-area" id="previewArea">

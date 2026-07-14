@@ -59,9 +59,17 @@
     getScale: () => number,
     setScale: (s: number) => void
   ) {
+    // Zoom scales the SVG's intrinsic width/height (not a CSS `transform`),
+    // so the element's layout box always matches its visual size — nothing
+    // gets clipped by an ancestor's overflow/max-width rules. The SVG's
+    // viewBox stays fixed; only the rendered width/height change.
+    const naturalWidth = svg.viewBox?.baseVal?.width || svg.width.baseVal.value || svg.getBoundingClientRect().width;
+    const naturalHeight = svg.viewBox?.baseVal?.height || svg.height.baseVal.value || svg.getBoundingClientRect().height;
     const apply = (s: number) => {
-      svg.style.transform = `scale(${s})`;
-      svg.style.transformOrigin = 'top left';
+      svg.style.transform = '';
+      svg.style.width = `${naturalWidth * s}px`;
+      svg.style.height = `${naturalHeight * s}px`;
+      svg.style.maxWidth = 'none';
       zoomState.set(blockId, s);
       setScale(s);
     };
@@ -113,7 +121,7 @@
         await navigator.clipboard.writeText(code);
         const btn = e.target as HTMLElement;
         const prev = btn.textContent;
-        btn.textContent = '✅ Copied!';
+        btn.textContent = 'Copied!';
         setTimeout(() => (btn.textContent = prev), 1500);
       } catch {
         /* clipboard unavailable */

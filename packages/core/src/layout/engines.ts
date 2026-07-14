@@ -77,7 +77,14 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     g.setNode(n.id, { width: w, height: h });
   }
   for (const e of ir.edges) {
-    if (g.hasNode(e.sourceId) && g.hasNode(e.targetId)) g.setEdge(e.sourceId, e.targetId, { id: e.id });
+    if (!g.hasNode(e.sourceId) || !g.hasNode(e.targetId)) continue;
+    // Reserve space for the edge label (dagre treats a labeled edge as
+    // occupying a virtual node of this size along the edge's path) so
+    // labeled edges (Yes/No, multiplicities) don't collide with other
+    // geometry — previously the layout stage had no idea labels existed at
+    // all (docs/improvement_request.md item 6).
+    const labelSize = e.label ? { width: Math.max(20, e.label.length * 7), height: 20 } : {};
+    g.setEdge(e.sourceId, e.targetId, { id: e.id, labelpos: 'c', ...labelSize });
   }
 
   dagre.layout(g);
@@ -138,7 +145,14 @@ export async function layoutWithElk(ir: DiagramIR, opts: AutoLayoutOptions): Pro
     })),
     edges: ir.edges
       .filter((e) => ir.nodes.some((n) => n.id === e.sourceId) && ir.nodes.some((n) => n.id === e.targetId))
-      .map((e) => ({ id: e.id, sources: [e.sourceId], targets: [e.targetId] })),
+      .map((e) => ({
+        id: e.id,
+        sources: [e.sourceId],
+        targets: [e.targetId],
+        // Reserve space for the edge label so it doesn't collide with other
+        // geometry (docs/improvement_request.md item 6).
+        ...(e.label ? { labels: [{ text: e.label, width: Math.max(20, e.label.length * 7), height: 18 }] } : {}),
+      })),
   };
 
   const result = await elk.layout(elkGraph as any);

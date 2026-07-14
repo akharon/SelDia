@@ -17,6 +17,7 @@
 
 import type { CoreEngine } from '@seldia/core';
 import { hasManualPositions } from '../edit/dsl-edit.js';
+import { ICON_SPRITE, icon } from '../shared/icons.js';
 
 // Minimal MarkdownIt interface — matches what VS Code passes to extendMarkdownIt
 export interface MarkdownIt {
@@ -49,7 +50,14 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       const lang = token.info?.trim().split(/\s+/)[0] || '';
 
       if (lang === 'seldia' || lang.startsWith('seldia-')) {
-        return renderSelDiABlock(engine, token.content);
+        try {
+          return renderSelDiABlock(engine, token.content);
+        } catch (err: any) {
+          // A single block must never take down the whole preview — render
+          // an inline error box for this block only and let every other
+          // block (and surrounding Markdown) keep rendering.
+          return renderFatalErrorBlock(token.content, err?.message || String(err));
+        }
       }
 
       return defaultFence(tokens, idx, options, env, slf);
@@ -69,10 +77,11 @@ export function renderSelDiABlock(engine: CoreEngine, code: string): string {
   if (!result.ok) {
     const errors = result.errors.map((e: any) => e.message).join('\n');
     return `
+${ICON_SPRITE}
 <div class="seldia-diagram seldia-error" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}">
   <div class="seldia-diagram-toolbar">
-    <span class="seldia-diagram-badge">❌ SelDiA Error</span>
-    <a class="seldia-btn seldia-btn-edit" title="Reveal DSL source to fix errors" href="command:seldia.revealSource?${cmdArgs({ blockId })}">✏️ Edit Source</a>
+    <span class="seldia-diagram-badge">${icon('error')} SelDiA Error</span>
+    <a class="seldia-btn seldia-btn-edit" title="Reveal DSL source to fix errors" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('edit')} Edit Source</a>
   </div>
   <div class="seldia-error-header">Compilation Error</div>
   <pre class="seldia-error-detail">${escapeHtml(errors)}</pre>
@@ -87,12 +96,13 @@ export function renderSelDiABlock(engine: CoreEngine, code: string): string {
   const manual = hasManualPositions(code);
 
   return `
+${ICON_SPRITE}
 <div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-mode="preview" data-seldia-pad="${pad}" data-seldia-layout="${manual ? 'manual' : 'auto'}">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
-      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram">👁 Preview</button>
-      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="code" title="Show DSL source">&lt;/&gt; Code</button>
-      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="edit" title="Edit diagram: drag nodes, double-click to rename">✎ Edit</button>
+      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram">${icon('visibility')} Preview</button>
+      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="code" title="Show DSL source">${icon('code')} Code</button>
+      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="edit" title="Edit diagram: drag nodes, double-click to rename">${icon('edit')} Edit</button>
     </span>
     <span class="seldia-toolbar-spacer"></span>
     <a
@@ -101,11 +111,11 @@ export function renderSelDiABlock(engine: CoreEngine, code: string): string {
         ? 'Auto layout is off because nodes were moved manually. Click to re-run automatic layout and clear manual positions.'
         : 'Diagram is automatically laid out. Drag a node to switch to manual positioning.'}"
       href="command:seldia.autoLayout?${cmdArgs({ blockId })}"
-    >${manual ? '⛶ Auto Layout' : '✓ Auto Layout'}</a>
-    <button class="seldia-btn seldia-btn-zoom-in" title="Zoom In">🔍+</button>
-    <button class="seldia-btn seldia-btn-zoom-out" title="Zoom Out">🔍−</button>
-    <button class="seldia-btn seldia-btn-reset" title="Reset Zoom">⟲</button>
-    <button class="seldia-btn seldia-btn-export" title="Export SVG">📥</button>
+    >${manual ? icon('auto-layout-off') : icon('auto-layout-on')} Auto Layout</a>
+    <button class="seldia-btn seldia-btn-zoom-in" title="Zoom In">${icon('zoom-in')}</button>
+    <button class="seldia-btn seldia-btn-zoom-out" title="Zoom Out">${icon('zoom-out')}</button>
+    <button class="seldia-btn seldia-btn-reset" title="Reset Zoom">${icon('reset')}</button>
+    <button class="seldia-btn seldia-btn-export" title="Export SVG">${icon('download')}</button>
   </div>
   <div class="seldia-edit-hint">Edit mode: drag a node to move it · double-click a node to rename · changes are written back to the Markdown source.</div>
   <div class="seldia-diagram-svg">
@@ -114,9 +124,29 @@ export function renderSelDiABlock(engine: CoreEngine, code: string): string {
   <div class="seldia-diagram-source">
     <div class="seldia-diagram-source-header">
       <span>SelDiA DSL Source</span>
-      <a class="seldia-btn seldia-btn-edit" title="Reveal this block in the editor" href="command:seldia.revealSource?${cmdArgs({ blockId })}">✏️ Open in editor</a>
-      <button class="seldia-btn seldia-btn-copy-source" title="Copy source to clipboard">📋 Copy</button>
+      <a class="seldia-btn seldia-btn-edit" title="Reveal this block in the editor" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('open-in-editor')} Open in editor</a>
+      <button class="seldia-btn seldia-btn-copy-source" title="Copy source to clipboard">${icon('copy')} Copy</button>
     </div>
+    <pre><code class="language-seldia">${escapeHtml(code)}</code></pre>
+  </div>
+</div>`;
+}
+
+/** Fallback error box for exceptions thrown outside the normal `result.ok`
+ *  path (e.g. a bug in the renderer itself). Kept structurally identical to
+ *  the `result.ok === false` error box so both are covered by the same
+ *  visual/CSS contract, and deliberately has no block id so it can never
+ *  collide with the id-keyed preview-side state of a working block. */
+function renderFatalErrorBlock(code: string, message: string): string {
+  return `
+${ICON_SPRITE}
+<div class="seldia-diagram seldia-error">
+  <div class="seldia-diagram-toolbar">
+    <span class="seldia-diagram-badge">${icon('error')} SelDiA Error</span>
+  </div>
+  <div class="seldia-error-header">Rendering Error</div>
+  <pre class="seldia-error-detail">${escapeHtml(message)}</pre>
+  <div class="seldia-diagram-source">
     <pre><code class="language-seldia">${escapeHtml(code)}</code></pre>
   </div>
 </div>`;

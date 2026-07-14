@@ -79,7 +79,7 @@ export async function runPipeline(
       };
     }
 
-    reporter.report({ stage: 'Done', percentage: 100, detail: `✅ PDF saved to ${outputPath}` });
+    reporter.report({ stage: 'Done', percentage: 100, detail: `$(check) PDF saved to ${outputPath}` });
 
     return {
       success: true,

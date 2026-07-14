@@ -30,10 +30,15 @@ export function renderErrorBlock(
   const errorCount = errors.filter(e => e.severity === 'error').length;
   const warnCount = errors.filter(e => e.severity === 'warning').length;
 
+  // Self-contained inline SVG — this HTML is rendered standalone by
+  // Puppeteer into a printed PDF, with no access to VS Code's Codicon font
+  // or the webview icon sprite.
+  const errorIcon = '<svg width="12" height="12" viewBox="0 0 24 24" style="vertical-align:-1px"><circle cx="12" cy="12" r="9" fill="none" stroke="#dc2626" stroke-width="2"/><path d="M12 7v6" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1.1" fill="#dc2626"/></svg>';
+
   return {
     html: `
 <div class="seldia-diagram seldia-diagram--error" data-block-idx="${blockIndex}">
-  <div class="error-title">❌ Diagram Compilation Failed${diagramType ? ` (${escapeHtml(diagramType)})` : ''}</div>
+  <div class="error-title">${errorIcon} Diagram Compilation Failed${diagramType ? ` (${escapeHtml(diagramType)})` : ''}</div>
   <div class="error-summary">${errorCount} error(s), ${warnCount} warning(s)</div>
   ${errorLines}
   <details>
@@ -50,8 +55,9 @@ export function renderErrorBlock(
  * Render a warning banner for non-critical issues.
  */
 export function renderWarningBlock(message: string): string {
+  const warningIcon = '<svg width="12" height="12" viewBox="0 0 24 24" style="vertical-align:-1px"><path d="M12 3 2 21h20L12 3Z" fill="none" stroke="#92400e" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4" stroke="#92400e" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1" fill="#92400e"/></svg>';
   return `<div class="seldia-diagram" style="background:#fffbeb;border-color:#fcd34d;color:#92400e;padding:12px;font-size:10pt;">
-  ⚠️ ${escapeHtml(message)}
+  ${warningIcon} ${escapeHtml(message)}
 </div>`;
 }
 

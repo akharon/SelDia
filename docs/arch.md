@@ -191,25 +191,20 @@ boundary "Security Zone" {
 
 #### 3.6.1 Class Diagram
 ```seldia
-diagram class "Order System" {
-    class Order {
-        +id: UUID
-        +status: OrderStatus
-        -items: List<OrderItem>
-        +calculateTotal(): Money
-        +addItem(item: OrderItem): void
-    }
+diagram flowchart "Order System" {
+    Order: "Order\n+id: UUID\n+status: OrderStatus\n-items: List<OrderItem>\n+calculateTotal(): Money\n+addItem(item: OrderItem): void"
+    OrderItem: "OrderItem\n+productId: UUID\n+quantity: int\n+unitPrice: Money"
+    Customer: "Customer"
 
-    class OrderItem {
-        +productId: UUID
-        +quantity: int
-        +unitPrice: Money
-    }
-
-    Order "1" --> "*" OrderItem: "contains"
+    Order --> OrderItem: "contains (1..*)"
     Order --> Customer: "belongs to"
 }
 ```
+
+*(Illustrative class layout — the parser's currently supported grammar does not
+have a dedicated `class { ... }` member-body construct or edge multiplicity
+labels, so this example uses a flowchart node per class with its members
+folded into the label.)*
 
 #### 3.6.2 Sequence Diagram
 ```seldia
@@ -569,54 +564,23 @@ interface IRNode {
 
 ```seldia
 diagram class "CoreEngine Classes" {
-    class CoreEngine {
-        +compile(source: string): CompileResult
-        +getTheme(name: string): Theme
-        +getPlugin(type: string): DiagramPlugin
-    }
+    CoreEngine: "CoreEngine\n+compile(source: string): CompileResult\n+getTheme(name: string): Theme\n+getPlugin(type: string): DiagramPlugin"
 
-    class Lexer {
-        +tokenize(source: string): Token[]
-    }
+    Lexer: "Lexer\n+tokenize(source: string): Token[]"
 
-    class Parser {
-        +parse(tokens: Token[]): CST
-        +toAST(cst: CST): DiagramAST
-    }
+    Parser: "Parser\n+parse(tokens: Token[]): CST\n+toAST(cst: CST): DiagramAST"
 
-    class SemanticAnalyzer {
-        +analyze(ast: DiagramAST): AnalysisResult
-    }
-    class SymbolTable {
-        +resolve(name: string): Symbol
-        +define(symbol: Symbol): void
-    }
-    class TypeChecker {
-        +check(node: ASTNode): TypeResult
-    }
-    class ReferenceResolver {
-        +resolve(ref: Reference): ASTNode
-    }
+    SemanticAnalyzer: "SemanticAnalyzer\n+analyze(ast: DiagramAST): AnalysisResult"
+    SymbolTable: "SymbolTable\n+resolve(name: string): Symbol\n+define(symbol: Symbol): void"
+    TypeChecker: "TypeChecker\n+check(node: ASTNode): TypeResult"
+    ReferenceResolver: "ReferenceResolver\n+resolve(ref: Reference): ASTNode"
 
-    class PluginManager {
-        +register(plugin: DiagramPlugin): void
-        +get(type: DiagramType): DiagramPlugin
-    }
-    class PluginRegistry {
-        +list(): DiagramPlugin[]
-    }
-    class PluginLifecycle {
-        +init(plugin: DiagramPlugin): void
-        +destroy(plugin: DiagramPlugin): void
-    }
+    PluginManager: "PluginManager\n+register(plugin: DiagramPlugin): void\n+get(type: DiagramType): DiagramPlugin"
+    PluginRegistry: "PluginRegistry\n+list(): DiagramPlugin[]"
+    PluginLifecycle: "PluginLifecycle\n+init(plugin: DiagramPlugin): void\n+destroy(plugin: DiagramPlugin): void"
 
-    class ConfigManager {
-        +load(path: string): SelDiAConfig
-    }
-    class DiagnosticsCollector {
-        +report(diag: Diagnostic): void
-        +all(): Diagnostic[]
-    }
+    ConfigManager: "ConfigManager\n+load(path: string): SelDiAConfig"
+    DiagnosticsCollector: "DiagnosticsCollector\n+report(diag: Diagnostic): void\n+all(): Diagnostic[]"
 
     CoreEngine --> Lexer: "uses"
     CoreEngine --> Parser: "uses"
@@ -665,49 +629,22 @@ diagram class "CoreEngine Classes" {
 
 ```seldia
 diagram class "LayoutEngine Classes" {
-    class LayoutEngine {
-        +layout(ir: DiagramIR): PositionedIR
-        +setAlgorithm(algo: LayoutAlgorithm): void
-    }
+    LayoutEngine: "LayoutEngine\n+layout(ir: DiagramIR): PositionedIR\n+setAlgorithm(algo: LayoutAlgorithm): void"
 
-    class HierarchicalLayout {
-        +layout(ir: DiagramIR): PositionedIR
-    }
-    class ForceDirectedLayout {
-        +layout(ir: DiagramIR): PositionedIR
-    }
-    class LayeredLayout {
-        +layout(ir: DiagramIR): PositionedIR
-    }
-    class SequenceLayout {
-        +layout(ir: DiagramIR): PositionedIR
-    }
-    class RadialLayout {
-        +layout(ir: DiagramIR): PositionedIR
-    }
-    class GridLayout {
-        +layout(ir: DiagramIR): PositionedIR
-    }
-    class TimelineLayout {
-        +layout(ir: DiagramIR): PositionedIR
-    }
+    HierarchicalLayout: "HierarchicalLayout\n+layout(ir: DiagramIR): PositionedIR"
+    ForceDirectedLayout: "ForceDirectedLayout\n+layout(ir: DiagramIR): PositionedIR"
+    LayeredLayout: "LayeredLayout\n+layout(ir: DiagramIR): PositionedIR"
+    SequenceLayout: "SequenceLayout\n+layout(ir: DiagramIR): PositionedIR"
+    RadialLayout: "RadialLayout\n+layout(ir: DiagramIR): PositionedIR"
+    GridLayout: "GridLayout\n+layout(ir: DiagramIR): PositionedIR"
+    TimelineLayout: "TimelineLayout\n+layout(ir: DiagramIR): PositionedIR"
 
-    class EdgeRouter {
-        +route(edges: IREdge[]): RoutedEdge[]
-    }
-    class SplineRouter {
-        +route(edges: IREdge[]): RoutedEdge[]
-    }
-    class OrthogonalRouter {
-        +route(edges: IREdge[]): RoutedEdge[]
-    }
-    class StraightRouter {
-        +route(edges: IREdge[]): RoutedEdge[]
-    }
+    EdgeRouter: "EdgeRouter\n+route(edges: IREdge[]): RoutedEdge[]"
+    SplineRouter: "SplineRouter\n+route(edges: IREdge[]): RoutedEdge[]"
+    OrthogonalRouter: "OrthogonalRouter\n+route(edges: IREdge[]): RoutedEdge[]"
+    StraightRouter: "StraightRouter\n+route(edges: IREdge[]): RoutedEdge[]"
 
-    class LabelPlacer {
-        +place(labels: Label[]): PositionedLabel[]
-    }
+    LabelPlacer: "LabelPlacer\n+place(labels: Label[]): PositionedLabel[]"
 
     LayoutEngine --> HierarchicalLayout: "contains"
     LayoutEngine --> ForceDirectedLayout: "contains"
@@ -745,61 +682,34 @@ diagram class "LayoutEngine Classes" {
 
 ```seldia
 diagram class "RenderEngine Classes" {
-    class RenderEngine {
-        +render(ir: PositionedIR): SVGString
-        +setTheme(theme: Theme): void
-    }
+    RenderEngine: "RenderEngine\n+render(ir: PositionedIR): SVGString\n+setTheme(theme: Theme): void"
 
-    class RoughRenderer {
-        +render(ir: PositionedIR): SVGString
-    }
-    class NodeRenderer {
-        +render(node: IRNode): SVGElement
-    }
-    class EdgeRenderer {
-        +render(edge: IREdge): SVGElement
-    }
-    class GroupRenderer {
-        +render(group: IRGroup): SVGElement
-    }
-    class LabelRenderer {
-        +render(label: Label): SVGElement
-    }
-    class IconRenderer {
-        +render(icon: Icon): SVGElement
-    }
+    RoughRenderer: "RoughRenderer\n+render(ir: PositionedIR): SVGString"
+    NodeRenderer: "NodeRenderer\n+render(node: IRNode): SVGElement"
+    EdgeRenderer: "EdgeRenderer\n+render(edge: IREdge): SVGElement"
+    GroupRenderer: "GroupRenderer\n+render(group: IRGroup): SVGElement"
+    LabelRenderer: "LabelRenderer\n+render(label: Label): SVGElement"
+    IconRenderer: "IconRenderer\n+render(icon: Icon): SVGElement"
 
-    class SmoothRenderer {
-        +render(ir: PositionedIR): SVGString
-    }
+    SmoothRenderer: "SmoothRenderer\n+render(ir: PositionedIR): SVGString"
 
-    class ThemeApplicator {
-        +apply(theme: Theme, ir: PositionedIR): StyledIR
-    }
+    ThemeApplicator: "ThemeApplicator\n+apply(theme: Theme, ir: PositionedIR): StyledIR"
 
-    class ShapeFactory {
-        +create(type: ShapeType): Shape
-    }
-    class RectangleShape { }
-    class DiamondShape { }
-    class CircleShape { }
-    class CylinderShape { }
-    class HexagonShape { }
-    class ParallelogramShape { }
-    class StadiumShape { }
-    class CloudShape { }
-    class ActorShape { }
-    class CustomPathShape { }
+    ShapeFactory: "ShapeFactory\n+create(type: ShapeType): Shape"
+    RectangleShape: "RectangleShape"
+    DiamondShape: "DiamondShape"
+    CircleShape: "CircleShape"
+    CylinderShape: "CylinderShape"
+    HexagonShape: "HexagonShape"
+    ParallelogramShape: "ParallelogramShape"
+    StadiumShape: "StadiumShape"
+    CloudShape: "CloudShape"
+    ActorShape: "ActorShape"
+    CustomPathShape: "CustomPathShape"
 
-    class SVGWriter {
-        +write(elements: SVGElement[]): string
-    }
-    class CanvasWriter {
-        +write(elements: CanvasElement[]): string
-    }
-    class Exporter {
-        +export(svg: string, format: ExportFormat): Buffer
-    }
+    SVGWriter: "SVGWriter\n+write(elements: SVGElement[]): string"
+    CanvasWriter: "CanvasWriter\n+write(elements: CanvasElement[]): string"
+    Exporter: "Exporter\n+export(svg: string, format: ExportFormat): Buffer"
 
     RenderEngine --> RoughRenderer: "contains"
     RenderEngine --> SmoothRenderer: "contains"
@@ -841,42 +751,17 @@ diagram class "RenderEngine Classes" {
 
 ```seldia
 diagram class "InteractionManager Classes" {
-    class InteractionManager {
-        +attach(target: HTMLElement): void
-        +detach(): void
-    }
+    InteractionManager: "InteractionManager\n+attach(target: HTMLElement): void\n+detach(): void"
 
-    class ZoomPanHandler {
-        +enable(): void
-        +setScale(scale: number): void
-    }
-    class SelectionManager {
-        +select(nodeId: string): void
-        +deselect(): void
-    }
-    class RectangularSelector {
-        +startDrag(point: Point): void
-    }
-    class ClickSelector {
-        +selectAt(point: Point): string | null
-    }
-    class DragDropHandler {
-        +startDrag(nodeId: string): void
-        +onDrop(callback: Function): void
-    }
-    class ExpandCollapseHandler {
-        +toggle(groupId: string): void
-    }
-    class TooltipManager {
-        +show(nodeId: string, content: string): void
-        +hide(): void
-    }
-    class KeyboardNavigator {
-        +handleKey(event: KeyboardEvent): void
-    }
-    class AriaAnnotator {
-        +annotate(svg: SVGElement): void
-    }
+    ZoomPanHandler: "ZoomPanHandler\n+enable(): void\n+setScale(scale: number): void"
+    SelectionManager: "SelectionManager\n+select(nodeId: string): void\n+deselect(): void"
+    RectangularSelector: "RectangularSelector\n+startDrag(point: Point): void"
+    ClickSelector: "ClickSelector\n+selectAt(point: Point): string | null"
+    DragDropHandler: "DragDropHandler\n+startDrag(nodeId: string): void\n+onDrop(callback: Function): void"
+    ExpandCollapseHandler: "ExpandCollapseHandler\n+toggle(groupId: string): void"
+    TooltipManager: "TooltipManager\n+show(nodeId: string, content: string): void\n+hide(): void"
+    KeyboardNavigator: "KeyboardNavigator\n+handleKey(event: KeyboardEvent): void"
+    AriaAnnotator: "AriaAnnotator\n+annotate(svg: SVGElement): void"
 
     InteractionManager --> ZoomPanHandler: "has"
     InteractionManager --> SelectionManager: "has"

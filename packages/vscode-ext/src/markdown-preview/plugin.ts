@@ -82,17 +82,11 @@ export function renderSelDiABlock(engine: CoreEngine, code: string): string {
   }
 
   const svg = result.value.svg;
-  const nodeCount = result.value.stats?.nodeCount ?? '?';
-  const edgeCount = result.value.stats?.edgeCount ?? '?';
-  const width = result.value.width ?? 800;
-  const height = result.value.height ?? 400;
   const pad = engine.config?.render?.padding ?? 20;
 
   return `
 <div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-mode="preview" data-seldia-pad="${pad}">
   <div class="seldia-diagram-toolbar">
-    <span class="seldia-diagram-badge">📐 SelDiA</span>
-    <span class="seldia-diagram-stats">${nodeCount} nodes · ${edgeCount} edges · ${width}×${height}</span>
     <span class="seldia-mode-switch" role="tablist">
       <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram">👁 Preview</button>
       <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="code" title="Show DSL source">&lt;/&gt; Code</button>

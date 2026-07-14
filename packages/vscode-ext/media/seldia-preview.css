@@ -34,13 +34,6 @@
   white-space: nowrap;
 }
 
-.seldia-diagram-stats {
-  color: var(--vscode-descriptionForeground, #888);
-  margin-right: auto;
-  font-family: monospace;
-  white-space: nowrap;
-}
-
 /* ── Toolbar Buttons ──────────────────────────────────────────────────── */
 .seldia-btn {
   padding: 3px 10px;
@@ -198,9 +191,6 @@
   .seldia-btn {
     padding: 2px 7px;
     font-size: 10px;
-  }
-  .seldia-diagram-stats {
-    display: none;
   }
 }
 

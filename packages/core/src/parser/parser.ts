@@ -400,6 +400,21 @@ class Parser {
     return null;
   }
 
+  /**
+   * Consume an identifier-like token: a plain IDENT, or one of the reserved
+   * keyword tokens (theme/group/section/layout/style) used as a node name —
+   * e.g. `theme --> dd` where `theme` is a node id, not the theme decl.
+   */
+  private expectIdentLike(msg: string): Token {
+    const t = this.peek();
+    const isIdentLike = t.type === TokenType.IDENT || t.type === TokenType.KW_THEME ||
+      t.type === TokenType.KW_GROUP || t.type === TokenType.KW_SECTION ||
+      t.type === TokenType.KW_LAYOUT || t.type === TokenType.KW_STYLE ||
+      t.type === TokenType.KW_DIAGRAM;
+    if (!isIdentLike) throw new ParseError(msg, t);
+    return this.consume();
+  }
+
   loc(tok: Token): SourceLocation {
     return {
       file: '<unknown>',
@@ -494,7 +509,7 @@ class Parser {
             loc: this.loc(shapeTok),
           } as any);
         } else {
-          tgtTok = this.expect(TokenType.IDENT, 'Expected target node identifier');
+          tgtTok = this.expectIdentLike('Expected target node identifier');
           tgtId = tgtTok.value;
         }
         // Optional label after target: : "label" (state/sequence syntax)
@@ -569,7 +584,7 @@ class Parser {
       const detected = detectShape(shapeTok.value);
       tgtId = detected.label.replace(/[^a-zA-Z0-9_-]/g, '_') || 'target';
     } else {
-      const tgtTok = this.expect(TokenType.IDENT, 'Expected target identifier in chained edge');
+      const tgtTok = this.expectIdentLike('Expected target identifier in chained edge');
       tgtId = tgtTok.value;
     }
     if (!label && this.peek().type === TokenType.COLON) {
@@ -597,28 +612,42 @@ class Parser {
       const tok = this.consume();
       return { kind: 'Comment', text: tok.value, loc: this.loc(tok) };
     }
+    // Keywords (theme/group/section/layout/style) used as a plain node id
+    // (e.g. `layout: [Layout Engine]`, `style --> other`) are re-tokenized as
+    // node/edge declarations rather than the keyword's own decl grammar —
+    // only treat them as keyword decls when NOT immediately followed by ":"
+    // or an arrow, i.e. when they're being used in decl position.
+    const isKeywordAsIdent = (): boolean => {
+      const next = this.peek(1);
+      return next.type === TokenType.COLON || next.type === TokenType.ARROW;
+    };
     // Theme declaration
-    if (this.peek().type === TokenType.KW_THEME) {
+    if (this.peek().type === TokenType.KW_THEME && !isKeywordAsIdent()) {
       return this.parseThemeDecl();
     }
     // Group declaration
-    if (this.peek().type === TokenType.KW_GROUP) {
+    if (this.peek().type === TokenType.KW_GROUP && !isKeywordAsIdent()) {
       return this.parseGroupDecl();
     }
     // Section declaration
-    if (this.peek().type === TokenType.KW_SECTION) {
+    if (this.peek().type === TokenType.KW_SECTION && !isKeywordAsIdent()) {
       return this.parseSectionDecl();
     }
     // Layout declaration
-    if (this.peek().type === TokenType.KW_LAYOUT) {
+    if (this.peek().type === TokenType.KW_LAYOUT && !isKeywordAsIdent()) {
       return this.parseLayoutDecl();
     }
     // Style block
-    if (this.peek().type === TokenType.KW_STYLE) {
+    if (this.peek().type === TokenType.KW_STYLE && !isKeywordAsIdent()) {
       return this.parseStyleBlock();
     }
     // Node or Edge declaration — identifier followed by : or arrow
-    if (this.peek().type === TokenType.IDENT) {
+    // (keyword tokens used as plain identifiers fall through to here too)
+    const curType = this.peek().type;
+    const isKeywordToken = curType === TokenType.KW_THEME || curType === TokenType.KW_GROUP ||
+      curType === TokenType.KW_SECTION || curType === TokenType.KW_LAYOUT || curType === TokenType.KW_STYLE ||
+      curType === TokenType.KW_DIAGRAM;
+    if (curType === TokenType.IDENT || (isKeywordToken && isKeywordAsIdent())) {
       const idTok = this.peek();
       const next = this.peek(1);
       if (next.type === TokenType.COLON) {
@@ -628,7 +657,13 @@ class Parser {
         return this.parseEdgeDecl();
       }
       // Check for typed node: keyword id: "label" (e.g. system_Ext mainframe: "Bank")
-      if (next.type === TokenType.IDENT && this.peek(2).type === TokenType.COLON) {
+      // The node id token may itself be a keyword (theme/group/section/layout/style)
+      // used as a plain identifier, e.g. `block theme: "Theme Manager"`.
+      const nextIsIdentLike = next.type === TokenType.IDENT || next.type === TokenType.KW_THEME ||
+        next.type === TokenType.KW_GROUP || next.type === TokenType.KW_SECTION ||
+        next.type === TokenType.KW_LAYOUT || next.type === TokenType.KW_STYLE ||
+        next.type === TokenType.KW_DIAGRAM;
+      if (nextIsIdentLike && this.peek(2).type === TokenType.COLON) {
         // Read the type keyword and skip it — use id as the node identifier
         const typeTok = this.consume(); // consume type keyword
         const idTok2 = this.consume(); // consume node id
@@ -645,10 +680,20 @@ class Parser {
         } else if (this.peek().type === TokenType.STRING) {
           label = this.consume().value;
         }
+        // C4-style rich metadata: additional string literals after the label
+        // (e.g. `system_Ext mainframe: "Mainframe Banking" "Core banking system"`,
+        // or `container spa: "SPA" "React" "Client-side application"` where the
+        // middle string is a technology tag). Collect any extra strings into
+        // the node description, joined with " — ".
+        const extra: string[] = [];
+        while (this.peek().type === TokenType.STRING) {
+          extra.push(this.consume().value);
+        }
+        const description = extra.length > 0 ? extra.join(' — ') : undefined;
         const typedStyle = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
         return {
           kind: 'NodeDecl', id: idTok2.value, shape: 'rectangle' as any, label,
-          description: undefined, style: typedStyle, loc: this.locSpan(typeTok, this.peek(-1)),
+          description, style: typedStyle, loc: this.locSpan(typeTok, this.peek(-1)),
         };
       }
       throw new ParseError(`Expected ":" or arrow after identifier "${idTok.value}"`, idTok);
@@ -657,19 +702,28 @@ class Parser {
     if (this.peek().type === TokenType.SHAPE) {
       return this.parseInlineNodeDecl();
     }
-    // Participant keyword (sequence diagrams)
+    // Participant keyword (sequence diagrams / C4 person, system, container, etc.)
     if (this.peek().type === TokenType.KW_PARTICIPANT) {
-      this.consume(); // participant
+      this.consume(); // participant / person / system / container / ...
       const idTok = this.expect(TokenType.IDENT, 'Expected participant identifier');
       let label = idTok.value;
       if (this.peek().type === TokenType.COLON) {
         this.consume(); // :
         label = this.expect(TokenType.STRING, 'Expected participant label string').value;
       }
+      // C4-style rich metadata: additional string literals after the label
+      // (e.g. `person customer: "Customer" "A bank customer"`, or
+      // `container spa: "SPA" "React" "Client-side application"` where the
+      // middle string is a technology tag). Collect extras into description.
+      const extra: string[] = [];
+      while (this.peek().type === TokenType.STRING) {
+        extra.push(this.consume().value);
+      }
+      const description = extra.length > 0 ? extra.join(' — ') : undefined;
       const partStyle = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
       return {
         kind: 'NodeDecl', id: idTok.value, shape: 'actor' as any,
-        label, description: undefined, style: partStyle,
+        label, description, style: partStyle,
         loc: this.locSpan(idTok, this.peek(-1)),
       };
     }
@@ -679,7 +733,9 @@ class Parser {
   // ── Theme ────────────────────────────────────────────────────────────────
   parseThemeDecl(): ASTThemeDecl {
     const kw = this.consume(); // theme
-    const themeTok = this.expect(TokenType.STRING, 'Expected theme name string');
+    const themeTok = this.peek().type === TokenType.STRING || this.peek().type === TokenType.IDENT
+      ? this.consume()
+      : (() => { throw new ParseError('Expected theme name (string or identifier)', this.peek()); })();
     return { kind: 'ThemeDecl', theme: themeTok.value, loc: this.locSpan(kw, themeTok) };
   }
 
@@ -750,7 +806,7 @@ class Parser {
       tgtId = detected.label.replace(/[^a-zA-Z0-9_-]/g, '_') || 'target';
       tgtTok = shapeTok;
     } else {
-      tgtTok = this.expect(TokenType.IDENT, 'Expected target node identifier');
+      tgtTok = this.expectIdentLike('Expected target node identifier');
       tgtId = tgtTok.value;
     }
 
@@ -785,16 +841,29 @@ class Parser {
   // ── Group ────────────────────────────────────────────────────────────────
   parseGroupDecl(): ASTGroupDecl {
     const kw = this.consume(); // group
-    const idTok = this.expect(TokenType.IDENT, 'Expected group identifier');
+    // Accept either a bare identifier (`group cluster1 { ... }`) or a quoted
+    // label used directly as the group's name (`group "Entry Points" { ... }`,
+    // the idiomatic form used throughout the docs) — the id is slugified from
+    // the string in the latter case.
+    let id: string;
+    let label: string;
+    if (this.peek().type === TokenType.STRING) {
+      const labelTok = this.consume();
+      label = labelTok.value;
+      id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'group';
+    } else {
+      const idTok = this.expect(TokenType.IDENT, 'Expected group identifier');
+      id = idTok.value;
+      label = idTok.value;
+    }
     this.expect(TokenType.LBRACE, 'Expected "{" for group body');
     const body = this.parseStatements();
     this.expect(TokenType.RBRACE, 'Expected "}" after group body');
-    let label: string = idTok.value;
     if (this.peek().type === TokenType.STRING) {
       label = this.consume().value;
     }
     return {
-      kind: 'GroupDecl', id: idTok.value, label, body, collapsible: false,
+      kind: 'GroupDecl', id, label, body, collapsible: false,
       loc: this.locSpan(kw, this.peek(-1)),
     };
   }
@@ -815,7 +884,9 @@ class Parser {
   // ── Layout (stub) ────────────────────────────────────────────────────────
   parseLayoutDecl(): any {
     const kw = this.consume(); // layout
-    const engineTok = this.expect(TokenType.IDENT, 'Expected layout engine name');
+    const engineTok = this.peek().type === TokenType.IDENT || this.peek().type === TokenType.STRING
+      ? this.consume()
+      : (() => { throw new ParseError('Expected layout engine name', this.peek()); })();
     return { kind: 'LayoutDecl', engine: engineTok.value, options: {}, loc: this.locSpan(kw, this.peek(-1)) };
   }
 

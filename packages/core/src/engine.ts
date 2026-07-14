@@ -26,7 +26,19 @@ import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPl
 import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
-import { DS, typeSwatch, roleSwatch, type Swatch, type SemanticRole } from './render/design-system.js';
+import { DS, typeSwatch, roleSwatch, seriesColor, type Swatch, type SemanticRole } from './render/design-system.js';
+import { customLayoutFor } from './render/custom-layout.js';
+import {
+  renderSequenceParticipant, renderSequenceMessage,
+  renderStateNode,
+  renderErEntity, renderErRelationship,
+  renderGanttRow, renderGanttDependency,
+  renderMindmapNode, renderMindmapBranch,
+  renderSankeyNode, renderSankeyRibbon,
+  renderGitCommit, renderGitLane,
+  renderChartBar, renderChartPie,
+  extractChartSeriesNames, extractChartMax,
+} from './render/custom-renderers.js';
 
 // -----------------------------------------------------------------------------
 // Core Engine Interface
@@ -190,6 +202,16 @@ class SelDiAEngine implements CoreEngine {
 
   layout(ir: DiagramIR): Result<LayoutResult> {
     if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
+    // Some diagram types have a topology dagre cannot express (sequence
+    // lifelines, gantt time axis, radial mindmap, sankey flow columns,
+    // gitgraph lanes) — those bypass dagre entirely via a dedicated layout
+    // function. Everything else (flowchart-shaped types) still uses dagre.
+    const custom = customLayoutFor(ir.type);
+    if (custom) {
+      const { nodes, edges, bounds } = custom(ir);
+      const positioned: DiagramIR = { ...ir, nodes, edges };
+      return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
+    }
     // Synchronous path only has dagre available; an "elk" request is honored
     // by layoutAsync() (used by compile()), not here.
     const { nodes, edges, bounds } = layoutWithDagre(ir, this.resolvedLayoutOptions(ir));
@@ -199,6 +221,12 @@ class SelDiAEngine implements CoreEngine {
 
   async layoutAsync(ir: DiagramIR): Promise<Result<LayoutResult>> {
     if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
+    const custom = customLayoutFor(ir.type);
+    if (custom) {
+      const { nodes, edges, bounds } = custom(ir);
+      const positioned: DiagramIR = { ...ir, nodes, edges };
+      return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
+    }
     const requested = (ir.metadata?.layoutEngine as string | undefined) || this.config.defaultLayoutEngine;
     const opts = this.resolvedLayoutOptions(ir);
     const { nodes, edges, bounds } = requested === 'elk' && LAYOUT_ENGINES.has('elk')
@@ -296,7 +324,41 @@ class SelDiAEngine implements CoreEngine {
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);
-    for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent)}  </g>\n`;
+
+    // Pie charts are one shape drawn from every node's data at once, not one
+    // shape per node — special-cased here, still wrapping each node in its
+    // identity <g> so data-seldia-node-id contracts hold.
+    if (diagramType === DiagramType.CHART_PIE) {
+      svg += `  <g class="seldia-chart-pie">\n${renderChartPie(nodes, pad, sketchy, bounds)}  </g>\n`;
+      for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}"></g>\n`;
+      svg += '</svg>';
+      return svg;
+    }
+
+    if (diagramType === DiagramType.CHART_BAR || diagramType === DiagramType.CHART_LINE || diagramType === DiagramType.CHART_RADAR || diagramType === DiagramType.CHART_SCATTER) {
+      const seriesNames = extractChartSeriesNames(nodes);
+      const chartMax = extractChartMax(nodes);
+      for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}"></g>\n`;
+      for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderChartBar(n, pad, sketchy, chartMax, seriesNames)}  </g>\n`;
+      svg += '</svg>';
+      return svg;
+    }
+
+    if (diagramType === DiagramType.SANKEY) {
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      for (const e of edges) {
+        const src = byId.get(e.sourceId), tgt = byId.get(e.targetId);
+        const weight = ((e.data as any)?.sankeyWeight as number) ?? 1;
+        const maxWeight = Math.max(1, ...edges.map((e2) => ((e2.data as any)?.sankeyWeight as number) ?? 1));
+        const content = src && tgt ? renderSankeyRibbon(e, pad, src, tgt, weight, maxWeight, typeAccent.stroke) : '';
+        svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${content}  </g>\n`;
+      }
+      for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderSankeyNode(n, pad, sketchy, nodeSwatch(n, diagramType))}  </g>\n`;
+      svg += '</svg>';
+      return svg;
+    }
+
+    for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType)}  </g>\n`;
     for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
     svg += '</svg>';
     return svg;
@@ -317,6 +379,15 @@ class SelDiAEngine implements CoreEngine {
     if (diagramType === DiagramType.CLASS && kind === 'class' && (node.data as any)?.compartments) {
       return this.renderClassNode(node, pad, sketchy, swatch);
     }
+    if (diagramType === DiagramType.SEQUENCE) return renderSequenceParticipant(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.STATE) return renderStateNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.ER) return renderErEntity(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.GANTT) return renderGanttRow(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.MINDMAP) {
+      const isRoot = (node.data as any)?.mindmapRoot === true;
+      return renderMindmapNode(node, pad, sketchy, swatch, isRoot);
+    }
+    if (diagramType === DiagramType.GITGRAPH) return renderGitCommit(node, pad, sketchy);
 
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const cx = x + w / 2, cy = y + h / 2;
@@ -489,7 +560,16 @@ class SelDiAEngine implements CoreEngine {
     return [a, { x: a.x, y: midY }, { x: b.x, y: midY }, b];
   }
 
-  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch): string {
+  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType): string {
+    if (diagramType === DiagramType.SEQUENCE) return renderSequenceMessage(edge, pad, sketchy, typeAccent);
+    if (diagramType === DiagramType.ER) return renderErRelationship(edge, pad, sketchy, typeAccent.stroke);
+    if (diagramType === DiagramType.GANTT) return renderGanttDependency(edge, pad, sketchy, typeAccent.stroke);
+    if (diagramType === DiagramType.MINDMAP) return renderMindmapBranch(edge, pad, sketchy, typeAccent.stroke);
+    if (diagramType === DiagramType.GITGRAPH) {
+      const srcLane = (edge.data as any)?.srcLane;
+      return renderGitLane(edge, pad, sketchy, srcLane ?? 0);
+    }
+
     const s = edge.style || {};
     // Edges take a muted tint of the diagram's signature accent so they read as
     // connective tissue (quieter than nodes) while still belonging to the same

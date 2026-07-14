@@ -94,7 +94,17 @@ class Tokenizer {
     this.advance(); // skip opening "
     let value = '';
     while (this.pos < this.source.length && this.peek() !== '"') {
-      if (this.peek() === '\\') { this.advance(); value += this.peek(); }
+      if (this.peek() === '\\') {
+        this.advance();
+        const esc = this.peek();
+        // Decode common escapes to their real characters so consumers never
+        // see the raw two-character sequence (previously `\n` in DSL source
+        // became the literal letter "n" here — the backslash was silently
+        // dropped — which broke every downstream `\n`-as-newline convention).
+        if (esc === 'n') value += '\n';
+        else if (esc === 't') value += '\t';
+        else value += esc;
+      }
       else { value += this.peek(); }
       this.advance();
     }

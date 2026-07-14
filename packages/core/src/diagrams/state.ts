@@ -18,7 +18,7 @@ export const statePlugin: DiagramPlugin = {
     for (const stmt of ast.body) {
       if (stmt.kind === 'NodeDecl') {
         const nd = stmt as ASTNodeDecl;
-        const isStart = nd.label === '[*]' || nd.id === '[*]';
+        const isStart = nd.label === '[*]' || nd.label === '*' || nd.id === '[*]' || nd.id === '_';
         nodes.push({
           id: nd.id, label: nd.label, shape: isStart ? ShapeType.CIRCLE : ShapeType.ROUNDED_RECTANGLE,
           position: { x: 0, y: 0 }, size: { width: 160, height: 50 },

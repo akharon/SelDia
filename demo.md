@@ -6,7 +6,9 @@ in VS Code with the SelDiA extension installed and use the Markdown preview
 
 ## How to read this document
 
-All diagrams share **one visual language** so they read as a single family:
+All diagrams share **one visual language** so they read as a single family —
+but each diagram *type* also has its own visual grammar, not just a different
+color:
 
 - **Shared neutrals** — the same font, stroke weights, corner radius, fills and
   edge color are used in every diagram, regardless of type.
@@ -14,6 +16,15 @@ All diagrams share **one visual language** so they read as a single family:
   (flowchart = indigo, sequence = teal, ER = cyan, state = green, BPMN = orange,
   and so on) so different types are distinguishable at a glance while still
   harmonizing on the page.
+- **Per-type structure** — sequence diagrams draw lifelines and ordered
+  message arrows, not boxes; ER diagrams draw attributed tables with
+  crow's-foot cardinality; state machines use rounded pills with a filled
+  start dot; Gantt charts lay tasks on a real time axis; charts draw actual
+  bar/pie geometry; mind maps radiate from a center node; Sankey diagrams draw
+  proportional-width flow ribbons; Git graphs draw branch lanes with commit
+  dots. Only the remaining flowchart-shaped types (flowchart, component,
+  network, deployment, block, form, timeline, activity, use case) are boxes
+  connected by arrows — because that's the right grammar for them.
 - **Semantic roles** — meaning that crosses every diagram type gets a fixed
   color: start = green, stop/error = red, decision = amber, actor/external =
   violet, note = yellow paper.

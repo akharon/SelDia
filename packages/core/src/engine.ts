@@ -8,7 +8,7 @@ import type { DiagramAST } from './ast/nodes.js';
 import type { DiagramPlugin, PluginManager } from './plugin/types.js';
 import type { Theme } from './types/style.js';
 import type { SelDiAConfig } from './config.js';
-import { DiagnosticSeverity } from './types/common.js';
+import { DiagnosticSeverity, Direction } from './types/common.js';
 import { DEFAULT_CONFIG } from './config.js';
 import { analyze } from './analyzer.js';
 import { parseDSL } from './parser/index.js';
@@ -16,13 +16,14 @@ import { DefaultPluginManager } from './plugin-manager.js';
 import { flowchartPlugin } from './diagrams/flowchart.js';
 import { sequencePlugin } from './diagrams/sequence.js';
 import { classPlugin } from './diagrams/class.js';
-import { c4Plugin } from './diagrams/c4.js';
+import { c4Plugin, c4ContainerPlugin, c4ComponentPlugin } from './diagrams/c4.js';
 import { statePlugin } from './diagrams/state.js';
 import { erPlugin } from './diagrams/er.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
-import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin } from './diagrams/misc.js';
+import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
+import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
 
 // -----------------------------------------------------------------------------
 // Core Engine Interface
@@ -34,11 +35,21 @@ export interface CoreEngine {
   parse(source: string, filePath?: string): Result<DiagramAST>;
   analyze(ast: DiagramAST): Result<DiagramAST>;
   transform(ast: DiagramAST): Result<DiagramIR>;
+  /** Synchronous layout. Always uses the "dagre" engine — the only auto-layout
+   *  algorithm with a synchronous implementation. If the diagram requests
+   *  "elk" via `layout elk`, this silently falls back to dagre; use
+   *  `layoutAsync` to honor an elk request. */
   layout(ir: DiagramIR): Result<LayoutResult>;
+  /** Async layout. Honors the diagram's requested engine ("dagre" or "elk"),
+   *  defaulting to `config.defaultLayoutEngine`. */
+  layoutAsync(ir: DiagramIR): Promise<Result<LayoutResult>>;
   render(layoutResult: LayoutResult): Result<RenderResult>;
   /** Synchronous full pipeline. Required by contexts that cannot await
-   *  (e.g. VS Code's markdown-it fence renderer). */
+   *  (e.g. VS Code's markdown-it fence renderer). Always lays out with
+   *  "dagre" — see `layout()`. */
   compileSync(source: string, filePath?: string): Result<RenderResult>;
+  /** Full pipeline, honoring the diagram's requested layout engine
+   *  (including "elk", which requires async). */
   compile(source: string, filePath?: string): Promise<Result<RenderResult>>;
   validate(source: string, filePath?: string): Diagnostic[];
   getSupportedDiagramTypes(): string[];
@@ -68,7 +79,7 @@ class SelDiAEngine implements CoreEngine {
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -87,11 +98,66 @@ class SelDiAEngine implements CoreEngine {
       ok: false,
       errors: [{ severity: DiagnosticSeverity.ERROR, message: `No plugin for type: "${ast.type}"`, source: ast.loc, code: 'E0004' }],
     };
-    try { return { ok: true, value: plugin.transform(ast, this.config) }; }
+    try {
+      const ir = plugin.transform(ast, this.config);
+      const layoutDecl = ast.body.find((s): s is import('./ast/nodes.js').ASTLayoutDecl => s.kind === 'LayoutDecl');
+      ir.metadata = { ...ir.metadata, layoutEngine: layoutDecl?.engine };
+      return { ok: true, value: ir };
+    }
     catch (err: any) { return { ok: false, errors: [{ severity: DiagnosticSeverity.ERROR, message: `Transform error: ${err.message}`, source: ast.loc, code: 'E0005' }] }; }
   }
 
+  /** A node carries a manual position override when its style has a flat
+   *  `{ x, y }` (or legacy nested `{ layout: { x, y } }`) — this is how the
+   *  Markdown preview's drag-to-move writes positions back into the DSL. */
+  private manualOverride(node: IRNode): Point | undefined {
+    const style = (node.style || {}) as Record<string, any>;
+    const manual = (style.layout && typeof style.layout === 'object') ? style.layout : style;
+    const mx = manual?.x, my = manual?.y;
+    return typeof mx === 'number' && typeof my === 'number' ? { x: mx, y: my } : undefined;
+  }
+
+  /** True if any node in the diagram has a manual position override — per
+   *  the diagram-wide auto-layout model, this disables the auto-layout
+   *  engine for every node until "Auto Layout" is triggered again (which
+   *  clears all overrides). */
+  private isManuallyLaidOut(ir: DiagramIR): boolean {
+    return ir.nodes.some((n) => this.manualOverride(n) !== undefined);
+  }
+
+  private resolvedLayoutOptions(ir: DiagramIR) {
+    return {
+      direction: this.config.layout.direction ?? Direction.TOP_TO_BOTTOM,
+      nodeSpacing: this.config.layout.nodeSpacing?.[0] ?? 80,
+      rankSpacing: this.config.layout.rankSpacing ?? 80,
+      edgeSpacing: this.config.layout.edgeSpacing ?? 20,
+    };
+  }
+
   layout(ir: DiagramIR): Result<LayoutResult> {
+    if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
+    // Synchronous path only has dagre available; an "elk" request is honored
+    // by layoutAsync() (used by compile()), not here.
+    const { nodes, edges, bounds } = layoutWithDagre(ir, this.resolvedLayoutOptions(ir));
+    const positioned: DiagramIR = { ...ir, nodes, edges };
+    return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
+  }
+
+  async layoutAsync(ir: DiagramIR): Promise<Result<LayoutResult>> {
+    if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
+    const requested = (ir.metadata?.layoutEngine as string | undefined) || this.config.defaultLayoutEngine;
+    const opts = this.resolvedLayoutOptions(ir);
+    const { nodes, edges, bounds } = requested === 'elk' && LAYOUT_ENGINES.has('elk')
+      ? await layoutWithElk(ir, opts)
+      : layoutWithDagre(ir, opts);
+    const positioned: DiagramIR = { ...ir, nodes, edges };
+    return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
+  }
+
+  /** Diagram-wide manual layout: honor each node's `{ x, y }` override (or
+   *  its plugin-set position, or a grid fallback), skipping the auto engine
+   *  entirely so manually and automatically placed nodes never fight. */
+  private layoutManual(ir: DiagramIR): Result<LayoutResult> {
     const nodes = ir.nodes.map((n, i) => ({
       ...n,
       position: this.resolvePosition(n, i),
@@ -107,10 +173,8 @@ class SelDiAEngine implements CoreEngine {
    *  (`{ layout: { x, y } }` or top-level `{ x, y }`), then any position set
    *  by the plugin transform, and finally a default grid placement. */
   private resolvePosition(node: IRNode, index: number): Point {
-    const style = (node.style || {}) as Record<string, any>;
-    const manual = (style.layout && typeof style.layout === 'object') ? style.layout : style;
-    const mx = manual?.x, my = manual?.y;
-    if (typeof mx === 'number' && typeof my === 'number') return { x: mx, y: my };
+    const manual = this.manualOverride(node);
+    if (manual) return manual;
     if (node.position.x !== 0 || node.position.y !== 0) return node.position;
     return { x: 100 + (index % 3) * 220, y: 100 + Math.floor(index / 3) * 120 };
   }
@@ -241,7 +305,11 @@ class SelDiAEngine implements CoreEngine {
   }
 
   async compile(source: string, filePath?: string): Promise<Result<RenderResult>> {
-    return this.compileSync(source, filePath);
+    const r1 = this.parse(source, filePath); if (!r1.ok) return r1;
+    const r2 = this.analyze(r1.value); if (!r2.ok) return r2;
+    const r3 = this.transform(r2.value); if (!r3.ok) return r3;
+    const r4 = await this.layoutAsync(r3.value); if (!r4.ok) return r4;
+    return this.render(r4.value);
   }
 
   validate(source: string, filePath?: string): Diagnostic[] {

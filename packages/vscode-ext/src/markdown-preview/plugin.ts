@@ -16,6 +16,7 @@
 // =============================================================================
 
 import type { CoreEngine } from '@seldia/core';
+import { hasManualPositions } from '../edit/dsl-edit.js';
 
 // Minimal MarkdownIt interface — matches what VS Code passes to extendMarkdownIt
 export interface MarkdownIt {
@@ -83,9 +84,10 @@ export function renderSelDiABlock(engine: CoreEngine, code: string): string {
 
   const svg = result.value.svg;
   const pad = engine.config?.render?.padding ?? 20;
+  const manual = hasManualPositions(code);
 
   return `
-<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-mode="preview" data-seldia-pad="${pad}">
+<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-mode="preview" data-seldia-pad="${pad}" data-seldia-layout="${manual ? 'manual' : 'auto'}">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
       <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram">👁 Preview</button>
@@ -93,6 +95,13 @@ export function renderSelDiABlock(engine: CoreEngine, code: string): string {
       <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="edit" title="Edit diagram: drag nodes, double-click to rename">✎ Edit</button>
     </span>
     <span class="seldia-toolbar-spacer"></span>
+    <a
+      class="seldia-btn seldia-btn-auto-layout${manual ? ' seldia-btn-auto-layout-disabled' : ''}"
+      title="${manual
+        ? 'Auto layout is off because nodes were moved manually. Click to re-run automatic layout and clear manual positions.'
+        : 'Diagram is automatically laid out. Drag a node to switch to manual positioning.'}"
+      href="command:seldia.autoLayout?${cmdArgs({ blockId })}"
+    >${manual ? '⛶ Auto Layout' : '✓ Auto Layout'}</a>
     <button class="seldia-btn seldia-btn-zoom-in" title="Zoom In">🔍+</button>
     <button class="seldia-btn seldia-btn-zoom-out" title="Zoom Out">🔍−</button>
     <button class="seldia-btn seldia-btn-reset" title="Reset Zoom">⟲</button>

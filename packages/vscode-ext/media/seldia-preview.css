@@ -100,6 +100,22 @@
 }
 .seldia-toolbar-spacer { flex: 1 1 auto; }
 
+/* ── Auto Layout toggle ───────────────────────────────────────────────── */
+.seldia-btn-auto-layout {
+  color: var(--vscode-descriptionForeground, #888);
+  cursor: default;
+}
+.seldia-btn-auto-layout-disabled {
+  background: var(--vscode-inputValidation-warningBackground, #3a2f1a);
+  border-color: var(--vscode-inputValidation-warningBorder, #7a5a1a);
+  color: var(--vscode-inputValidation-warningForeground, #ffd28a);
+  cursor: pointer;
+  font-weight: 600;
+}
+.seldia-btn-auto-layout-disabled:hover {
+  background: var(--vscode-inputValidation-warningBorder, #7a5a1a);
+}
+
 /* ── Mode-driven visibility ───────────────────────────────────────────── */
 .seldia-diagram-source { display: none; }
 .seldia-diagram[data-seldia-mode="code"] .seldia-diagram-svg { display: none; }

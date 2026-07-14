@@ -9,6 +9,8 @@ import {
   setNodePosition,
   setNodeLabel,
   setNodeAttributes,
+  hasManualPositions,
+  clearAllPositions,
 } from '../src/edit/dsl-edit.js';
 import { createEngine } from '@seldia/core';
 
@@ -106,6 +108,62 @@ describe('setNodeAttributes', () => {
   it('returns source unchanged for an unknown node', () => {
     const src = 'diagram flowchart "T" {\n  a: (S)\n}';
     expect(setNodeAttributes(src, 'zzz', { fill: '"#111"' })).toBe(src);
+  });
+});
+
+describe('hasManualPositions', () => {
+  it('is false for a diagram with no position overrides', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start)\n  b: [Do]\n  a --> b\n}';
+    expect(hasManualPositions(src)).toBe(false);
+  });
+
+  it('is true once any node carries a flat x/y override', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start) { x: 10, y: 20 }\n  b: [Do]\n}';
+    expect(hasManualPositions(src)).toBe(true);
+  });
+
+  it('is false when a style block has other attributes but no x/y', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start) { fill: "#fff" }\n}';
+    expect(hasManualPositions(src)).toBe(false);
+  });
+
+  it('requires both x and y to be present', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start) { x: 10 }\n}';
+    expect(hasManualPositions(src)).toBe(false);
+  });
+});
+
+describe('clearAllPositions', () => {
+  it('strips x/y from every node while preserving other attributes', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start) { fill: "#fff", x: 10, y: 20 }\n  b: [Do] { x: 5, y: 6 }\n}';
+    const out = clearAllPositions(src);
+    expect(hasManualPositions(out)).toBe(false);
+    expect(out).toContain('fill: "#fff"');
+    expect(out).not.toMatch(/x:\s*\d/);
+    expect(out).not.toMatch(/y:\s*\d/);
+  });
+
+  it('removes an empty style block entirely once x/y are stripped', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start) { x: 10, y: 20 }\n}';
+    const out = clearAllPositions(src);
+    const nodeLine = out.split('\n').find((l) => l.includes('a: (Start)'));
+    expect(nodeLine).toBe('  a: (Start)');
+  });
+
+  it('is a no-op when there are no manual positions', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start)\n  b: [Do]\n  a --> b\n}';
+    expect(clearAllPositions(src)).toBe(src);
+  });
+
+  it('cleared source still compiles and re-runs auto layout', () => {
+    const src = 'diagram flowchart "T" {\n  a: (Start) { x: 900, y: 900 }\n  b: [Do]\n  a --> b\n}';
+    const cleared = clearAllPositions(src);
+    const r = engine.compileSync(cleared);
+    expect(r.ok).toBe(true);
+    const laid = engine.layout(engine.transform(engine.analyze(engine.parse(cleared).value as any).value as any).value as any);
+    const a = (laid as any).value.diagram.nodes.find((n: any) => n.id === 'a');
+    // No longer pinned at the manual (900, 900) position — dagre placed it.
+    expect(a.position).not.toEqual({ x: 900, y: 900 });
   });
 });
 

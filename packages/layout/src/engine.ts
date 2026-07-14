@@ -21,6 +21,11 @@ function dirToDagre(d: Direction): string {
 export class DagreLayoutEngine implements LayoutEngine {
   readonly id = 'dagre';
   readonly name = 'Dagre (Hierarchical)';
+  readonly async = false;
+
+  async layoutAsync(ir: DiagramIR, options: Partial<LayoutOptions>): Promise<LayoutResult> {
+    return this.layout(ir, options);
+  }
 
   layout(ir: DiagramIR, options: Partial<LayoutOptions>): LayoutResult {
     const opts = { ...defaultOptions, ...options };

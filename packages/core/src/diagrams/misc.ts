@@ -42,3 +42,4 @@ export const formPlugin = genericPlugin('seldia-form', 'Form', DiagramType.FORM,
 export const sankeyPlugin = genericPlugin('seldia-sankey', 'Sankey', DiagramType.SANKEY, 'Flow/sankey diagrams', ShapeType.RECTANGLE, '#fce7f3', '#831843');
 export const blockPlugin = genericPlugin('seldia-block', 'Block', DiagramType.BLOCK, 'System block diagrams', ShapeType.RECTANGLE, '#eef2ff', '#312e81');
 export const timelinePlugin = genericPlugin('seldia-timeline', 'Timeline', DiagramType.TIMELINE, 'Timeline charts', ShapeType.ROUNDED_RECTANGLE, '#f0fdfa', '#134e4a');
+export const dmnPlugin = genericPlugin('seldia-dmn', 'DMN Decision Table', DiagramType.DMN, 'DMN decision tables', ShapeType.RECTANGLE, '#fffbeb', '#92400e');

@@ -230,6 +230,47 @@ export function setNodeLabel(source: string, nodeId: string, label: string): str
   return source;
 }
 
+/** Match any node declaration line and extract its flat style block, if any.
+ *  Used for whole-document scans (auto-layout state, clearing overrides) —
+ *  unlike `parseNodeLine`, this doesn't require knowing the node id upfront. */
+const NODE_LINE_RE = /^(\s*)(?:[A-Za-z_][\w-]*\s+)?([A-Za-z_][\w-]*)\s*:/;
+
+function parseAnyNodeLine(line: string): ParsedNodeLine | null {
+  const m = NODE_LINE_RE.exec(line);
+  if (!m) return null;
+  return parseNodeLine(line, m[2]);
+}
+
+/** True if any node in the document carries a manual `x`/`y` position
+ *  override — the diagram-wide signal that auto-layout is currently
+ *  disabled (see CoreEngine.layout's isManuallyLaidOut). */
+export function hasManualPositions(source: string): boolean {
+  for (const line of source.split('\n')) {
+    const parsed = parseAnyNodeLine(line);
+    if (!parsed || parsed.styleInner === null) continue;
+    const entries = parseFlatAttrs(parsed.styleInner);
+    if (entries.some(([k]) => k === 'x') && entries.some(([k]) => k === 'y')) return true;
+  }
+  return false;
+}
+
+/** Strip `x`/`y` position overrides from every node in the document, so the
+ *  next render re-runs the automatic layout engine. Other style attributes
+ *  (fill, stroke, ...) are preserved; a style block left empty is removed
+ *  entirely. This is the "Auto Layout" button's transform. */
+export function clearAllPositions(source: string): string {
+  const lines = source.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const parsed = parseAnyNodeLine(lines[i]);
+    if (!parsed || parsed.styleInner === null) continue;
+    const entries = parseFlatAttrs(parsed.styleInner).filter(([k]) => k !== 'x' && k !== 'y');
+    const headTrimmed = parsed.head.replace(/\s+$/, '').replace(/^\s+/, '');
+    const style = entries.length > 0 ? ` ${serializeFlatAttrs(entries)}` : '';
+    lines[i] = `${parsed.indent}${parsed.id}: ${headTrimmed}${style}${parsed.tail.replace(/\s+$/, '')}`;
+  }
+  return lines.join('\n');
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 }

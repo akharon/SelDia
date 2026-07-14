@@ -50,14 +50,29 @@ export interface LayoutEngine {
   readonly name: string;
 
   /**
+   * Whether this engine's algorithm is inherently asynchronous (e.g. ELK,
+   * which has no synchronous API). Synchronous callers — like the VS Code
+   * Markdown preview, which renders through markdown-it's sync fence hook —
+   * must check this and use another engine instead of calling `layout()`.
+   */
+  readonly async?: boolean;
+
+  /**
    * Compute layout for the given diagram IR.
    * Modifies node positions, sizes, and edge waypoints in-place.
    *
    * @param ir - The diagram IR (nodes have initial/zero positions)
    * @param options - Layout options
    * @returns The layout result with positioned elements
+   * @throws if `async` is true — use `layoutAsync` instead.
    */
   layout(ir: DiagramIR, options: Partial<LayoutOptions>): LayoutResult;
+
+  /**
+   * Async variant, required when `async` is true. Falls back to wrapping
+   * `layout()` in a resolved promise for synchronous engines.
+   */
+  layoutAsync?(ir: DiagramIR, options: Partial<LayoutOptions>): Promise<LayoutResult>;
 
   /**
    * Estimate the diagram bounds without running full layout.

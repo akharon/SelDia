@@ -70,3 +70,98 @@ describe('edge style blocks', () => {
     expect(e.style).toEqual({ stroke: '#f00' });
   });
 });
+
+describe('bare identifier theme/layout declarations', () => {
+  it('accepts a bare identifier for theme (not just a quoted string)', () => {
+    const p = engine.parse('diagram flowchart "T" { theme sketchy-dark\n a: (S) }');
+    expect(p.ok).toBe(true);
+    const t = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'ThemeDecl');
+    expect(t.theme).toBe('sketchy-dark');
+  });
+
+  it('still accepts a quoted theme name', () => {
+    const p = engine.parse('diagram flowchart "T" { theme "sketchy-dark"\n a: (S) }');
+    expect(p.ok).toBe(true);
+  });
+
+  it('accepts a bare identifier for layout engine', () => {
+    const p = engine.parse('diagram flowchart "T" { layout dagre-alt\n a: (S) }');
+    expect(p.ok).toBe(true);
+    const l = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'LayoutDecl');
+    expect(l.engine).toBe('dagre-alt');
+  });
+});
+
+describe('group declarations', () => {
+  it('accepts a quoted label directly as the group name', () => {
+    const p = engine.parse('diagram block "T" { group "Entry Points" { a: (S) } }');
+    expect(p.ok).toBe(true);
+    const g = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'GroupDecl');
+    expect(g.label).toBe('Entry Points');
+    expect(g.id).toBe('entry-points');
+  });
+
+  it('still accepts a bare identifier group name', () => {
+    const p = engine.parse('diagram block "T" { group cluster1 { a: (S) } } ');
+    expect(p.ok).toBe(true);
+    const g = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'GroupDecl');
+    expect(g.id).toBe('cluster1');
+  });
+});
+
+describe('reserved keywords used as plain node identifiers', () => {
+  it('allows "layout", "theme", "style", "group", "section" as node ids', () => {
+    const src = 'diagram flowchart "T" { layout: [Layout Engine]\n theme: [Theme Manager]\n layout --> theme }';
+    const r = engine.compileSync(src);
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows a keyword as the id in a typed-node decl (e.g. block theme: "...")', () => {
+    const r = engine.compileSync('diagram block "T" { block theme: "Theme Manager" }');
+    expect(r.ok).toBe(true);
+  });
+
+  it('allows "diagram" as a node id and edge endpoint', () => {
+    const r = engine.compileSync('diagram block "T" { block diagram: "Diagram Node"\n a: (S)\n diagram --> a }');
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe('C4 rich metadata (multiple description strings)', () => {
+  it('folds extra strings after a typed-node label into the description', () => {
+    const p = engine.parse('diagram c4 context "T" { system_Ext mainframe: "Mainframe Banking" "Core banking system" }');
+    expect(p.ok).toBe(true);
+    const n = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'NodeDecl');
+    expect(n.label).toBe('Mainframe Banking');
+    expect(n.description).toBe('Core banking system');
+  });
+
+  it('folds extra strings after a participant-keyword label (person/container/...)', () => {
+    const p = engine.parse('diagram c4 context "T" { person customer: "Customer" "A bank customer" }');
+    expect(p.ok).toBe(true);
+    const n = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'NodeDecl');
+    expect(n.label).toBe('Customer');
+    expect(n.description).toBe('A bank customer');
+  });
+
+  it('joins multiple extra strings (technology + description) with an em dash', () => {
+    const p = engine.parse('diagram c4 container "T" { container spa: "SPA" "React" "Client-side application" }');
+    expect(p.ok).toBe(true);
+    const n = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'NodeDecl');
+    expect(n.description).toBe('React — Client-side application');
+  });
+
+  it('compiles diagram c4 container and diagram c4 component (registered plugins)', () => {
+    const container = engine.compileSync('diagram c4 container "T" { container api: "API" }');
+    expect(container.ok).toBe(true);
+    const component = engine.compileSync('diagram c4 component "T" { component svc: "Service" }');
+    expect(component.ok).toBe(true);
+  });
+});
+
+describe('dmn diagram type', () => {
+  it('compiles a basic dmn diagram using the generic node/edge subset', () => {
+    const r = engine.compileSync('diagram dmn "T" { age: "Input: Age"\n approve: "Rule: Approve"\n age --> approve }');
+    expect(r.ok).toBe(true);
+  });
+});

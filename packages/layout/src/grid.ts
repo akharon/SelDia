@@ -12,6 +12,11 @@ import type { LayoutEngine, LayoutOptions } from './types.js';
 export class GridLayoutEngine implements LayoutEngine {
   readonly id = 'grid';
   readonly name = 'Grid (Simple)';
+  readonly async = false;
+
+  async layoutAsync(ir: DiagramIR, options: Partial<LayoutOptions>): Promise<LayoutResult> {
+    return this.layout(ir, options);
+  }
 
   layout(ir: DiagramIR, options: Partial<LayoutOptions>): LayoutResult {
     const opts = { ...defaultOptions, ...options };

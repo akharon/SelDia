@@ -268,105 +268,139 @@ diagram bpmn "Order Fulfillment" {
 #### 3.6.5 DMN Decision Table
 ```seldia
 diagram dmn "Loan Approval" {
-    input age: number "Applicant Age"
-    input income: number "Annual Income"
-    input creditScore: number "Credit Score"
+    age: "Input: Applicant Age"
+    income: "Input: Annual Income"
+    creditScore: "Input: Credit Score"
 
-    rule "Approve" { when: age >= 18 AND income > 30000 AND creditScore > 700 output: "APPROVE" }
-    rule "Manual Review" { when: age >= 18 AND income > 30000 AND creditScore <= 700 output: "MANUAL_REVIEW" }
-    rule "Deny Age" { when: age < 18 output: "DENY" }
-    rule "Deny Low Income" { when: income <= 30000 AND creditScore <= 600 output: "DENY" }
-    rule "Manual Low Income" { when: income <= 30000 AND creditScore > 600 output: "MANUAL_REVIEW" }
+    approve: "Rule: Approve\nage >= 18 AND income > 30000 AND creditScore > 700\n-> APPROVE"
+    review: "Rule: Manual Review\nage >= 18 AND income > 30000 AND creditScore <= 700\n-> MANUAL_REVIEW"
+    denyAge: "Rule: Deny (Age)\nage < 18\n-> DENY"
 
-    hitPolicy: first
+    age --> approve
+    income --> approve
+    creditScore --> approve
+    age --> denyAge
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated `input`
+/ `rule { when / output }` decision-table construct with boolean expressions,
+so this example represents inputs and rules as plain nodes/edges.)*
 
 #### 3.6.6 Chart
 ```seldia
 diagram chart bar "Monthly Sales" {
-    data {
-        categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
-        series "Revenue" { values: [120, 200, 150, 180, 220, 250] color: "#4ecdc4" }
-        series "Costs"   { values: [80, 100, 90, 95, 110, 120] color: "#ff6b6b" }
-    }
-    options {
-        xAxis { title: "Month" }
-        yAxis { title: "Amount (k€)" }
-        legend { position: bottom }
-    }
+    jan: "Jan\nRevenue: 120  Costs: 80"
+    feb: "Feb\nRevenue: 200  Costs: 100"
+    mar: "Mar\nRevenue: 150  Costs: 90"
+    apr: "Apr\nRevenue: 180  Costs: 95"
+    may: "May\nRevenue: 220  Costs: 110"
+    jun: "Jun\nRevenue: 250  Costs: 120"
+
+    jan --> feb
+    feb --> mar
+    mar --> apr
+    apr --> may
+    may --> jun
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated chart
+`data { categories, series }` / `options` construct, so this example
+represents each category as a node carrying its series values in the label.)*
 
 #### 3.6.7 Gantt
 ```seldia
 diagram gantt "Project Alpha" {
     section "Planning" {
-        task t1: "Requirements" 2025-01-06 to 2025-01-17
-        task t2: "Architecture" 2025-01-13 to 2025-01-24
+        t1: "Requirements (Jan 6 - Jan 17)"
+        t2: "Architecture (Jan 13 - Jan 24)"
     }
     section "Development" {
-        task t3: "Sprint 1" 2025-01-27 to 2025-02-14
-        task t4: "Sprint 2" 2025-02-17 to 2025-03-07
+        t3: "Sprint 1 (Jan 27 - Feb 14)"
+        t4: "Sprint 2 (Feb 17 - Mar 7)"
     }
-    milestone m1: "MVP Release" at 2025-03-10
+    m1: "Milestone: MVP Release (Mar 10)"
+
+    t1 --> t2
+    t2 --> t3
+    t3 --> t4
+    t4 --> m1
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated
+`task ... <date> to <date>` / `milestone ... at <date>` construct, so this
+example folds the dates into the task labels.)*
 
 #### 3.6.8 MindMap
 ```seldia
 diagram mindmap "System Features" {
-    root "MyApp"
-        branch "Frontend"
-            leaf "Dashboard"
-            leaf "User Profile"
-            leaf "Settings"
-        branch "Backend"
-            leaf "Auth Service"
-            leaf "API Gateway"
-            leaf "Database"
-        branch "DevOps"
-            leaf "CI/CD"
-            leaf "Monitoring"
-            leaf "Logging"
+    root: "MyApp"
+    frontend: "Frontend"
+    backend: "Backend"
+    devops: "DevOps"
+
+    root --> frontend
+    frontend --> dashboard: "Dashboard"
+    frontend --> profile: "User Profile"
+    frontend --> settings: "Settings"
+
+    root --> backend
+    backend --> auth: "Auth Service"
+    backend --> gateway: "API Gateway"
+    backend --> database: "Database"
+
+    root --> devops
+    devops --> cicd: "CI/CD"
+    devops --> monitoring: "Monitoring"
+    devops --> logging: "Logging"
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated
+indentation-based `root` / `branch` / `leaf` construct, so this example uses
+plain nodes and edges to express the same tree.)*
 
 #### 3.6.9 Form Definition
 ```seldia
 diagram form "User Registration" {
     section "Personal Info" {
-        field name: text { required: true, placeholder: "Full name" }
-        field email: email { required: true }
-        field age: number { min: 18, max: 120 }
+        name: "Field: name (text, required)\nplaceholder: Full name"
+        email: "Field: email (email, required)"
+        age: "Field: age (number, 18-120)"
     }
     section "Preferences" {
-        field newsletter: checkbox { label: "Subscribe to newsletter" }
-        field theme: select { options: ["Light", "Dark", "System"], default: "System" }
+        newsletter: "Field: newsletter (checkbox)\nSubscribe to newsletter"
+        theme: "Field: theme (select)\nLight | Dark | System"
     }
-    submit "Register" { style: primary }
+    submit: "Submit: Register"
+
+    age --> submit
+    theme --> submit
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated `field
+<id>: <type> { attrs }` / `submit` construct, so this example folds each
+field's type and constraints into its node label.)*
 
 #### 3.6.10 Sankey
 ```seldia
 diagram sankey "Energy Flow" {
-    source "Solar"  { value: 120 }
-    source "Wind"   { value: 80 }
-    source "Coal"   { value: 200 }
+    solar: "Solar (120)"
+    wind: "Wind (80)"
+    coal: "Coal (200)"
+    grid: "Electricity Grid"
+    storage: "Battery Storage"
+    loss: "Transmission Loss"
 
-    flow "Solar" -> "Grid"     { value: 110 }
-    flow "Solar" -> "Storage"  { value: 10 }
-    flow "Wind"  -> "Grid"     { value: 75 }
-    flow "Wind"  -> "Storage"  { value: 5 }
-    flow "Coal"  -> "Grid"     { value: 190 }
-    flow "Coal"  -> "Loss"     { value: 10 }
-
-    sink "Grid"    { label: "Electricity Grid" }
-    sink "Storage" { label: "Battery Storage" }
-    sink "Loss"    { label: "Transmission Loss" }
+    solar --> grid: "110"
+    solar --> storage: "10"
+    wind --> grid: "75"
+    wind --> storage: "5"
+    coal --> grid: "190"
+    coal --> loss: "10"
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated
+`source`/`flow`/`sink` construct with string-keyed flow values, so this
+example uses plain nodes and labeled edges to express the same flow graph.)*
 
 ### 3.7 Style & Theme System
 
@@ -905,13 +939,13 @@ diagram flowchart "Markdown → Preview Integration" {
 
 The extension registers a `DocumentLinkProvider` and `CodeLensProvider` that scan for fenced code blocks with the `seldia` language identifier:
 
-```
+````
 ```seldia
 diagram flowchart "..." {
     ...
 }
 ```
-```
+````
 
 Also supports the `seldia-` prefix for inline mode:
 ```
@@ -1244,29 +1278,9 @@ The `marked` library is configured with a **custom renderer** that intercepts fe
 
 ```seldia
 diagram flowchart "marked Custom Renderer" {
-    md_input: [
-        Markdown Input
-        # Architecture
-        ```seldia
-        diagram c4 context "..."
-            person user: "User"
-            system app: "My App"
-            user --> app: "Uses"
-        ```
-    ]
-
-    marked: [marked Custom Renderer\nintercepts lang=seldia fences]
-
-    html_output: [
-        HTML Output
-        <h1>Architecture</h1>
-        <div class="seldia-diagram">
-          <div class="header">System Context — C4</div>
-          <svg><!-- Rough.js SVG --></svg>
-          <div class="caption">Fig. 1</div>
-        </div>
-        <p>Some text after.</p>
-    ]
+    md_input: "Markdown Input\n(# Architecture + ```seldia fence with a c4-context diagram)"
+    marked: "marked Custom Renderer\nintercepts lang=seldia fences"
+    html_output: "HTML Output\n<h1>Architecture</h1> + rendered <div class=\"seldia-diagram\"><svg>...</svg></div>"
 
     md_input --> marked: "parse"
     marked --> html_output: "replace fence with <div> + SVG"
@@ -1912,10 +1926,13 @@ diagram state "Diagram Interaction States" {
     Selected --> Editing: "dblClick"
     Editing --> Idle: "Enter / Esc"
 
-    note right of Idle: "Esc → Return to IDLE from any state"
-    note right of Selected: "Right-click → Context Menu (always available)"
+    Idle --> Idle: "Esc from any state → Idle"
+    Selected --> Selected: "Right-click → Context Menu (always available)"
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated `note
+right of <state>: "..."` annotation construct, so this example folds the two
+notes into self-transitions with the same text as the edge label.)*
 
 #### 9.4.4 Inline Property Editor
 
@@ -1924,17 +1941,23 @@ Double-clicking a node opens an inline property editor overlay:
 ```seldia
 diagram form "Node Property Editor" {
     section "Edit Node" {
-        field label: text { placeholder: "Payment Service" }
-        field shape: select { options: ["Rectangle", "Diamond", "Circle", "Cylinder", "Hexagon", "Stadium", "Cloud"] }
-        field fill: color { default: "#e1f5fe" }
-        field stroke: color { default: "#01579b" }
-        field roughness: range { min: 0, max: 5, default: 1.2 }
-        field fontSize: number { min: 8, max: 48, default: 14 }
+        label: "Field: label (text)\nplaceholder: Payment Service"
+        shape: "Field: shape (select)\nRectangle | Diamond | Circle | Cylinder | Hexagon | Stadium | Cloud"
+        fill: "Field: fill (color)\ndefault: #e1f5fe"
+        stroke: "Field: stroke (color)\ndefault: #01579b"
+        roughness: "Field: roughness (range 0-5)\ndefault: 1.2"
+        fontSize: "Field: fontSize (number 8-48)\ndefault: 14"
     }
-    submit "Apply" { style: primary }
-    submit "Cancel" { style: secondary }
+    apply: "Submit: Apply"
+    cancel: "Submit: Cancel"
+
+    fontSize --> apply
+    fontSize --> cancel
 }
 ```
+*(The parser's currently supported grammar does not have a dedicated `field
+<id>: <type> { attrs }` / `submit` construct, so this example folds each
+field's type and constraints into its node label — see also §3.6.9.)*
 
 The property editor is a lightweight HTML form rendered as an overlay on the SVG/Canvas. It reads the current IR node properties and writes changes back through the edit pipeline.
 

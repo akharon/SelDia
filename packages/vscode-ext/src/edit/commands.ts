@@ -14,6 +14,7 @@ import {
   setNodePosition,
   setNodeLabel,
   setNodeAttributes,
+  clearAllPositions,
   type SelDiABlockLoc,
 } from './dsl-edit.js';
 
@@ -114,7 +115,16 @@ export function registerEditCommands(context: vscode.ExtensionContext): void {
     }
   );
 
-  context.subscriptions.push(moveNode, editNodeLabel, editNodeAttr);
+  // ── Re-enable auto layout (clears all manual x/y overrides) ────────────
+  const autoLayout = vscode.commands.registerCommand(
+    'seldia.autoLayout',
+    async (args: { blockId: string }) => {
+      if (!args?.blockId) return;
+      await applyBlockTransform(args.blockId, (src) => clearAllPositions(src));
+    }
+  );
+
+  context.subscriptions.push(moveNode, editNodeLabel, editNodeAttr, autoLayout);
 }
 
 // Re-export for tests / callers that want block discovery.

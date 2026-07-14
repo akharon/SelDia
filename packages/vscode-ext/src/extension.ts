@@ -20,7 +20,8 @@ let engine: CoreEngine;
 let skillStatusBarItem: vscode.StatusBarItem | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  engine = createEngine();
+  const layoutEngine = vscode.workspace.getConfiguration('seldia').get<'dagre' | 'elk'>('layout.engine', 'dagre');
+  engine = createEngine({ config: { defaultLayoutEngine: layoutEngine } });
 
   console.log('🚀 SelDiA extension activated');
 

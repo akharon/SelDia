@@ -15,8 +15,13 @@ export interface SelDiAConfig {
   /** Default theme ID */
   defaultTheme: string;
 
-  /** Default layout engine */
-  defaultLayoutEngine: string;
+  /** Default auto-layout engine. "dagre" is synchronous and always available
+   *  (including in compileSync()); "elk" (Eclipse Layout Kernel) generally
+   *  produces higher-quality layouts for architecture-style diagrams but is
+   *  async-only, so it's honored by compile()/layoutAsync() but silently
+   *  falls back to "dagre" in the synchronous compileSync()/layout() path.
+   *  A diagram can override this per-file with `layout elk` / `layout dagre`. */
+  defaultLayoutEngine: 'dagre' | 'elk';
 
   /** Rendering options */
   render: RenderConfig;

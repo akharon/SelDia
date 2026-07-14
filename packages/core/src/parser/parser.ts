@@ -410,7 +410,7 @@ class Parser {
     const isIdentLike = t.type === TokenType.IDENT || t.type === TokenType.KW_THEME ||
       t.type === TokenType.KW_GROUP || t.type === TokenType.KW_SECTION ||
       t.type === TokenType.KW_LAYOUT || t.type === TokenType.KW_STYLE ||
-      t.type === TokenType.KW_DIAGRAM;
+      t.type === TokenType.KW_DIAGRAM || t.type === TokenType.KW_PARTICIPANT;
     if (!isIdentLike) throw new ParseError(msg, t);
     return this.consume();
   }
@@ -444,8 +444,10 @@ class Parser {
     const kw = this.expect(TokenType.KW_DIAGRAM, 'Expected "diagram" keyword');
     const typeTok = this.expect(TokenType.IDENT, 'Expected diagram type (e.g. flowchart)');
     let type = typeTok.value.toLowerCase();
-    // Handle multi-word types like "c4 context"
-    if (type === 'c4' && this.peek().type === TokenType.IDENT) {
+    // Handle multi-word types like "c4 context". The sub-type word may itself
+    // tokenize as a keyword (e.g. "container" is KW_PARTICIPANT, reused for
+    // C4 container declarations), so accept IDENT or KW_PARTICIPANT here.
+    if (type === 'c4' && (this.peek().type === TokenType.IDENT || this.peek().type === TokenType.KW_PARTICIPANT)) {
       type += '-' + this.consume().value.toLowerCase();
     }
     if (type === 'chart' && this.peek().type === TokenType.IDENT) {
@@ -646,7 +648,7 @@ class Parser {
     const curType = this.peek().type;
     const isKeywordToken = curType === TokenType.KW_THEME || curType === TokenType.KW_GROUP ||
       curType === TokenType.KW_SECTION || curType === TokenType.KW_LAYOUT || curType === TokenType.KW_STYLE ||
-      curType === TokenType.KW_DIAGRAM;
+      curType === TokenType.KW_DIAGRAM || curType === TokenType.KW_PARTICIPANT;
     if (curType === TokenType.IDENT || (isKeywordToken && isKeywordAsIdent())) {
       const idTok = this.peek();
       const next = this.peek(1);
@@ -662,7 +664,7 @@ class Parser {
       const nextIsIdentLike = next.type === TokenType.IDENT || next.type === TokenType.KW_THEME ||
         next.type === TokenType.KW_GROUP || next.type === TokenType.KW_SECTION ||
         next.type === TokenType.KW_LAYOUT || next.type === TokenType.KW_STYLE ||
-        next.type === TokenType.KW_DIAGRAM;
+        next.type === TokenType.KW_DIAGRAM || next.type === TokenType.KW_PARTICIPANT;
       if (nextIsIdentLike && this.peek(2).type === TokenType.COLON) {
         // Read the type keyword and skip it — use id as the node identifier
         const typeTok = this.consume(); // consume type keyword
@@ -703,7 +705,10 @@ class Parser {
       return this.parseInlineNodeDecl();
     }
     // Participant keyword (sequence diagrams / C4 person, system, container, etc.)
-    if (this.peek().type === TokenType.KW_PARTICIPANT) {
+    // used as a plain node id (e.g. `database --> auth`, `system: [Cloud]`) —
+    // only treat as the participant-decl keyword when followed by a name.
+    if (this.peek().type === TokenType.KW_PARTICIPANT &&
+        this.peek(1).type !== TokenType.COLON && this.peek(1).type !== TokenType.ARROW) {
       this.consume(); // participant / person / system / container / ...
       const idTok = this.expect(TokenType.IDENT, 'Expected participant identifier');
       let label = idTok.value;

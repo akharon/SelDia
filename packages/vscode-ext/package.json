@@ -161,6 +161,10 @@
       {
         "command": "seldia.editNodeAttr",
         "title": "SelDiA: Edit Node Attribute"
+      },
+      {
+        "command": "seldia.autoLayout",
+        "title": "SelDiA: Auto Layout (clear manual positions)"
       }
     ],
     "snippets": [
@@ -324,6 +328,19 @@
             "pdf"
           ],
           "description": "Default export format"
+        },
+        "seldia.layout.engine": {
+          "type": "string",
+          "default": "dagre",
+          "enum": [
+            "dagre",
+            "elk"
+          ],
+          "enumDescriptions": [
+            "Fast, synchronous hierarchical layout (default). Used everywhere, including the Markdown preview.",
+            "Eclipse Layout Kernel — layered algorithm, often higher quality for architecture diagrams. Async only: honored by export/CLI, but the Markdown preview falls back to dagre since it must render synchronously."
+          ],
+          "description": "Default automatic layout engine for diagrams. A diagram can override this per-file with `layout elk` / `layout dagre`."
         }
       }
     }

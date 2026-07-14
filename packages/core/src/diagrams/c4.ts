@@ -47,3 +47,14 @@ export const c4Plugin: DiagramPlugin = {
   transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR { return buildC4Ir(ast, ast.type); },
   getDefaultLayoutOptions() { return { direction: 'LR', nodeSpacing: [120, 100], rankSpacing: 120 }; },
 };
+
+// The DSL accepts all three C4 levels (`diagram c4 context`, `diagram c4
+// container`, `diagram c4 component`); the plugin registry keys handlers by
+// a single DiagramType, so register one handler instance per level — they
+// all share the same transform logic (buildC4Ir uses ast.type for the IR).
+export const c4ContainerPlugin: DiagramPlugin = {
+  ...c4Plugin, id: 'seldia-c4-container', diagramType: DiagramType.C4_CONTAINER,
+};
+export const c4ComponentPlugin: DiagramPlugin = {
+  ...c4Plugin, id: 'seldia-c4-component', diagramType: DiagramType.C4_COMPONENT,
+};

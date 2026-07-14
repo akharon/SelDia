@@ -1,7 +1,7 @@
 {
   "name": "@seldia/layout",
   "version": "1.0.0",
-  "description": "SelDiA layout engine: dagre hierarchical, d3-force network layouts",
+  "description": "SelDiA layout engine: dagre hierarchical, ELK hierarchical/layered, d3-force network layouts",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -30,7 +30,8 @@
   "dependencies": {
     "@seldia/core": "*",
     "dagre": "^0.8.5",
-    "d3-force": "^3.0.0"
+    "d3-force": "^3.0.0",
+    "elkjs": "^0.11.1"
   },
   "devDependencies": {
     "@types/dagre": "^0.7.52",

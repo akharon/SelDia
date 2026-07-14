@@ -4,7 +4,7 @@
 // End-to-end tests that validate the full pipeline:
 // DSL → Parse → Analyze → IR → Layout → Render → SVG
 //
-// Run with: node tests/integration.test.mjs
+// Run with: node tests/integration.mjs
 // Or: npm run test:integration
 
 import { createEngine } from '../packages/core/dist/index.js';

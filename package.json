@@ -24,7 +24,7 @@
     "script:debug": "bash scripts/debug.sh",
     "script:test": "bash scripts/test.sh",
     "script:deploy": "bash scripts/deploy.sh",
-    "test:integration": "node tests/integration.test.mjs",
+    "test:integration": "node tests/integration.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

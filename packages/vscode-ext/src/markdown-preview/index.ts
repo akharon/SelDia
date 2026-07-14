@@ -113,16 +113,21 @@
 
   // ── Source copy ─────────────────────────────────────────────────────────
   function setupSourceTools(container: HTMLElement) {
-    container.querySelector('.seldia-btn-copy-source')?.addEventListener('click', async (e) => {
+    const copyBtn = container.querySelector<HTMLElement>('.seldia-btn-copy-source');
+    copyBtn?.addEventListener('click', async (e) => {
       e.stopPropagation();
       const code = container.querySelector('.seldia-diagram-source code')?.textContent;
       if (!code) return;
       try {
         await navigator.clipboard.writeText(code);
-        const btn = e.target as HTMLElement;
-        const prev = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => (btn.textContent = prev), 1500);
+        // Icon-only button: flash a "copied" state via a class (CSS swaps the
+        // glyph) instead of replacing textContent, which would wipe the SVG.
+        copyBtn.classList.add('seldia-copied');
+        copyBtn.setAttribute('title', 'Copied!');
+        setTimeout(() => {
+          copyBtn.classList.remove('seldia-copied');
+          copyBtn.setAttribute('title', 'Copy source to clipboard');
+        }, 1500);
       } catch {
         /* clipboard unavailable */
       }

@@ -1,25 +1,14 @@
+// SelDiA Entity-Relationship Template
+// Each entity is a node whose label uses \n to list attributes:
+//   first line = entity name; PK / FK mark key columns.
+// Relationship cardinality goes in the edge label, e.g. |"1 : *"|.
 diagram er "Entity Relationship" {
     theme "sketchy-light"
 
-    entity User {
-        id: UUID PK
-        name: string
-        email: string
-    }
+    user: "User\nid: UUID PK\nname: string\nemail: string"
+    order: "Order\nid: UUID PK\nuserId: UUID FK\ntotal: decimal\ncreated: datetime"
+    product: "Product\nid: UUID PK\nname: string\nprice: decimal"
 
-    entity Order {
-        id: UUID PK
-        userId: UUID FK
-        total: decimal
-        created: datetime
-    }
-
-    entity Product {
-        id: UUID PK
-        name: string
-        price: decimal
-    }
-
-    User 1--* Order
-    Order *--* Product
+    user -->|"1 : *"| order
+    order -->|"* : *"| product
 }

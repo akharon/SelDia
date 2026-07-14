@@ -8,5 +8,6 @@ dist/
 .env.local
 test_seldia.mjs
 /tmp/
+.git-commit-id
 
 .pairs/

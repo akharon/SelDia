@@ -1,6 +1,6 @@
 {
   "name": "@seldia/layout",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "SelDiA layout engine: dagre hierarchical, ELK hierarchical/layered, d3-force network layouts",
   "type": "module",
   "main": "./dist/index.js",

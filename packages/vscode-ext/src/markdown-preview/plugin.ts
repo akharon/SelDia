@@ -81,7 +81,8 @@ ${ICON_SPRITE}
 <div class="seldia-diagram seldia-error" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-diagram-badge">${icon('error')} SelDiA Error</span>
-    <a class="seldia-btn seldia-btn-edit" title="Reveal DSL source to fix errors" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('edit')} Edit Source</a>
+    <span class="seldia-toolbar-spacer"></span>
+    <a class="seldia-btn seldia-btn-icon" title="Reveal DSL source to fix errors" aria-label="Reveal DSL source to fix errors" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('edit')}</a>
   </div>
   <div class="seldia-error-header">Compilation Error</div>
   <pre class="seldia-error-detail">${escapeHtml(errors)}</pre>
@@ -100,22 +101,23 @@ ${ICON_SPRITE}
 <div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-mode="preview" data-seldia-pad="${pad}" data-seldia-layout="${manual ? 'manual' : 'auto'}">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
-      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram">${icon('visibility')} Preview</button>
-      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="code" title="Show DSL source">${icon('code')} Code</button>
-      <button class="seldia-btn seldia-mode-btn" data-seldia-target-mode="edit" title="Edit diagram: drag nodes, double-click to rename">${icon('edit')} Edit</button>
+      <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram" aria-label="Show rendered diagram">${icon('visibility')}</button>
+      <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="code" title="Show DSL source" aria-label="Show DSL source">${icon('code')}</button>
+      <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="edit" title="Edit diagram: drag nodes, double-click to rename" aria-label="Edit diagram">${icon('edit')}</button>
     </span>
     <span class="seldia-toolbar-spacer"></span>
     <a
-      class="seldia-btn seldia-btn-auto-layout${manual ? ' seldia-btn-auto-layout-disabled' : ''}"
+      class="seldia-btn seldia-btn-icon seldia-btn-auto-layout${manual ? ' seldia-btn-auto-layout-disabled' : ''}"
       title="${manual
         ? 'Auto layout is off because nodes were moved manually. Click to re-run automatic layout and clear manual positions.'
         : 'Diagram is automatically laid out. Drag a node to switch to manual positioning.'}"
+      aria-label="Auto layout"
       href="command:seldia.autoLayout?${cmdArgs({ blockId })}"
-    >${manual ? icon('auto-layout-off') : icon('auto-layout-on')} Auto Layout</a>
-    <button class="seldia-btn seldia-btn-zoom-in" title="Zoom In">${icon('zoom-in')}</button>
-    <button class="seldia-btn seldia-btn-zoom-out" title="Zoom Out">${icon('zoom-out')}</button>
-    <button class="seldia-btn seldia-btn-reset" title="Reset Zoom">${icon('reset')}</button>
-    <button class="seldia-btn seldia-btn-export" title="Export SVG">${icon('download')}</button>
+    >${manual ? icon('auto-layout-off') : icon('auto-layout-on')}</a>
+    <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-in" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
+    <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-out" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
+    <button class="seldia-btn seldia-btn-icon seldia-btn-reset" title="Reset Zoom" aria-label="Reset zoom">${icon('reset')}</button>
+    <button class="seldia-btn seldia-btn-icon seldia-btn-export" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
   </div>
   <div class="seldia-edit-hint">Edit mode: drag a node to move it · double-click a node to rename · changes are written back to the Markdown source.</div>
   <div class="seldia-diagram-svg">
@@ -124,8 +126,9 @@ ${ICON_SPRITE}
   <div class="seldia-diagram-source">
     <div class="seldia-diagram-source-header">
       <span>SelDiA DSL Source</span>
-      <a class="seldia-btn seldia-btn-edit" title="Reveal this block in the editor" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('open-in-editor')} Open in editor</a>
-      <button class="seldia-btn seldia-btn-copy-source" title="Copy source to clipboard">${icon('copy')} Copy</button>
+      <span class="seldia-toolbar-spacer"></span>
+      <a class="seldia-btn seldia-btn-icon" title="Reveal this block in the editor" aria-label="Open in editor" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('open-in-editor')}</a>
+      <button class="seldia-btn seldia-btn-icon seldia-btn-copy-source" title="Copy source to clipboard" aria-label="Copy source to clipboard">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button>
     </div>
     <pre><code class="language-seldia">${escapeHtml(code)}</code></pre>
   </div>

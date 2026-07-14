@@ -45,6 +45,7 @@ export const ICON_SPRITE = `
 /** Render one Material Symbols icon reference (a small inline `<svg><use>`).
  *  Callers must also inline `ICON_SPRITE` once somewhere in the same
  *  document/webview for the `<symbol>` defs to resolve. */
-export function icon(name: string): string {
-  return `<svg class="seldia-icon" aria-hidden="true"><use href="#seldia-icon-${name}"/></svg>`;
+export function icon(name: string, extraClass = ''): string {
+  const cls = extraClass ? `seldia-icon ${extraClass}` : 'seldia-icon';
+  return `<svg class="${cls}" aria-hidden="true"><use href="#seldia-icon-${name}"/></svg>`;
 }

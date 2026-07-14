@@ -200,6 +200,12 @@ export class SelDiAInteractiveProvider {
     .toolbar button:hover { background: ${isDark ? '#444' : '#e8e8e8'}; }
     .toolbar button:disabled { opacity: 0.4; cursor: default; }
     .toolbar button.active { background: #0e639c; color: #fff; border-color: #0e639c; }
+    /* Icon-only buttons: square hit target, glyph centered, no label gap. */
+    .toolbar button.icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 24px; padding: 0;
+    }
+    .toolbar button.icon-btn .seldia-icon { margin-right: 0; vertical-align: 0; }
     #container {
       flex: 1;
       overflow: hidden;
@@ -257,21 +263,21 @@ export class SelDiAInteractiveProvider {
 <body>
   ${ICON_SPRITE}
   <div class="toolbar">
-    <span class="title">${icon('schema')} SelDiA Diagram</span>
+    <span class="title">SelDiA Diagram</span>
     <span class="stats">${stats}</span>
 
     <span class="sep"></span>
-    <button id="btnUndo" onclick="handleUndo()" disabled title="Undo (Ctrl+Z)">${icon('undo')} Undo</button>
-    <button id="btnRedo" onclick="handleRedo()" disabled title="Redo (Ctrl+Shift+Z)">${icon('redo')} Redo</button>
+    <button class="icon-btn" id="btnUndo" onclick="handleUndo()" disabled title="Undo (Ctrl+Z)" aria-label="Undo">${icon('undo')}</button>
+    <button class="icon-btn" id="btnRedo" onclick="handleRedo()" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${icon('redo')}</button>
 
     <span class="sep"></span>
-    <button onclick="zoomIn()" title="Zoom In">${icon('zoom-in')}</button>
-    <button onclick="zoomOut()" title="Zoom Out">${icon('zoom-out')}</button>
-    <button onclick="fitToScreen()" title="Fit to screen">${icon('fit-screen')} Fit</button>
-    <button onclick="resetZoom()" title="Reset zoom">1:1</button>
+    <button class="icon-btn" onclick="zoomIn()" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
+    <button class="icon-btn" onclick="zoomOut()" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
+    <button class="icon-btn" onclick="fitToScreen()" title="Fit to screen" aria-label="Fit to screen">${icon('fit-screen')}</button>
+    <button class="icon-btn" onclick="resetZoom()" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
-    <select id="themeSelect">
+    <select id="themeSelect" title="Theme" aria-label="Theme">
       <option value="sketchy-light" ${theme === 'sketchy-light' ? 'selected' : ''}>Sketchy Light</option>
       <option value="sketchy-dark" ${theme === 'sketchy-dark' ? 'selected' : ''}>Sketchy Dark</option>
       <option value="clean-light" ${theme === 'clean-light' ? 'selected' : ''}>Clean Light</option>
@@ -280,11 +286,11 @@ export class SelDiAInteractiveProvider {
     </select>
 
     <span class="sep"></span>
-    <button id="btnAddNode" onclick="handleAddNode()" title="Add node">${icon('add-node')} Node</button>
-    <button id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)">${icon('add-edge')} Edge</button>
+    <button class="icon-btn" id="btnAddNode" onclick="handleAddNode()" title="Add node" aria-label="Add node">${icon('add-node')}</button>
+    <button class="icon-btn" id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)" aria-label="Draw edge">${icon('add-edge')}</button>
 
     <span class="sep"></span>
-    <button onclick="exportSvg()" title="Export SVG">${icon('download')} Export</button>
+    <button class="icon-btn" onclick="exportSvg()" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
   </div>
 
   <div id="container">

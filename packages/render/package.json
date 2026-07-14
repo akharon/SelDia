@@ -1,6 +1,6 @@
 {
   "name": "@seldia/render",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "SelDiA renderer: Rough.js SVG rendering, themes, shape factory",
   "type": "module",
   "main": "./dist/index.js",

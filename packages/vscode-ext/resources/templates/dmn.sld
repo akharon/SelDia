@@ -1,13 +1,19 @@
-diagram dmn "Decision Table" {
-    input age: number "Applicant Age"
-    input income: number "Annual Income"
-    input creditScore: number "Credit Score"
+// SelDiA DMN Template
+// Model a decision as inputs feeding a decision node, branching to outcomes.
+// Shapes: [/input/] {decision} (outcome)
+diagram dmn "Loan Decision" {
+    theme "sketchy-light"
 
-    rule r1: age >= 18 and income > 30000 and creditScore > 700 => "APPROVE"
-    rule r2: age >= 18 and income > 30000 and creditScore <= 700 => "MANUAL_REVIEW"
-    rule r3: age < 18 => "DENY"
-    rule r4: income <= 30000 and creditScore <= 600 => "DENY"
-    rule r5: income <= 30000 and creditScore > 600 => "MANUAL_REVIEW"
+    applicant: [/Applicant Data/]
+    age: {Age >= 18?}
+    credit: {Credit Score > 700?}
+    approve: (Approve)
+    review: (Manual Review)
+    deny: (Deny)
 
-    hitPolicy: first
+    applicant --> age
+    age -->|"no"| deny
+    age -->|"yes"| credit
+    credit -->|"yes"| approve
+    credit -->|"no"| review
 }

@@ -162,6 +162,12 @@ export class SelDiAEditorProvider implements vscode.CustomTextEditorProvider {
       font-size: 10px;
     }
     .pane-header .actions button:hover { background: #444; }
+    /* Icon-only buttons: square hit target, glyph centered, no label gap. */
+    .pane-header .actions button.icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 22px; padding: 0;
+    }
+    .pane-header .actions button.icon-btn .seldia-icon { margin-right: 0; vertical-align: 0; }
     .code-area {
       flex: 1;
       border: none;
@@ -223,7 +229,7 @@ export class SelDiAEditorProvider implements vscode.CustomTextEditorProvider {
     <!-- Code Pane -->
     <div class="code-pane">
       <div class="pane-header">
-        <span>${icon('description')} DSL Code</span>
+        <span>DSL Code</span>
         <div class="actions">
           <button onclick="applyEdit()">Apply</button>
           <button onclick="document.getElementById('codeEditor').value='${escapedSource.replace(/'/g, "\\'").substring(0, 100)}...'">Reset</button>
@@ -239,11 +245,11 @@ export class SelDiAEditorProvider implements vscode.CustomTextEditorProvider {
     <!-- Preview Pane -->
     <div class="preview-pane">
       <div class="pane-header">
-        <span>${icon('visibility')} Preview</span>
+        <span>Preview</span>
         <div class="actions">
-          <button onclick="zoomIn()" title="Zoom In">${icon('zoom-in')}</button>
-          <button onclick="zoomOut()" title="Zoom Out">${icon('zoom-out')}</button>
-          <button onclick="exportSvg()" title="Export SVG">${icon('download')} SVG</button>
+          <button class="icon-btn" onclick="zoomIn()" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
+          <button class="icon-btn" onclick="zoomOut()" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
+          <button class="icon-btn" onclick="exportSvg()" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
         </div>
       </div>
       <div class="preview-area" id="previewArea">

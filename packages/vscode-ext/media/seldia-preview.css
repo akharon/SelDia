@@ -48,8 +48,8 @@
   height: 14px;
   vertical-align: -2px;
   color: currentColor;
-  margin-right: 2px;
 }
+/* The error badge is the one place an icon still sits next to text. */
 .seldia-diagram-badge .seldia-icon {
   margin-right: 4px;
 }
@@ -86,15 +86,28 @@
   opacity: 0.8;
 }
 
-.seldia-btn-edit {
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
-  border-color: var(--vscode-button-border, transparent);
-  font-weight: 500;
+/* Icon-only buttons: square hit target, glyph centered, no label spacing.
+   Sized to match VS Code's own 22px Codicon toolbar buttons. */
+.seldia-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+}
+.seldia-btn-icon .seldia-icon {
+  vertical-align: 0;
 }
 
-.seldia-btn-edit:hover {
-  background: var(--vscode-button-hoverBackground, #1177bb);
+/* Copy button: flash a check glyph on success without touching textContent
+   (the button holds an <svg>, not text). The success icon lives inline and
+   is hidden until .seldia-copied is set. */
+.seldia-btn-copy-source .seldia-icon-copied { display: none; }
+.seldia-btn-copy-source.seldia-copied .seldia-icon { display: none; }
+.seldia-btn-copy-source.seldia-copied .seldia-icon-copied {
+  display: inline-block;
+  color: var(--vscode-charts-green, var(--vscode-testing-iconPassed, #4caf50));
 }
 
 /* ── SVG Container ────────────────────────────────────────────────────── */

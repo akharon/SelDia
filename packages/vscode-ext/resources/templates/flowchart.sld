@@ -1,5 +1,7 @@
 // SelDiA Flowchart Template
 // Replace with your own nodes and edges.
+// Shapes: (Rounded) [Rectangle] {Diamond/decision}
+// Edge labels go inside |"..."| on the arrow.
 diagram flowchart "My Flowchart" {
     theme "sketchy-light"
 
@@ -10,6 +12,6 @@ diagram flowchart "My Flowchart" {
 
     start --> process
     process --> decision
-    decision -->|yes| end
-    decision -->|no| process
+    decision -->|"yes"| end
+    decision -->|"no"| process
 }

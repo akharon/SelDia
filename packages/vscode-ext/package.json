@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",

@@ -266,26 +266,24 @@
 
   /** Invoke an extension command via a command: URI.
    *
-   *  In VS Code's built-in Markdown preview the reliable channel is to
-   *  NAVIGATE to the `command:` URI — the preview's navigation interceptor
-   *  catches `window.location` changes and routes them to the extension host.
-   *  A synthetic `<a>.click()` is NOT reliably intercepted (the earlier
-   *  approach), which is why drag/rename silently did nothing. We set
-   *  `window.location.href`; the preview cancels the actual navigation and
-   *  runs the command instead. */
+   *  The toolbar's own `command:` links (auto layout, reveal source — see
+   *  plugin.ts) are plain `<a href="command:...">` tags, and those are the
+   *  channel VS Code's Markdown preview actually intercepts reliably: a click
+   *  on an anchor whose href is a `command:` URI. Assigning
+   *  `window.location.href` directly triggers a real top-level navigation
+   *  attempt on the whole webview document; when that happens mid-drag (while
+   *  global `mousemove`/`mouseup` listeners are still attached from
+   *  `mousedown`) the in-flight navigation can blank the entire preview,
+   *  every diagram included, before VS Code's interceptor cancels it. Using a
+   *  real anchor click avoids ever starting that navigation. */
   function runCommand(command: string, arg: unknown) {
     const uri = `command:${command}?${encodeURIComponent(JSON.stringify([arg]))}`;
-    try {
-      window.location.href = uri;
-    } catch {
-      // Fallback: a real anchor the user's gesture is still attached to.
-      const a = document.createElement('a');
-      a.href = uri;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
+    const a = document.createElement('a');
+    a.href = uri;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   // Re-apply remembered zoom whenever the preview content changes, and now.

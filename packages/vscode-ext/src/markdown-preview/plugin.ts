@@ -22,6 +22,7 @@
 
 import type { CoreEngine } from '@seldia/core';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
+import { blockIdForSource } from '../edit/blocks.js';
 
 // Minimal MarkdownIt interface — matches what VS Code passes to extendMarkdownIt
 export interface MarkdownIt {
@@ -32,11 +33,11 @@ export interface MarkdownIt {
   };
 }
 
-/** Stable id for a block, derived from its DSL source. Shared with the
- *  extension host (`blockIdForSource`) so both sides agree on identity. */
-export function blockIdForSource(source: string): string {
-  return `seldia-${hashCode(source)}`;
-}
+/** Stable id for a block, derived from its DSL source. Re-exported from the
+ *  host's block module rather than reimplemented: two copies of this hash
+ *  silently disagreed on trailing whitespace once already, which broke every
+ *  deep link the preview emitted. One implementation, one id. */
+export { blockIdForSource };
 
 export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
   return function seldiaPlugin(md: MarkdownIt) {
@@ -184,15 +185,6 @@ function deepLink(action: string, params: Record<string, string>): string {
   const present = Object.fromEntries(Object.entries(params).filter(([, v]) => v));
   const q = new URLSearchParams(present).toString();
   return `vscode://${EXTENSION_ID}/${action}${q ? `?${q}` : ''}`;
-}
-
-function hashCode(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
 }
 
 function escapeHtml(str: string): string {

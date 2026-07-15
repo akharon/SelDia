@@ -26,11 +26,19 @@ export interface SelDiABlockLoc {
 }
 
 /** Stable id for a DSL source string. Must match `blockIdForSource` in the
- *  markdown-it plugin so the preview and host agree on block identity. */
+ *  markdown-it plugin so the preview and host agree on block identity.
+ *
+ *  The two callers reach us with different trailing whitespace for the very
+ *  same fence: markdown-it's `token.content` keeps the newline before the
+ *  closing fence, while `findSelDiABlocks` joins the lines between the fences
+ *  and has none. Both must hash identically or the host cannot find the block
+ *  the preview is pointing at, so normalization lives here rather than in the
+ *  callers — anything deriving an id is normalized by construction. */
 export function blockIdForSource(source: string): string {
+  const normalized = source.replace(/\s+$/, '');
   let hash = 0;
-  for (let i = 0; i < source.length; i++) {
-    hash = (hash << 5) - hash + source.charCodeAt(i);
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash << 5) - hash + normalized.charCodeAt(i);
     hash |= 0;
   }
   return `seldia-${Math.abs(hash).toString(36)}`;

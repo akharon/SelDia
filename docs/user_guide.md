@@ -2307,10 +2307,12 @@ The system provides a modern web interface for banking operations.
 
 **How it works:**
 1. Open any `.md` file containing ` ```seldia ` blocks
-2. By default, diagrams **render as interactive visuals** inline (the DSL code is hidden)
-3. Click the `</>` button in the editor toolbar to **toggle between Code and Diagram view**
-4. In Diagram view, you can **drag nodes**, **double-click to edit labels**, and **right-click for more options**
-5. Changes made visually are **synced back** to the underlying DSL source code
+2. By default, diagrams **render as visuals** inline (the DSL code is hidden)
+3. Click the `</>` button in the block toolbar to **toggle between Code and Diagram view**
+4. Diagrams in Markdown are **laid out automatically** and previewed read-only —
+   zoom, read the DSL, and export from the block toolbar
+5. To change a diagram, **edit its fence in the Markdown file**. The "Open in
+   editor" button on a block jumps straight to its source
 
 **Supported block formats:**
 
@@ -2322,7 +2324,11 @@ The system provides a modern web interface for banking operations.
 
 ### 11.4 Visual Editing
 
-When viewing a rendered diagram in VS Code:
+Visual editing is available in the **interactive editor for `.sld` files**
+(`Ctrl+K V`). Diagrams embedded in Markdown are laid out automatically and
+previewed read-only — edit their DSL in the file instead.
+
+In the interactive editor:
 
 | Gesture | Action |
 |---------|--------|
@@ -2336,7 +2342,7 @@ When viewing a rendered diagram in VS Code:
 | **Scroll** | Zoom in/out |
 | **Drag canvas** | Pan around the diagram |
 
-All visual edits update the `.seldia` or `.md` source file automatically.
+All visual edits update the `.sld` source file automatically.
 
 ### 11.5 Markdown → PDF Export
 

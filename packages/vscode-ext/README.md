@@ -10,12 +10,16 @@ Create 21+ diagram types using a single, clean DSL directly in VS Code. Preview,
 Flowchart, Sequence, Class, C4 Context, C4 Container, BPMN, State, ER, Gantt, Mindmap, Component, Deployment, Network, Use Case, Activity, Chart (Bar/Line/Pie/Radar/Scatter), Sankey, Timeline, Git Graph, Form, Block — all in one unified DSL.
 
 ### ✏️ Interactive Editing
+In the interactive editor for `.sld` files:
 - **Drag & drop** nodes to reposition
 - **Double-click** inline label editing
 - **Zoom & pan** with scroll wheel and Shift+drag
 - **Right-click** context menus for add/delete/edit
 - **Undo/redo** (Ctrl+Z/Y) for visual edits
 - **Collapse/expand** groups and C4 containers
+
+Diagrams embedded in Markdown are laid out automatically and previewed
+read-only; use "Open in editor" on a block to edit its DSL.
 
 ### 📝 Rich Language Support
 - **Syntax highlighting** — Full TextMate grammar for `.sld` files

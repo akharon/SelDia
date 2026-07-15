@@ -18,6 +18,7 @@ The SelDiA VS Code extension provides a rich editing experience for `.sld` files
 - **Interactive editor** — Custom editor for `.sld` files with code | preview split
 
 ### Interactive Editing
+In the interactive editor for `.sld` files:
 - **Zoom/Pan** — Scroll to zoom, Shift+Click+drag to pan
 - **Drag & Drop** — Click and drag nodes to reposition
 - **Inline editing** — Double-click labels to edit them directly
@@ -28,6 +29,9 @@ The SelDiA VS Code extension provides a rich editing experience for `.sld` files
 - **Fenced blocks** — Use ` ```seldia ` in `.md` files for auto-rendered diagrams
 - **CodeLens** — "View Diagram" / "Edit Code" actions above each block
 - **Type inference** — ` ```seldia-flowchart ` infers the diagram type
+- **Read-only preview** — Blocks are laid out automatically; zoom, view the DSL,
+  and export. To change a diagram, edit the fence in the file ("Open in editor"
+  on a block jumps straight to it).
 
 ### Export
 - **Export Diagram** — Save as SVG/PNG/PDF

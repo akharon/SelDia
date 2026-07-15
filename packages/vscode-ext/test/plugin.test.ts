@@ -3,7 +3,7 @@
 // =============================================================================
 import { describe, it, expect } from 'vitest';
 import { renderSelDiABlock, blockIdForSource, createSelDiAMarkdownItPlugin } from '../src/markdown-preview/plugin.js';
-import { blockIdForSource as editBlockId } from '../src/edit/dsl-edit.js';
+import { blockIdForSource as editBlockId } from '../src/edit/blocks.js';
 import { createEngine } from '@seldia/core';
 
 const engine = createEngine();
@@ -18,13 +18,30 @@ describe('renderSelDiABlock', () => {
     expect(html).toContain('data-seldia-node-id="a"');
   });
 
-  it('exposes the three modes and stamps the render padding', () => {
+  it('exposes preview and code modes, defaulting to preview', () => {
     const html = renderSelDiABlock(engine, SRC);
     expect(html).toContain('data-seldia-target-mode="preview"');
     expect(html).toContain('data-seldia-target-mode="code"');
-    expect(html).toContain('data-seldia-target-mode="edit"');
-    expect(html).toMatch(/data-seldia-pad="\d+"/);
     expect(html).toContain('data-seldia-mode="preview"');
+  });
+
+  // The preview is read-only: the built-in Markdown preview has no channel that
+  // can carry an edit back to the document reliably, so it must not offer one.
+  // Editing happens in the raw file or the custom editor.
+  it('offers no edit affordance and no writable source field', () => {
+    const html = renderSelDiABlock(engine, SRC);
+    expect(html).toContain('<pre class="seldia-source-view">');
+    expect(html).not.toContain('<textarea');
+    expect(html).not.toContain('data-seldia-target-mode="edit"');
+  });
+
+  // revealSource is one-shot navigation and is the only action the preview may
+  // invoke; anything that mutates the document must not be reachable from here.
+  it('deep-links to revealSource only', () => {
+    const html = renderSelDiABlock(engine, SRC, 'file:///w/demo.md');
+    const actions = [...html.matchAll(/href="vscode:\/\/seldia\.seldia-vscode\/(\w+)/g)].map((m) => m[1]);
+    expect(actions.length).toBeGreaterThan(0);
+    expect(new Set(actions)).toEqual(new Set(['revealSource']));
   });
 
   it('uses a block id consistent with the editor module', () => {

@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -147,26 +147,6 @@
       {
         "command": "seldia.revealSource",
         "title": "SelDiA: Reveal Diagram Source"
-      },
-      {
-        "command": "seldia.moveNode",
-        "title": "SelDiA: Move Node"
-      },
-      {
-        "command": "seldia.editNodeLabel",
-        "title": "SelDiA: Rename Node"
-      },
-      {
-        "command": "seldia.editNodeAttr",
-        "title": "SelDiA: Edit Node Attribute"
-      },
-      {
-        "command": "seldia.autoLayout",
-        "title": "SelDiA: Auto Layout (clear manual positions)"
-      },
-      {
-        "command": "seldia.replaceBlockSource",
-        "title": "SelDiA: Replace Diagram Source (internal)"
       }
     ],
     "snippets": [
@@ -314,7 +294,7 @@
         "seldia.interactive.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable interactive editing (drag, double-click to edit)"
+          "description": "Enable interactive editing (drag, double-click to edit) in the interactive editor for .sld files. Diagrams embedded in Markdown are always laid out automatically and previewed read-only."
         },
         "seldia.interactive.undoStackSize": {
           "type": "number",

@@ -152,42 +152,10 @@
 }
 .seldia-toolbar-spacer { flex: 1 1 auto; }
 
-/* ── Auto Layout toggle ───────────────────────────────────────────────── */
-.seldia-btn-auto-layout {
-  color: var(--vscode-descriptionForeground, #888);
-  cursor: default;
-}
-.seldia-btn-auto-layout-disabled {
-  background: var(--vscode-inputValidation-warningBackground, #3a2f1a);
-  border-color: var(--vscode-inputValidation-warningBorder, #7a5a1a);
-  color: var(--vscode-inputValidation-warningForeground, #ffd28a);
-  cursor: pointer;
-  font-weight: 600;
-}
-.seldia-btn-auto-layout-disabled:hover {
-  background: var(--vscode-inputValidation-warningBorder, #7a5a1a);
-}
-
 /* ── Mode-driven visibility ───────────────────────────────────────────── */
 .seldia-diagram-source { display: none; }
 .seldia-diagram[data-seldia-mode="code"] .seldia-diagram-svg { display: none; }
 .seldia-diagram[data-seldia-mode="code"] .seldia-diagram-source { display: block; }
-
-.seldia-edit-hint {
-  display: none;
-  padding: 8px 14px;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #999);
-  background: var(--vscode-inputValidation-infoBackground, rgba(14,99,156,0.12));
-  border-bottom: 1px solid var(--vscode-editorWidget-border, #444);
-}
-.seldia-diagram[data-seldia-mode="edit"] .seldia-edit-hint { display: block; }
-.seldia-diagram[data-seldia-mode="edit"] .seldia-diagram-svg [data-seldia-node-id] {
-  cursor: grab;
-}
-.seldia-diagram[data-seldia-mode="edit"] .seldia-diagram-svg [data-seldia-node-id]:hover > *:first-child {
-  filter: brightness(1.08);
-}
 
 /* ── Source Block ─────────────────────────────────────────────────────── */
 .seldia-diagram-source {
@@ -221,30 +189,10 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
-/* Editable DSL source (Code mode) — a real textarea so edits flow back to the
-   Markdown document and re-render the diagram live. */
-.seldia-source-edit {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  min-height: 160px;
-  resize: vertical;
-  margin: 0;
-  padding: 12px;
-  border: 0;
-  border-radius: 0;
-  background: var(--vscode-textCodeBlock-background, #0d0d0d);
-  color: var(--vscode-editor-foreground, #d4d4d4);
-  font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
-  font-size: 12px;
+.seldia-source-view {
   line-height: 1.5;
   tab-size: 2;
   white-space: pre;
-  overflow: auto;
-  outline: none;
-}
-.seldia-source-edit:focus {
-  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #007fd4);
 }
 
 /* ── Error State ──────────────────────────────────────────────────────── */

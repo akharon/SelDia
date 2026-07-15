@@ -5,10 +5,15 @@
 // to hook into VS Code's built-in Markdown preview.
 //
 // It intercepts ```seldia fenced code blocks and replaces them with a
-// pre-rendered SVG diagram inside a styled container that supports three modes:
+// pre-rendered SVG diagram inside a styled container that supports two modes:
 //   • Preview (default) — the rendered diagram
-//   • Code               — the DSL source
-//   • Edit               — drag nodes / double-click to edit (writes back to source)
+//   • Code               — the DSL source, read-only
+//
+// The preview is a read-only surface: layout is always automatic, and the DSL
+// is edited in the raw file (the "open in editor" link jumps there). Visual
+// editing lives in the custom editor, whose webview we own; the built-in
+// preview offers no channel that can carry edits back reliably — see
+// edit/commands.ts.
 //
 // The container carries a stable per-block id (hash of the DSL source) so the
 // preview script and the extension host can correlate a rendered block with the
@@ -16,7 +21,6 @@
 // =============================================================================
 
 import type { CoreEngine } from '@seldia/core';
-import { hasManualPositions } from '../edit/dsl-edit.js';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 
 // Minimal MarkdownIt interface — matches what VS Code passes to extendMarkdownIt
@@ -113,44 +117,32 @@ ${ICON_SPRITE}
   }
 
   const svg = result.value.svg;
-  const pad = engine.config?.render?.padding ?? 20;
-  const manual = hasManualPositions(code);
 
   return `
 ${ICON_SPRITE}
-<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-pad="${pad}" data-seldia-layout="${manual ? 'manual' : 'auto'}">
+<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram" aria-label="Show rendered diagram">${icon('visibility')}</button>
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="code" title="Show DSL source" aria-label="Show DSL source">${icon('code')}</button>
-      <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="edit" title="Edit diagram: drag nodes, double-click to rename" aria-label="Edit diagram">${icon('edit')}</button>
     </span>
     <span class="seldia-toolbar-spacer"></span>
-    <a
-      class="seldia-btn seldia-btn-icon seldia-btn-auto-layout${manual ? ' seldia-btn-auto-layout-disabled' : ''}"
-      title="${manual
-        ? 'Auto layout is off because nodes were moved manually. Click to re-run automatic layout and clear manual positions.'
-        : 'Diagram is automatically laid out. Drag a node to switch to manual positioning.'}"
-      aria-label="Auto layout"
-      href="${deepLink('autoLayout', { blockId, doc: docUri })}"
-    >${manual ? icon('auto-layout-off') : icon('auto-layout-on')}</a>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-in" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-out" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-reset" title="Reset Zoom" aria-label="Reset zoom">${icon('reset')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-export" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
   </div>
-  <div class="seldia-edit-hint">Edit mode: drag a node to move it · double-click a node to rename · changes are written back to the Markdown source.</div>
   <div class="seldia-diagram-svg">
     ${svg}
   </div>
   <div class="seldia-diagram-source">
     <div class="seldia-diagram-source-header">
-      <span>SelDiA DSL Source — edit here to update the diagram</span>
+      <span>SelDiA DSL Source</span>
       <span class="seldia-toolbar-spacer"></span>
-      <a class="seldia-btn seldia-btn-icon" title="Reveal this block in the editor" aria-label="Open in editor" href="${deepLink('revealSource', { blockId, doc: docUri })}">${icon('open-in-editor')}</a>
+      <a class="seldia-btn seldia-btn-icon" title="Open this block in the editor to edit it" aria-label="Open in editor" href="${deepLink('revealSource', { blockId, doc: docUri })}">${icon('open-in-editor')}</a>
       <button class="seldia-btn seldia-btn-icon seldia-btn-copy-source" title="Copy source to clipboard" aria-label="Copy source to clipboard">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button>
     </div>
-    <textarea class="seldia-source-edit" spellcheck="false" wrap="off" aria-label="SelDiA DSL source (editable)">${escapeHtml(code)}</textarea>
+    <pre class="seldia-source-view"><code class="language-seldia">${escapeHtml(code)}</code></pre>
   </div>
 </div>`;
 }

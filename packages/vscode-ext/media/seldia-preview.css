@@ -120,7 +120,12 @@
   /* This is the intended scroll/clip boundary for zoomed content (not the
      outer .seldia-diagram). Because zoom now resizes the SVG's own
      width/height rather than using a CSS transform, scrolling here reveals
-     the full, unclipped shape at any zoom level instead of slicing it. */
+     the full, unclipped shape at any zoom level instead of slicing it.
+     max-height is required for overflow:auto to actually produce a scrollbar
+     here — without a bound, this div simply grows to fit the zoomed SVG and
+     the whole page grows with it (zoom then reads as "resizing the diagram
+     window" instead of zooming into a fixed frame). */
+  max-height: 70vh;
   overflow: auto;
   border-radius: 0 0 3px 3px;
 }

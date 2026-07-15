@@ -16,8 +16,8 @@
 // markdown-it plugin stamped onto the container.
 //
 // Edit gestures are written back to the Markdown source by invoking extension
-// commands through `command:` URIs (the sanctioned channel from the built-in
-// preview to the extension host).
+// commands through `vscode://` deep links — the only channel the built-in
+// preview permits (see `runCommand` below and edit/commands.ts).
 // =============================================================================
 
 (() => {
@@ -57,8 +57,8 @@
     const btn = target?.closest?.(
       '.seldia-mode-btn, .seldia-btn-zoom-in, .seldia-btn-zoom-out, .seldia-btn-reset, .seldia-btn-export, .seldia-btn-copy-source'
     ) as HTMLElement | null;
-    // `command:`-URI anchors (auto layout, reveal source) are handled by VS
-    // Code itself — don't intercept them here.
+    // Deep-link anchors (auto layout, reveal source) are handled by VS Code
+    // itself — don't intercept them here.
     if (!btn) return;
     const container = diagramOf(btn);
     if (!container) return;
@@ -132,7 +132,7 @@
     const blockId = container.dataset.seldiaBlock || container.id;
     const original = ta.defaultValue; // server-rendered source (pre-edit)
     if (ta.value === original) return; // nothing changed — skip the write
-    runCommand('seldia.replaceBlockSource', { blockId, source: ta.value });
+    runCommand(container, 'seldia.replaceBlockSource', { blockId, source: ta.value });
   }
 
   // Also flush if the whole preview loses focus while a diagram is in Code mode
@@ -213,7 +213,7 @@
     e.preventDefault();
     e.stopPropagation();
     const current = t.g.querySelector('text')?.textContent || '';
-    runCommand('seldia.editNodeLabel', { blockId: t.blockId, nodeId: t.nodeId, current });
+    runCommand(t.container, 'seldia.editNodeLabel', { blockId: t.blockId, nodeId: t.nodeId, current });
   });
 
   // Press on a node → drag to move; release writes the new position back.
@@ -223,7 +223,7 @@
     if (!t) return;
     e.preventDefault();
     e.stopPropagation();
-    const { g, svg, blockId, nodeId, pad } = t;
+    const { g, svg, container, blockId, nodeId, pad } = t;
     const startUser = toUserSpace(svg, e.clientX, e.clientY);
     const origin = g.getBBox();
     g.style.cursor = 'grabbing';
@@ -247,7 +247,7 @@
       const end = toUserSpace(svg, ev.clientX, ev.clientY);
       const nx = origin.x - pad + (end.x - startUser.x);
       const ny = origin.y - pad + (end.y - startUser.y);
-      runCommand('seldia.moveNode', { blockId, nodeId, x: nx, y: ny });
+      runCommand(container, 'seldia.moveNode', { blockId, nodeId, x: nx, y: ny });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -264,20 +264,36 @@
     return { x: p.x, y: p.y };
   }
 
-  /** Invoke an extension command via a command: URI.
+  /** Invoke an extension edit action from the built-in Markdown preview.
    *
-   *  The toolbar's own `command:` links (auto layout, reveal source — see
-   *  plugin.ts) are plain `<a href="command:...">` tags, and those are the
-   *  channel VS Code's Markdown preview actually intercepts reliably: a click
-   *  on an anchor whose href is a `command:` URI. Assigning
-   *  `window.location.href` directly triggers a real top-level navigation
-   *  attempt on the whole webview document; when that happens mid-drag (while
-   *  global `mousemove`/`mouseup` listeners are still attached from
-   *  `mousedown`) the in-flight navigation can blank the entire preview,
-   *  every diagram included, before VS Code's interceptor cancels it. Using a
-   *  real anchor click avoids ever starting that navigation. */
-  function runCommand(command: string, arg: unknown) {
-    const uri = `command:${command}?${encodeURIComponent(JSON.stringify([arg]))}`;
+   *  IMPORTANT: this must NOT use a `command:` URI. VS Code's built-in Markdown
+   *  preview webview is created without `enableCommandUris`, and its link
+   *  handler does not intercept `command:` links — so clicking one navigates
+   *  the webview to a `command:` document it cannot load, which blanks the
+   *  entire preview to a white page (this was the long-standing "editing/moving
+   *  blanks the preview" bug). There is also no postMessage channel back to a
+   *  contributed preview script.
+   *
+   *  The channel that works is a `vscode://<extension-id>/<action>?<query>`
+   *  deep link. `vscode:` is on the preview's link-passthrough allowlist, so
+   *  the click is left to VS Code's own protocol handler, which routes it to
+   *  the extension's registered UriHandler WITHOUT navigating the webview — the
+   *  diagram stays put and simply re-renders once the edit is applied. `command`
+   *  here is a bare action name (e.g. `moveNode`); `arg` is a flat object whose
+   *  values become query parameters. */
+  const EXTENSION_ID = 'seldia.seldia-vscode';
+  function runCommand(container: HTMLElement, command: string, arg: Record<string, unknown>) {
+    const action = command.replace(/^seldia\./, '');
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(arg)) {
+      if (v !== undefined && v !== null) params.set(k, String(v));
+    }
+    // The Uri of the Markdown document this block was rendered from, stamped on
+    // the container by the markdown-it plugin. Without it the host has to guess
+    // which document to edit, and guesses wrong whenever the preview has focus.
+    const doc = container.dataset.seldiaDoc;
+    if (doc) params.set('doc', doc);
+    const uri = `vscode://${EXTENSION_ID}/${action}?${params.toString()}`;
     const a = document.createElement('a');
     a.href = uri;
     a.style.display = 'none';

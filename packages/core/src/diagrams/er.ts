@@ -9,6 +9,7 @@ import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
+import { erEntitySize } from '../render/custom-renderers.js';
 
 export const erPlugin: DiagramPlugin = {
   id: 'seldia-er', name: 'ER Diagram', version: '1.0.0',
@@ -19,7 +20,10 @@ export const erPlugin: DiagramPlugin = {
     for (const stmt of ast.body) {
       if (stmt.kind === 'NodeDecl') {
         const nd = stmt as ASTNodeDecl;
-        nodes.push({ id: nd.id, label: nd.label, shape: ShapeType.RECTANGLE, position: { x: 0, y: 0 }, size: { width: 200, height: 120 }, style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
+        // Sized from the label so the layout reserves exactly the table the
+        // renderer draws — a fixed height left relationships anchored on a
+        // border below the visible entity (see erEntitySize).
+        nodes.push({ id: nd.id, label: nd.label, shape: ShapeType.RECTANGLE, position: { x: 0, y: 0 }, size: erEntitySize(nd.label), style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;

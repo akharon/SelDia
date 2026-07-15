@@ -39,6 +39,30 @@ describe('renderSelDiABlock', () => {
     expect(html).toContain('seldia-error');
     expect(html).toContain('Compilation Error');
   });
+
+  // The host cannot find the document to edit by looking at the active editor —
+  // there isn't one while the preview has focus. It relies entirely on the doc
+  // uri travelling with each deep link, so pin that here.
+  it('addresses the extension over vscode:// and never command:', () => {
+    const html = renderSelDiABlock(engine, SRC, 'file:///w/demo.md');
+    expect(html).toContain('href="vscode://seldia.seldia-vscode/');
+    expect(html).not.toContain('command:');
+  });
+
+  it('carries the source document uri on the container and in every deep link', () => {
+    const html = renderSelDiABlock(engine, SRC, 'file:///w/demo.md');
+    expect(html).toContain('data-seldia-doc="file:///w/demo.md"');
+    for (const href of html.match(/href="vscode:\/\/[^"]+"/g) ?? []) {
+      expect(href).toContain('doc=file%3A%2F%2F%2Fw%2Fdemo.md');
+    }
+  });
+
+  it('omits the doc param entirely when the render env has no document', () => {
+    const html = renderSelDiABlock(engine, SRC);
+    for (const href of html.match(/href="vscode:\/\/[^"]+"/g) ?? []) {
+      expect(href).not.toMatch(/[?&]doc=/);
+    }
+  });
 });
 
 describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
@@ -58,5 +82,19 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     expect(seldiaOut).toContain('<svg');
     expect(jsOut).not.toContain('seldia-diagram');
     expect(jsOut).toContain('const a = 1;');
+  });
+
+  // VS Code's Markdown engine renders with an env of
+  // `{ containingImages, currentDocument: <Uri>, resourceProvider }` — the fence
+  // rule must pull the document uri out of it (a Uri object, not a string).
+  it('picks the document uri out of the markdown render env', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine)(md);
+    const env = {
+      containingImages: new Set(),
+      currentDocument: { toString: () => 'file:///w/demo.md' },
+    };
+    const out = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    expect(out).toContain('data-seldia-doc="file:///w/demo.md"');
   });
 });

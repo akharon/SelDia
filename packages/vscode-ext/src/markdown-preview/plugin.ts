@@ -51,7 +51,7 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
 
       if (lang === 'seldia' || lang.startsWith('seldia-')) {
         try {
-          return renderSelDiABlock(engine, token.content);
+          return renderSelDiABlock(engine, token.content, docUriOf(env));
         } catch (err: any) {
           // A single block must never take down the whole preview — render
           // an inline error box for this block only and let every other
@@ -67,9 +67,29 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
   };
 }
 
+/** The Uri of the Markdown document currently being rendered, as a string.
+ *
+ *  VS Code's Markdown engine builds its render env as
+ *  `{ containingImages, currentDocument: <source doc Uri>, resourceProvider }`
+ *  and passes it to every renderer rule, so a fence rule can always tell which
+ *  file it is rendering. Stamping that into the block's deep links is what lets
+ *  the edit commands open the right document instead of guessing from whatever
+ *  editor happens to be focused (there is none when the preview has focus).
+ *  Defensive: returns '' if the env shape ever changes, and the host then falls
+ *  back to scanning open Markdown documents. */
+function docUriOf(env: any): string {
+  const d = env?.currentDocument;
+  if (!d) return '';
+  try {
+    return typeof d === 'string' ? d : String(d.toString());
+  } catch {
+    return '';
+  }
+}
+
 /** Render a single ```seldia block to the interactive preview container HTML.
  *  Exported so it can be unit-tested without a MarkdownIt instance. */
-export function renderSelDiABlock(engine: CoreEngine, code: string): string {
+export function renderSelDiABlock(engine: CoreEngine, code: string, docUri = ''): string {
   const blockId = blockIdForSource(code);
   // Synchronous compile — the markdown-it fence renderer cannot await.
   const result = engine.compileSync(code);
@@ -82,7 +102,7 @@ ${ICON_SPRITE}
   <div class="seldia-diagram-toolbar">
     <span class="seldia-diagram-badge">${icon('error')} SelDiA Error</span>
     <span class="seldia-toolbar-spacer"></span>
-    <a class="seldia-btn seldia-btn-icon" title="Reveal DSL source to fix errors" aria-label="Reveal DSL source to fix errors" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('edit')}</a>
+    <a class="seldia-btn seldia-btn-icon" title="Reveal DSL source to fix errors" aria-label="Reveal DSL source to fix errors" href="${deepLink('revealSource', { blockId, doc: docUri })}">${icon('edit')}</a>
   </div>
   <div class="seldia-error-header">Compilation Error</div>
   <pre class="seldia-error-detail">${escapeHtml(errors)}</pre>
@@ -98,7 +118,7 @@ ${ICON_SPRITE}
 
   return `
 ${ICON_SPRITE}
-<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-mode="preview" data-seldia-pad="${pad}" data-seldia-layout="${manual ? 'manual' : 'auto'}">
+<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-pad="${pad}" data-seldia-layout="${manual ? 'manual' : 'auto'}">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram" aria-label="Show rendered diagram">${icon('visibility')}</button>
@@ -112,7 +132,7 @@ ${ICON_SPRITE}
         ? 'Auto layout is off because nodes were moved manually. Click to re-run automatic layout and clear manual positions.'
         : 'Diagram is automatically laid out. Drag a node to switch to manual positioning.'}"
       aria-label="Auto layout"
-      href="command:seldia.autoLayout?${cmdArgs({ blockId })}"
+      href="${deepLink('autoLayout', { blockId, doc: docUri })}"
     >${manual ? icon('auto-layout-off') : icon('auto-layout-on')}</a>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-in" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-out" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
@@ -127,7 +147,7 @@ ${ICON_SPRITE}
     <div class="seldia-diagram-source-header">
       <span>SelDiA DSL Source — edit here to update the diagram</span>
       <span class="seldia-toolbar-spacer"></span>
-      <a class="seldia-btn seldia-btn-icon" title="Reveal this block in the editor" aria-label="Open in editor" href="command:seldia.revealSource?${cmdArgs({ blockId })}">${icon('open-in-editor')}</a>
+      <a class="seldia-btn seldia-btn-icon" title="Reveal this block in the editor" aria-label="Open in editor" href="${deepLink('revealSource', { blockId, doc: docUri })}">${icon('open-in-editor')}</a>
       <button class="seldia-btn seldia-btn-icon seldia-btn-copy-source" title="Copy source to clipboard" aria-label="Copy source to clipboard">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button>
     </div>
     <textarea class="seldia-source-edit" spellcheck="false" wrap="off" aria-label="SelDiA DSL source (editable)">${escapeHtml(code)}</textarea>
@@ -156,8 +176,22 @@ ${ICON_SPRITE}
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────
-function cmdArgs(obj: unknown): string {
-  return encodeURIComponent(JSON.stringify([obj]));
+// The extension id (publisher.name) used to address this extension's registered
+// UriHandler from inside the built-in Markdown preview.
+const EXTENSION_ID = 'seldia.seldia-vscode';
+
+/** Build a `vscode://<extension-id>/<action>?<query>` deep link for a toolbar
+ *  anchor. MUST be used instead of a `command:` URI: the built-in Markdown
+ *  preview never sets `enableCommandUris`, so VS Code silently discards
+ *  `command:` links clicked inside it, whereas `vscode:` is on the webview's
+ *  supported-scheme list and is routed to our UriHandler without navigating the
+ *  webview. See edit/commands.ts `registerEditUriHandler` for the full
+ *  derivation. Empty params are dropped so a missing doc uri doesn't turn into
+ *  a literal "undefined". */
+function deepLink(action: string, params: Record<string, string>): string {
+  const present = Object.fromEntries(Object.entries(params).filter(([, v]) => v));
+  const q = new URLSearchParams(present).toString();
+  return `vscode://${EXTENSION_ID}/${action}${q ? `?${q}` : ''}`;
 }
 
 function hashCode(str: string): string {

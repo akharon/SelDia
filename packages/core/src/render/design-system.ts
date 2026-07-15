@@ -49,10 +49,12 @@ export interface Swatch {
 // ── Shared neutrals ─────────────────────────────────────────────────────────
 // One typographic + geometric contract for every diagram type.
 export const DS = {
-  /** The single font stack used by every diagram label, everywhere. */
-  fontFamily: 'Inter, "Segoe UI", system-ui, -apple-system, sans-serif',
+  /** The single font stack used by every diagram label, everywhere. Single-quoted
+   *  (not double-quoted) multi-word names so this can be dropped straight into a
+   *  double-quoted SVG attribute without breaking the attribute value. */
+  fontFamily: "Inter, 'Segoe UI', system-ui, -apple-system, sans-serif",
   /** Monospace stack for code-ish content (class members, ER columns). */
-  monoFamily: '"JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace',
+  monoFamily: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, monospace",
 
   /** Type scale (px). Title = group/section headers, label = node text,
    *  meta = edge labels / secondary text. Fixed so nothing looks off-key. */
@@ -104,6 +106,7 @@ const TYPE_ACCENTS: Record<string, Swatch> = {
   sankey:      swatch('#0e7490', '#ecfdff', '#155e75'), // cyan
   block:       swatch('#525252', '#f5f5f5', '#262626'), // gray
   timeline:    swatch('#7c3aed', '#f5f0ff', '#5b21b6'), // violet
+  wireframe:   swatch('#334155', '#f8fafc', '#1e293b'), // slate — deliberately ink-on-paper, not a bright accent, to read as "low-fidelity sketch" rather than a finished UI
   mono:        swatch('#111827', '#f9fafb', '#111827'), // near-black
 };
 

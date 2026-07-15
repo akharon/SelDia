@@ -105,11 +105,15 @@ diagram state "Interaction States" {
 
 ## Entity–Relationship
 
+Each line after the entity name becomes an attribute row, and the table is
+sized to hold them. Cardinality follows the arrow: `A --> B` puts the "one"
+tick on `A` and the crow's foot on `B`.
+
 ```seldia
 diagram er "Shop" {
-    Customer: [Customer]
-    Order: [Order]
-    Product: [Product]
+    Customer: [Customer\nid PK\nemail string\nname string]
+    Order: [Order\nid PK\ncustomer_id FK\nplaced_at date]
+    Product: [Product\nid PK\nsku string\nprice decimal]
 
     Customer --> Order: "places"
     Order --> Product: "contains"
@@ -141,6 +145,29 @@ diagram c4 container "System" {
     user --> web
     web --> api
     api --> db
+}
+```
+
+## C4 — Component
+
+The third C4 level: the components inside a single container. `component`,
+`container`, `database` and `person` are type keywords — the shape follows the
+keyword, so a `database` is drawn as a cylinder and a `person` as an actor.
+
+```seldia
+diagram c4 component "API Application" {
+    person user: "Customer" "Uses the web app"
+    component signin: "Sign In Controller" "Handles authentication requests"
+    component accounts: "Accounts Controller" "Serves account summaries"
+    component security: "Security Component" "Checks credentials"
+    component facade: "Mainframe Facade" "Talks to the core banking system"
+    database db: "Database" "Stores user credentials"
+
+    user --> signin: "Submits credentials"
+    signin --> security: "Validates"
+    security --> db: "Reads from"
+    user --> accounts: "Views balances"
+    accounts --> facade: "Fetches accounts"
 }
 ```
 
@@ -190,10 +217,14 @@ diagram dmn "Loan Approval" {
 diagram component "App" {
     ui: [Web UI]
     api: [API Service]
+    payments: [Payment Microservice]
+    iface: ((Payment Interface))
     cache: [Redis Cache]
     store: [Database]
 
     ui --> api
+    api --> payments
+    payments --> iface
     api --> cache
     api --> store
 }
@@ -231,19 +262,29 @@ diagram activity "Checkout" {
 
 ```seldia
 diagram deployment "Production" {
+    phone: [Mobile Device]
     lb: [Load Balancer]
     web1: [Web Server 1]
     web2: [Web Server 2]
+    env: [App Container]
+    jar: [order-service.jar]
     db: [Database]
 
+    phone --> lb
     lb --> web1
     lb --> web2
-    web1 --> db
+    web1 --> env
+    env --> jar
     web2 --> db
+    jar --> db
 }
 ```
 
 ## Gantt
+
+The time axis granularity (day / week / month / quarter / year) is chosen
+automatically from the project's total span — a two-week sprint gets daily
+ticks, a multi-year roadmap gets yearly ones, with no configuration needed.
 
 ```seldia
 diagram gantt "Project Alpha" {
@@ -285,18 +326,35 @@ diagram mindmap "System Features" {
 
 ```seldia
 diagram network "Office" {
+    internet: [Internet]
+    firewall: [Firewall]
     router: [Router]
+    lb: [Load Balancer]
     switch: [Switch]
+    ap: [Wifi Access Point]
     pc1: [Workstation 1]
     pc2: [Workstation 2]
+    server: [App Server]
+    db: [Database]
+    nas: [Storage NAS]
 
+    internet --> firewall
+    firewall --> router
+    router --> lb
     router --> switch
+    lb --> server
+    switch --> ap
     switch --> pc1
     switch --> pc2
+    server --> db
+    server --> nas
 }
 ```
 
 ## Chart (Bar)
+
+Multi-series charts get an automatic legend (name → color) whenever more than
+one series is present.
 
 ```seldia
 diagram chart bar "Monthly Sales" {
@@ -308,6 +366,52 @@ diagram chart bar "Monthly Sales" {
     jan --> feb
     feb --> mar
     mar --> apr
+}
+```
+
+## Chart (Line)
+
+```seldia
+diagram chart line "Weekly Active Users" {
+    w1: "Wk1\nDesktop: 120  Mobile: 90"
+    w2: "Wk2\nDesktop: 140  Mobile: 130"
+    w3: "Wk3\nDesktop: 130  Mobile: 160"
+    w4: "Wk4\nDesktop: 155  Mobile: 175"
+
+    w1 --> w2
+    w2 --> w3
+    w3 --> w4
+}
+```
+
+## Chart (Pie)
+
+```seldia
+diagram chart pie "Market Share" {
+    alpha: "Alpha\n40"
+    beta: "Beta\n35"
+    gamma: "Gamma\n25"
+}
+```
+
+## Chart (Radar)
+
+```seldia
+diagram chart radar "Team Skills" {
+    speed: "Speed\nTeamA: 8  TeamB: 6"
+    power: "Power\nTeamA: 5  TeamB: 9"
+    stamina: "Stamina\nTeamA: 7  TeamB: 7"
+}
+```
+
+## Chart (Scatter)
+
+```seldia
+diagram chart scatter "Response Time vs Load" {
+    p1: "10 req/s\nLatency: 20"
+    p2: "50 req/s\nLatency: 35"
+    p3: "100 req/s\nLatency: 80"
+    p4: "150 req/s\nLatency: 140"
 }
 ```
 
@@ -391,5 +495,50 @@ diagram timeline "Roadmap" {
     q1 --> q2
     q2 --> q3
     q3 --> q4
+}
+```
+
+## Wireframe
+
+Low-fidelity UI mockups in the hand-drawn **wired-elements** style. Every
+control is sketched with a wobbly ink-on-paper line — always, regardless of the
+document theme — so a wireframe is never mistaken for a finished UI. The control
+type is inferred from each node's words, so no special syntax is needed:
+
+| Control | Trigger words | Control | Trigger words |
+|---------|---------------|---------|---------------|
+| button | `button`, `submit`, `login`, `save`… | slider | `slider`, `range` |
+| input | `input`, `field`, `email`, `search`… | dropdown | `dropdown`, `select`, `combo` |
+| textarea | `textarea`, `message`, `bio` | progress | `progress`, `loading` (reads a `NN%`) |
+| checkbox | `checkbox`, `terms`, `agree` | toggle | `toggle`, `switch` |
+| radio | `radio`, `option` | divider | `divider`, `separator` |
+| navbar | `navbar`, `menu`, `toolbar` | link | `link`, `forgot` |
+| image / avatar | `image`, `logo` / `avatar` | heading | `h1`, `title`, `heading` |
+
+State is read from the words too: a checkbox/radio with `checked` or `selected`
+is filled, a toggle with `on` is switched, and a progress/slider with `70%`
+fills to that fraction. Controls stack top-to-bottom in the order written —
+edges are only needed to override that order and are never drawn.
+
+```seldia
+diagram wireframe "Sign Up" {
+    nav: [Navbar MyApp]
+    title: [H1 Create your account]
+    pic: [Profile avatar]
+    name: [Full name field]
+    email: [Email field]
+    pass: [Password field]
+    bio: [Short bio textarea]
+    role: [Role dropdown]
+    volume: [Notification volume slider 70%]
+    notify: [Enable email updates toggle on]
+    terms: [I accept the terms checkbox checked]
+    news: [Subscribe to newsletter checkbox]
+    plan_pro: [Pro plan radio selected]
+    plan_free: [Free plan radio]
+    div: [divider]
+    upload: [Upload progress 60%]
+    submit: [Create account button]
+    forgot: [Forgot password link]
 }
 ```

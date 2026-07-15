@@ -28,7 +28,7 @@ export const statePlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `ste-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `ste-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'state-1', type: DiagramType.STATE, title: ast.title || 'State Diagram', nodes, edges, groups: [], layers: [], metadata: {} };

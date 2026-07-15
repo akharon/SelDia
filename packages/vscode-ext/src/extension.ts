@@ -14,7 +14,7 @@ import { registerLanguageServer } from './language-server/index.js';
 import { SelDiAInteractiveProvider } from './webview/provider.js';
 import { SelDiAEditorProvider } from './editor/seldia-editor-provider.js';
 import { createSelDiAMarkdownItPlugin } from './markdown-preview/plugin.js';
-import { registerEditCommands } from './edit/commands.js';
+import { registerEditCommands, findDocWithBlock } from './edit/commands.js';
 
 let engine: CoreEngine;
 let skillStatusBarItem: vscode.StatusBarItem | undefined;
@@ -334,68 +334,32 @@ export function activate(context: vscode.ExtensionContext) {
     SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
   });
 
-  // ── Reveal Source Command (from Markdown Preview "Edit" button) ──────────
-  const revealSource = vscode.commands.registerCommand('seldia.revealSource', (args?: { blockId?: string; sourceHash?: string }) => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      // Try to find the markdown editor from visible editors
-      const mdEditor = vscode.window.visibleTextEditors.find(
-        e => e.document.fileName.match(/\.(md|mdx|rst)$/)
-      );
-      if (!mdEditor) {
-        vscode.window.showWarningMessage('No markdown editor found. Open your .md file first.');
+  // ── Reveal Source Command (from the Markdown preview toolbar) ────────────
+  // Invoked via the `vscode://` deep link the preview stamps on its "open in
+  // editor" anchors, so `args.doc` carries the Uri of the document the preview
+  // rendered the block from. That Uri is what makes this reliable: while the
+  // preview has focus there is no active text editor to consult, and the
+  // document need not be open in any editor at all.
+  const revealSource = vscode.commands.registerCommand(
+    'seldia.revealSource',
+    async (args?: { blockId?: string; doc?: string }) => {
+      if (!args?.blockId) return;
+      const found = await findDocWithBlock(args.blockId, args.doc);
+      if (!found) {
+        vscode.window.showWarningMessage('SelDiA: could not locate this diagram block in its Markdown source.');
         return;
       }
-      // Focus the markdown editor
-      vscode.window.showTextDocument(mdEditor.document, mdEditor.viewColumn);
-      return;
+      const { doc, block } = found;
+      const editor = await vscode.window.showTextDocument(doc, {
+        viewColumn: vscode.ViewColumn.One,
+        preserveFocus: false,
+      });
+      const start = new vscode.Position(block.fenceLine, 0);
+      const end = new vscode.Position(block.sourceEndLine, doc.lineAt(Math.min(block.sourceEndLine, doc.lineCount - 1)).text.length);
+      editor.selection = new vscode.Selection(start, end);
+      editor.revealRange(new vscode.Range(start, end), vscode.TextEditorRevealType.InCenter);
     }
-
-    if (!editor.document.fileName.match(/\.(md|mdx|rst)$/)) {
-      vscode.window.showWarningMessage('Active file is not a Markdown document.');
-      return;
-    }
-
-    // Find all ```seldia blocks and navigate to the one that matches
-    const text = editor.document.getText();
-    const lines = text.split('\n');
-    const seldiaBlockRegex = /^```(seldia|seldia-\w+)/;
-
-    for (let i = 0; i < lines.length; i++) {
-      if (seldiaBlockRegex.test(lines[i])) {
-        // Found a seldia block, check if it matches the hash
-        const startLine = i;
-        const sourceLines: string[] = [];
-        i++;
-        while (i < lines.length && !/^```$/.test(lines[i])) {
-          sourceLines.push(lines[i]);
-          i++;
-        }
-        const source = sourceLines.join('\n');
-        const sourceHash = Math.abs(hashString(source)).toString(36);
-
-        if (args?.sourceHash && sourceHash === args.sourceHash) {
-          // Found matching block — reveal it
-          const startPos = new vscode.Position(startLine, 0);
-          const endPos = new vscode.Position(i, 3);
-          editor.selection = new vscode.Selection(startPos, endPos);
-          editor.revealRange(new vscode.Range(startPos, endPos), vscode.TextEditorRevealType.InCenter);
-          return;
-        }
-
-        // Also match by blockId if present
-        if (args?.blockId && args.blockId === `seldia-${sourceHash}`) {
-          const startPos = new vscode.Position(startLine, 0);
-          const endPos = new vscode.Position(i, 3);
-          editor.selection = new vscode.Selection(startPos, endPos);
-          editor.revealRange(new vscode.Range(startPos, endPos), vscode.TextEditorRevealType.InCenter);
-          return;
-        }
-      }
-    }
-
-    vscode.window.showInformationMessage('Navigate to any ```seldia block in the editor to edit.');
-  });
+  );
 
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
@@ -455,15 +419,4 @@ function refreshSkillStatusBar() {
 
 export function deactivate() {
   console.log('SelDiA extension deactivated');
-}
-
-// ── Utility: simple hash for source matching ──────────────────────────
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const chr = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  return hash;
 }

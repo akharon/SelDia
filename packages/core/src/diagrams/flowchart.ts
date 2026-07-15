@@ -47,7 +47,7 @@ export const flowchartPlugin: DiagramPlugin = {
           targetId: ed.targetId,
           label: ed.label || undefined,
           style: ed.style ? { ...ed.style } : {},
-          routing: (ed.routing as any) || 'straight',
+          routing: (ed.routing as any) || 'orthogonal',
           bidirectional: ed.direction === 'both',
           classList: ed.classList || [],
           data: ed.data || {},

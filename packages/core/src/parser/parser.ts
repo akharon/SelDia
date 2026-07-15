@@ -705,7 +705,8 @@ class Parser {
         const typedStyle = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
         return {
           kind: 'NodeDecl', id: idTok2.value, shape: 'rectangle' as any, label,
-          description, style: typedStyle, loc: this.locSpan(typeTok, this.peek(-1)),
+          description, style: typedStyle, data: { typeKeyword: typeTok.value },
+          loc: this.locSpan(typeTok, this.peek(-1)),
         };
       }
       throw new ParseError(`Expected ":" or arrow after identifier "${idTok.value}"`, idTok);
@@ -719,7 +720,7 @@ class Parser {
     // only treat as the participant-decl keyword when followed by a name.
     if (this.peek().type === TokenType.KW_PARTICIPANT &&
         this.peek(1).type !== TokenType.COLON && this.peek(1).type !== TokenType.ARROW) {
-      this.consume(); // participant / person / system / container / ...
+      const kwTok = this.consume(); // participant / person / system / container / ...
       const idTok = this.expect(TokenType.IDENT, 'Expected participant identifier');
       let label = idTok.value;
       if (this.peek().type === TokenType.COLON) {
@@ -738,8 +739,8 @@ class Parser {
       const partStyle = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
       return {
         kind: 'NodeDecl', id: idTok.value, shape: 'actor' as any,
-        label, description, style: partStyle,
-        loc: this.locSpan(idTok, this.peek(-1)),
+        label, description, style: partStyle, data: { typeKeyword: kwTok.value },
+        loc: this.locSpan(kwTok, this.peek(-1)),
       };
     }
     throw new ParseError(`Unexpected token "${this.peek().value}"`, this.peek());

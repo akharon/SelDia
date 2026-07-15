@@ -89,7 +89,20 @@ export function layoutSequence(ir: DiagramIR): CustomLayoutResult {
 // each node's label. Falls back to even spacing (declaration order) when a
 // label carries no parseable date so the diagram still renders sensibly.
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function monthIndex(s: string): number { return MONTHS.indexOf(s.slice(0, 3).toLowerCase()); }
+
+/** Formats a Gantt "day index" (month*30 + day-of-month, the same synthetic
+ *  calendar parseGanttLabel encodes dates into) back into a "Mon D" tick
+ *  label for the time-axis gridlines. */
+export function ganttDayLabel(day: number, unit: 'day' | 'week' | 'month' | 'quarter' | 'year' = 'week'): string {
+  const m = Math.max(0, Math.min(11, Math.floor(day / 30)));
+  const d = Math.round(day - m * 30);
+  if (unit === 'quarter') return `Q${Math.floor(m / 3) + 1} '${Math.floor(day / 360) + 1}`;
+  if (unit === 'year') return `Year ${Math.floor(day / 360) + 1}`;
+  if (unit === 'month') return MONTH_LABELS[m];
+  return `${MONTH_LABELS[m]} ${d}`;
+}
 
 interface GanttSpan { startDay: number; endDay: number; label: string; milestone: boolean; }
 
@@ -112,11 +125,26 @@ function parseGanttLabel(label: string, fallbackDay: number): GanttSpan {
   return { startDay, endDay: startDay, label: title, milestone: true };
 }
 
+/** Ticks per unit and px-per-day chosen from the total project span, so a
+ *  2-week sprint gets daily gridlines while a 2-year roadmap gets yearly ones
+ *  instead of both rendering the same fixed weekly grid (which either
+ *  crowds into unreadable hairlines on long projects or wastes space on
+ *  short ones). Picks the coarsest granularity that still yields a
+ *  reasonable number of ticks (roughly 6-16) across the span. */
+function ganttScaleFor(spanDays: number): { unit: 'day' | 'week' | 'month' | 'quarter' | 'year'; unitDays: number; dayWidth: number } {
+  if (spanDays <= 21) return { unit: 'day', unitDays: 1, dayWidth: 24 };
+  if (spanDays <= 90) return { unit: 'week', unitDays: 7, dayWidth: 8 };
+  if (spanDays <= 240) return { unit: 'month', unitDays: 30, dayWidth: 3 };
+  if (spanDays <= 720) return { unit: 'quarter', unitDays: 90, dayWidth: 1.2 };
+  return { unit: 'year', unitDays: 360, dayWidth: 0.5 };
+}
+
 export function layoutGantt(ir: DiagramIR): CustomLayoutResult {
   const rowH = 50, rowGap = 20, leftPad = 200, topPad = 60;
-  const dayWidth = 8;
   const spans = ir.nodes.map((n, i) => parseGanttLabel(n.label, i * 10));
   const minDay = Math.min(...spans.map((s) => s.startDay));
+  const maxDaySpan = Math.max(...spans.map((s) => s.endDay)) - minDay;
+  const { unit, unitDays, dayWidth } = ganttScaleFor(maxDaySpan);
 
   const nodes: IRNode[] = ir.nodes.map((n, i) => {
     const s = spans[i];
@@ -128,7 +156,11 @@ export function layoutGantt(ir: DiagramIR): CustomLayoutResult {
       label: s.label,
       position: { x: s.milestone ? x - 12 : x, y },
       size: { width: s.milestone ? 24 : w, height: rowH },
-      data: { ...n.data, ganttMilestone: s.milestone, ganttRowLabel: s.label },
+      data: {
+        ...n.data, ganttMilestone: s.milestone, ganttRowLabel: s.label,
+        ganttDuration: s.milestone ? undefined : s.endDay - s.startDay,
+        ganttAxis: { minDay, dayWidth, leftPad, topPad, unit, unitDays },
+      },
     };
   });
 
@@ -138,7 +170,12 @@ export function layoutGantt(ir: DiagramIR): CustomLayoutResult {
     if (!src || !tgt) return { ...e, waypoints: [] };
     const x1 = src.position.x + src.size.width, y1 = src.position.y + src.size.height / 2;
     const x2 = tgt.position.x, y2 = tgt.position.y + tgt.size.height / 2;
-    return { ...e, waypoints: [{ x: x1, y: y1 }, { x: (x1 + x2) / 2, y: y1 }, { x: (x1 + x2) / 2, y: y2 }, { x: x2, y: y2 }] };
+    // Bend just past the predecessor's own right edge rather than at the
+    // midpoint between the two bars — a midpoint bend commonly falls inside
+    // an unrelated bar sitting in a row between src and tgt, which is what
+    // made dependency lines look like they were slicing through bars.
+    const xBend = x2 > x1 ? Math.min(x1 + 14, (x1 + x2) / 2) : (x1 + x2) / 2;
+    return { ...e, waypoints: [{ x: x1, y: y1 }, { x: xBend, y: y1 }, { x: xBend, y: y2 }, { x: x2, y: y2 }] };
   });
 
   const maxDay = Math.max(...spans.map((s) => s.endDay));
@@ -163,10 +200,21 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
 
   const byId = new Map(ir.nodes.map((n) => [n.id, n]));
   const positions = new Map<string, Point>();
+  const depths = new Map<string, number>();
   const cx = 500, cy = 400;
   positions.set(rootNode.id, { x: cx, y: cy });
+  depths.set(rootNode.id, 0);
 
+  // Ring radius per depth uses a diminishing gap (each level 78% of the
+  // previous) so the map tapers inward instead of spacing every level by the
+  // same fixed distance — the taper is what reads as "levels" at a glance
+  // rather than one undifferentiated ring of boxes.
   const ringGap = 190;
+  const ringRadius = (depth: number): number => {
+    let r = 0, gap = ringGap;
+    for (let d = 1; d <= depth; d++) { r += gap; gap *= 0.78; }
+    return r;
+  };
   function place(id: string, depth: number, angleStart: number, angleEnd: number) {
     const kids = childrenOf.get(id) || [];
     if (kids.length === 0) return;
@@ -174,31 +222,39 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
     const step = span / kids.length;
     kids.forEach((kidId, i) => {
       const angle = angleStart + step * (i + 0.5);
-      const r = ringGap * depth;
+      const r = ringRadius(depth);
       positions.set(kidId, { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+      depths.set(kidId, depth);
       place(kidId, depth + 1, angle - step / 2 * 0.9, angle + step / 2 * 0.9);
     });
   }
-  place(rootNode.id, 1, -Math.PI / 2 - Math.PI * 0.9, -Math.PI / 2 + Math.PI * 0.9 + Math.PI * 2 - Math.PI * 2);
-  // Full circle fan for the root's direct children.
-  positions.set(rootNode.id, { x: cx, y: cy });
+  // Full circle fan for the root's direct children; each branch then gets its
+  // own angular wedge for its own descendants.
   const rootKids = childrenOf.get(rootNode.id) || [];
   rootKids.forEach((kidId, i) => {
     const angle = (i / rootKids.length) * Math.PI * 2 - Math.PI / 2;
-    positions.set(kidId, { x: cx + ringGap * Math.cos(angle), y: cy + ringGap * Math.sin(angle) });
-    const kidsOfKid = childrenOf.get(kidId) || [];
+    const r1 = ringRadius(1);
+    positions.set(kidId, { x: cx + r1 * Math.cos(angle), y: cy + r1 * Math.sin(angle) });
+    depths.set(kidId, 1);
     const fanWidth = Math.PI / Math.max(1, rootKids.length) * 1.6;
     place(kidId, 2, angle - fanWidth / 2, angle + fanWidth / 2);
   });
 
+  // Node size and stroke weight taper with depth — the root reads as the
+  // biggest, boldest shape and each ring outward is progressively smaller and
+  // lighter, the visual hierarchy a mindmap needs ("levels").
+  const sizeScale = (depth: number): number => Math.max(0.55, 1 - depth * 0.14);
+
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const nodes: IRNode[] = ir.nodes.map((n) => {
     const p = positions.get(n.id) || { x: cx, y: cy };
-    const w = n.size.width || 130, h = n.size.height || 44;
+    const depth = depths.get(n.id) ?? 0;
+    const scale = sizeScale(depth);
+    const w = (n.size.width || 130) * scale, h = (n.size.height || 44) * scale;
     const x = p.x - w / 2, y = p.y - h / 2;
     minX = Math.min(minX, x); minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
-    return { ...n, position: { x, y }, size: { width: w, height: h }, data: { ...n.data, mindmapRoot: n.id === rootNode.id } };
+    return { ...n, position: { x, y }, size: { width: w, height: h }, data: { ...n.data, mindmapRoot: n.id === rootNode.id, mindmapDepth: depth } };
   });
   const shiftX = -minX + 40, shiftY = -minY + 40;
   const shifted = nodes.map((n) => ({ ...n, position: { x: n.position.x + shiftX, y: n.position.y + shiftY } }));
@@ -334,7 +390,9 @@ export function layoutChart(ir: DiagramIR): CustomLayoutResult {
     return { ...e, waypoints: [] }; // chart renderer draws its own connecting geometry, not generic edges
   });
   const width = leftPad + ir.nodes.length * slotWidth + 40;
-  const height = topPad + chartHeight + 80;
+  // Just enough below the x axis (at topPad + chartHeight - 30) for the row of
+  // category labels. The old +80 left a ~100px empty band under the plot.
+  const height = topPad + chartHeight + 20;
   return { nodes, edges, bounds: { x: 0, y: 0, width, height } };
 }
 

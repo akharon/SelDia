@@ -41,6 +41,7 @@ export enum DiagramType {
   SANKEY = 'sankey',
   BLOCK = 'block',
   TIMELINE = 'timeline',
+  WIREFRAME = 'wireframe',
 }
 
 // -----------------------------------------------------------------------------

@@ -22,9 +22,10 @@ import { statePlugin } from './diagrams/state.js';
 import { erPlugin } from './diagrams/er.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
-import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin } from './diagrams/misc.js';
+import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
+import { routeBetween, centerOf, computeFans, type Fan } from './render/edge-routing.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
 import { DS, typeSwatch, roleSwatch, seriesColor, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
@@ -36,8 +37,23 @@ import {
   renderMindmapNode, renderMindmapBranch,
   renderSankeyNode, renderSankeyRibbon,
   renderGitCommit, renderGitLane,
-  renderChartBar, renderChartPie,
-  extractChartSeriesNames, extractChartMax,
+  renderChartBar, renderChartPie, renderChartLinePoint, renderChartLegend,
+  renderChartAxes, chartScale, chartPlot, chartLegendHeight, chartLegendMinWidth,
+  extractChartSeriesNames,
+  renderC4Node,
+  renderBpmnNode,
+  renderDmnNode,
+  renderGanttAxis,
+  renderUsecaseNode,
+  renderActivityNode,
+  renderDeploymentNode,
+  renderComponentNode,
+  renderNetworkNode,
+  renderFormNode,
+  renderBlockNode,
+  renderTimelineAxis,
+  renderTimelineNode,
+  renderWireframeNode,
 } from './render/custom-renderers.js';
 
 // -----------------------------------------------------------------------------
@@ -135,7 +151,7 @@ class SelDiAEngine implements CoreEngine {
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -275,13 +291,15 @@ class SelDiAEngine implements CoreEngine {
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
+  /** Centre-to-centre; renderEdge clips it back to both node borders. Anchoring
+   *  here (the old code always left the source's bottom and entered the
+   *  target's top) is wrong whenever a node is dragged beside or above its
+   *  neighbour — which is exactly what this manual-position path is for. */
   private computeWaypoints(edge: IREdge, nodes: IRNode[]): Point[] {
     const src = nodes.find(n => n.id === edge.sourceId);
     const tgt = nodes.find(n => n.id === edge.targetId);
     if (!src || !tgt) return [];
-    const x1 = src.position.x + src.size.width / 2, y1 = src.position.y + src.size.height;
-    const x2 = tgt.position.x + tgt.size.width / 2, y2 = tgt.position.y;
-    return [{ x: x1, y: y1 }, { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }, { x: x2, y: y2 }];
+    return [centerOf(src), centerOf(tgt)];
   }
 
   private computeBounds(nodes: IRNode[]): Rect {
@@ -319,7 +337,21 @@ class SelDiAEngine implements CoreEngine {
     const maxStroke = Math.max(2, ...nodes.map((n) => (n.style?.strokeWidth as number) || 2));
     const displacement = sketchy ? 6 : 0;
     const pad = (this.config.render.padding || 20) + maxStroke + displacement;
-    const bw = bounds.width + pad * 2, bh = bounds.height + pad * 2;
+    const isChart = diagramType === DiagramType.CHART_BAR || diagramType === DiagramType.CHART_LINE
+      || diagramType === DiagramType.CHART_RADAR || diagramType === DiagramType.CHART_SCATTER || diagramType === DiagramType.CHART_PIE;
+    // Multi-series charts need a legend (name → colour) or the bars/lines are
+    // only distinguishable by memorising seriesColor()'s palette order. Pie
+    // slices already carry their own inline category labels, so they're
+    // excluded even though they're chart-shaped.
+    //
+    // The canvas is sized to the legend rather than the legend being crammed
+    // into the canvas: widen it if a single entry wouldn't fit, then measure
+    // the height the wrapped rows actually need. A fixed strip clipped every
+    // legend that ran to a second row.
+    const chartSeriesNames = isChart && diagramType !== DiagramType.CHART_PIE ? extractChartSeriesNames(nodes) : [];
+    const bw = Math.max(bounds.width + pad * 2, chartLegendMinWidth(chartSeriesNames));
+    const legendH = chartLegendHeight(chartSeriesNames, bw);
+    const bh = bounds.height + pad * 2 + legendH;
     const bg = this.config.render.background || '#ffffff';
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
@@ -337,9 +369,37 @@ class SelDiAEngine implements CoreEngine {
 
     if (diagramType === DiagramType.CHART_BAR || diagramType === DiagramType.CHART_LINE || diagramType === DiagramType.CHART_RADAR || diagramType === DiagramType.CHART_SCATTER) {
       const seriesNames = extractChartSeriesNames(nodes);
-      const chartMax = extractChartMax(nodes);
+      const scale = chartScale(nodes);
+      const chartMax = scale.max;
+      const plot = chartPlot(nodes, pad);
+      // Axes first: gridlines are backdrop and must sit under the data.
+      svg += renderChartAxes(nodes, pad, scale);
       for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}"></g>\n`;
-      for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderChartBar(n, pad, sketchy, chartMax, seriesNames)}  </g>\n`;
+      if (diagramType === DiagramType.CHART_LINE || diagramType === DiagramType.CHART_SCATTER) {
+        // One polyline (or a bare point cloud for scatter) per series, plotted
+        // through each category's point for that series — distinct from the
+        // bar chart's per-category grouped columns.
+        const dotOnly = diagramType === DiagramType.CHART_SCATTER;
+        seriesNames.forEach((_name, si) => {
+          const color = seriesColor(si);
+          const pts = nodes.map((n) => renderChartLinePoint(n, pad, chartMax, si));
+          if (!dotOnly) {
+            const line = pts.map((p) => `${p.x},${p.y}`).join(' ');
+            svg += `  <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.5"/>\n`;
+          }
+          for (const p of pts) svg += `  <circle cx="${p.x}" cy="${p.y}" r="4" fill="${color}"/>\n`;
+        });
+        // Category labels sit just under the x axis. They used to be pinned to
+        // the bottom of the canvas, which stranded them ~100px below the plot.
+        const catY = (plot ? plot.bottom : bounds.height + pad) + 20;
+        for (const n of nodes) {
+          const p = renderChartLinePoint(n, pad, chartMax);
+          svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}"><text x="${p.x}" y="${catY}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.meta}" font-family="${DS.fontFamily}">${this.esc(p.category)}</text></g>\n`;
+        }
+      } else {
+        for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderChartBar(n, pad, sketchy, chartMax, seriesNames)}  </g>\n`;
+      }
+      if (legendH > 0) svg += renderChartLegend(chartSeriesNames, bw, bounds.height + pad * 2);
       svg += '</svg>';
       return svg;
     }
@@ -358,7 +418,29 @@ class SelDiAEngine implements CoreEngine {
       return svg;
     }
 
-    for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType)}  </g>\n`;
+    if (diagramType === DiagramType.GANTT) {
+      svg += `  <g class="seldia-gantt-axis">\n${renderGanttAxis(nodes, pad, bounds)}  </g>\n`;
+    }
+
+    if (diagramType === DiagramType.TIMELINE) {
+      svg += `  <g class="seldia-timeline-axis">\n${renderTimelineAxis(nodes, pad, bounds, typeAccent.stroke)}  </g>\n`;
+      const midY = bounds.height / 2 + pad;
+      for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}"></g>\n`;
+      for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderTimelineNode(n, pad, sketchy, nodeSwatch(n, diagramType), midY)}  </g>\n`;
+      svg += '</svg>';
+      return svg;
+    }
+
+    // Wireframe edges are layout-only (they stack controls in reading order);
+    // drawing arrows between mockup controls would read as flowchart noise.
+    if (diagramType !== DiagramType.WIREFRAME) {
+      // Edges are clipped to the nodes they join, so the renderer needs to look
+      // both up by id, and fanned across a shared border, which needs to know
+      // about the other edges meeting there (see routedWaypoints).
+      const nodeById = new Map(nodes.map((n) => [n.id, n]));
+      const fans = computeFans(edges, nodeById);
+      for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id))}  </g>\n`;
+    }
     for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
     svg += '</svg>';
     return svg;
@@ -388,6 +470,19 @@ class SelDiAEngine implements CoreEngine {
       return renderMindmapNode(node, pad, sketchy, swatch, isRoot);
     }
     if (diagramType === DiagramType.GITGRAPH) return renderGitCommit(node, pad, sketchy);
+    if (diagramType === DiagramType.C4_CONTEXT || diagramType === DiagramType.C4_CONTAINER || diagramType === DiagramType.C4_COMPONENT) {
+      return renderC4Node(node, pad, sketchy, swatch);
+    }
+    if (diagramType === DiagramType.BPMN) return renderBpmnNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.DMN) return renderDmnNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.USECASE) return renderUsecaseNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.ACTIVITY) return renderActivityNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.DEPLOYMENT) return renderDeploymentNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.COMPONENT) return renderComponentNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.NETWORK) return renderNetworkNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.FORM) return renderFormNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.BLOCK) return renderBlockNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.WIREFRAME) return renderWireframeNode(node, pad, sketchy, swatch);
 
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const cx = x + w / 2, cy = y + h / 2;
@@ -548,21 +643,24 @@ class SelDiAEngine implements CoreEngine {
     return el;
   }
 
-  /** Insert orthogonal (right-angle) bend points between waypoints when
-   *  `routing === ORTHOGONAL` and the layout engine didn't already produce
-   *  bends (dagre/elk both return their own bend points in some cases —
-   *  only rewrite a straight 2-point run). Honoring `IREdge.routing` here
-   *  (previously read nowhere) is item 3/6's edge-routing fix. */
-  private routedWaypoints(edge: IREdge, wps: Point[]): Point[] {
-    if (edge.routing !== EdgeRouting.ORTHOGONAL || wps.length !== 2) return wps;
-    const [a, b] = wps;
-    const midY = (a.y + b.y) / 2;
-    return [a, { x: a.x, y: midY }, { x: b.x, y: midY }, b];
+  /** Shape an edge's path and clip it to the two nodes it joins, so it always
+   *  meets them on a border and never lies across one. See render/edge-routing
+   *  for why the layout engine's own endpoints can't be reused. */
+  private routedWaypoints(edge: IREdge, wps: Point[], src?: IRNode, tgt?: IRNode, fan?: Fan): Point[] {
+    if (wps.length < 2) return wps;
+    return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan);
   }
 
-  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType): string {
+  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan): string {
     if (diagramType === DiagramType.SEQUENCE) return renderSequenceMessage(edge, pad, sketchy, typeAccent);
-    if (diagramType === DiagramType.ER) return renderErRelationship(edge, pad, sketchy, typeAccent.stroke);
+    if (diagramType === DiagramType.ER) {
+      const raw = edge.waypoints || [];
+      const src = byId?.get(edge.sourceId), tgt = byId?.get(edge.targetId);
+      // ER draws its own cardinality marks but wants the same clipped, fanned
+      // route as every other edge.
+      const routed = raw.length >= 2 ? this.routedWaypoints(edge, raw, src, tgt, fan) : raw;
+      return renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed);
+    }
     if (diagramType === DiagramType.GANTT) return renderGanttDependency(edge, pad, sketchy, typeAccent.stroke);
     if (diagramType === DiagramType.MINDMAP) return renderMindmapBranch(edge, pad, sketchy, typeAccent.stroke);
     if (diagramType === DiagramType.GITGRAPH) {
@@ -573,13 +671,19 @@ class SelDiAEngine implements CoreEngine {
     const s = edge.style || {};
     // Edges take a muted tint of the diagram's signature accent so they read as
     // connective tissue (quieter than nodes) while still belonging to the same
-    // colour family — never a jarring flat gray.
-    const stroke = (s.stroke as string) || DS.neutral.edge;
+    // colour family — never a jarring flat gray. Exception: when an edge fans
+    // out alongside siblings at a shared node border (parallel edges running
+    // side by side into/out of the same box), a flat gray makes them
+    // indistinguishable from one another. Give each fanned slot its own colour
+    // from the chart palette so parallel lines can be told apart at a glance.
+    const fanned = !!fan && (fan.srcCount > 1 || fan.tgtCount > 1);
+    const fanSlot = fanned && fan ? (fan.srcCount > 1 ? fan.srcIndex : fan.tgtIndex) : 0;
+    const stroke = (s.stroke as string) || (fanned ? seriesColor(fanSlot) : DS.neutral.edge);
     const sw = (s.strokeWidth as number) || DS.stroke.edge;
     const dash = (s.strokeStyle as string) === 'dashed' ? [6, 4] : undefined;
     const rawWps = edge.waypoints || [];
     if (rawWps.length < 2) return '';
-    const wps = this.routedWaypoints(edge, rawWps);
+    const wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan);
     let el: string;
     if (sketchy) {
       const seed = seedFor(edge.id);

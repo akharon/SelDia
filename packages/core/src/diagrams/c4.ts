@@ -10,22 +10,41 @@ import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
 
+/** Classifies a C4 element from the DSL's type keyword (`person customer:
+ *  "..."`, `system_Ext mainframe: "..."`, ...) — falls back to 'system' for
+ *  plain `id: "label"` nodes (the container-diagram shorthand demo.md uses),
+ *  since those are almost always internal containers/systems, not people or
+ *  databases. Read from `data.typeKeyword` (see parser.ts) rather than
+ *  guessing from the node id, which never actually carried the keyword. */
+function c4KindOf(nd: ASTNodeDecl): 'person' | 'system' | 'systemExt' | 'container' | 'containerExt' | 'containerDb' | 'component' {
+  const kw = ((nd.data as any)?.typeKeyword as string | undefined)?.toLowerCase();
+  switch (kw) {
+    case 'person': case 'actor': return 'person';
+    case 'system_ext': return 'systemExt';
+    case 'container_ext': return 'containerExt';
+    case 'containerdb': return 'containerDb';
+    case 'database': return 'containerDb';
+    case 'container': return 'container';
+    case 'component': return 'component';
+    case 'system': default: return 'system';
+  }
+}
+
 function buildC4Ir(ast: DiagramAST, diagramType: DiagramType): DiagramIR {
   const nodes: IRNode[] = [];
   const edges: IREdge[] = [];
   for (const stmt of ast.body) {
     if (stmt.kind === 'NodeDecl') {
       const nd = stmt as ASTNodeDecl;
-      let shape = nd.shape;
-      if (nd.id.startsWith('person') || nd.id.startsWith('actor')) shape = ShapeType.ACTOR;
-      else if (nd.id.startsWith('system_Ext') || nd.id.startsWith('container_Ext')) shape = ShapeType.CLOUD;
-      else if (nd.id.startsWith('containerDb')) shape = ShapeType.CYLINDER;
-      else if (nd.id.startsWith('database') || nd.id.startsWith('db')) shape = ShapeType.CYLINDER;
+      const c4Kind = c4KindOf(nd);
+      const shape = c4Kind === 'person' ? ShapeType.ACTOR
+        : c4Kind === 'containerDb' ? ShapeType.CYLINDER
+        : nd.shape;
       nodes.push({
         id: nd.id, label: nd.label, shape, description: nd.description || undefined,
-        position: { x: 0, y: 0 }, size: { width: 180, height: 80 },
-        style: { ...(nd.style || {}), borderRadius: nd.id.startsWith('person') ? 20 : 8 },
-        ports: [], classList: [], collapsed: false, data: nd.data || {},
+        position: { x: 0, y: 0 }, size: { width: c4Kind === 'person' ? 130 : 180, height: c4Kind === 'person' ? 100 : 90 },
+        style: { ...(nd.style || {}), borderRadius: c4Kind === 'person' ? 20 : 8 },
+        ports: [], classList: [], collapsed: false, data: { ...(nd.data || {}), c4Kind },
       });
     }
     if (stmt.kind === 'EdgeDecl') {
@@ -33,7 +52,7 @@ function buildC4Ir(ast: DiagramAST, diagramType: DiagramType): DiagramIR {
       edges.push({
         id: `c4e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId,
         label: ed.label || undefined, style: { ...(ed.style || {}), strokeStyle: StrokeStyle.SOLID },
-        routing: EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {},
+        routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {},
       });
     }
   }

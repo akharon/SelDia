@@ -16,6 +16,7 @@
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { Point, Rect } from '../types/common.js';
 import { Direction } from '../types/common.js';
+import { centerOf } from '../render/edge-routing.js';
 import dagre from 'dagre';
 
 export interface AutoLayoutOptions {
@@ -31,11 +32,12 @@ export interface AutoLayoutResult {
   bounds: Rect;
 }
 
+/** Used when the engine reported no usable route. Centre-to-centre: the
+ *  renderer clips the line back to both node borders, so anchoring it to a
+ *  particular side here would only be right for a top-to-bottom pair. */
 function fallbackRoute(src?: IRNode, tgt?: IRNode): Point[] {
   if (!src || !tgt) return [];
-  const x1 = src.position.x + src.size.width / 2, y1 = src.position.y + src.size.height;
-  const x2 = tgt.position.x + tgt.size.width / 2, y2 = tgt.position.y;
-  return [{ x: x1, y: y1 }, { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }, { x: x2, y: y2 }];
+  return [centerOf(src), centerOf(tgt)];
 }
 
 function computeBounds(nodes: IRNode[]): Rect {

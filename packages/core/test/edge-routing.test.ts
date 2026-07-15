@@ -98,20 +98,29 @@ describe('routeBetween', () => {
   });
 
   // ── Manhattan A* router tests ────────────────────────────────────────
-  it('uses a straight line when no obstacles block it (diagonal pair)', () => {
+  it('produces an orthogonal elbow for a diagonal pair (no obstacles)', () => {
     const src = node('a', 0, 0);
     const tgt = node('b', 300, 200);
-    // Pass allNodes=[] to enable smart routing. No obstacles → straight line.
+    // Pass allNodes=[] to enable smart routing. Diagonal pair → orthogonal elbow.
     const pts = routeBetween([], true, src, tgt, undefined, []);
-    // A straight line has exactly 2 points after clipping.
-    expect(pts.length).toBe(2);
-    // The points should lie on the straight line between the centres.
-    const srcC = centerOf(src), tgtC = centerOf(tgt);
-    const dx = tgtC.x - srcC.x, dy = tgtC.y - srcC.y;
-    for (const p of pts) {
-      const pdx = p.x - srcC.x, pdy = p.y - srcC.y;
-      expect(Math.abs(pdx * dy - pdy * dx)).toBeLessThan(1);
+    // Orthogonal elbow has at least 3 points (2 segments with a 90° bend).
+    expect(pts.length).toBeGreaterThanOrEqual(3);
+    // Every segment must be axis-aligned.
+    for (let i = 1; i < pts.length; i++) {
+      const dx = Math.abs(pts[i].x - pts[i - 1].x);
+      const dy = Math.abs(pts[i].y - pts[i - 1].y);
+      expect(dx < 0.5 || dy < 0.5).toBe(true);
     }
+  });
+
+  it('produces a straight line when nodes are axis-aligned', () => {
+    const src = node('a', 0, 0);
+    const tgt = node('b', 0, 200);  // directly stacked (same x)
+    // Axis-aligned nodes → manhattan A* finds a single straight segment.
+    const pts = routeBetween([], true, src, tgt, undefined, []);
+    expect(pts.length).toBe(2);
+    // The line should be perfectly vertical (same x).
+    expect(pts[0].x).toBeCloseTo(pts[1].x, 0);
   });
 
   it('routes around a blocker with orthogonal manhattan path', () => {

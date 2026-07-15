@@ -536,26 +536,22 @@ export function routeBetween(
     const bo = fanBendOffset(fan);
 
     if (allNodes !== undefined) {
-      // Grid-based manhattan A* routing: tries the straightest orthogonal path
-      // that avoids all obstacles, with minimum direction changes (the A*
-      // heuristic naturally prefers fewer bends because diagonal distance in
-      // Manhattan metric equals sum of axis distances).
+      // Grid-based manhattan A* routing: always produces axis-aligned
+      // orthogonal paths. The A* heuristic naturally prefers fewer bends
+      // because the Manhattan distance metric equals the sum of axis
+      // distances — the shortest orthogonal path IS the one with minimum
+      // direction changes. When the two points are already axis-aligned
+      // (same x or same y), the A* returns a single straight segment.
       const obstacles = obstaclesFor(allNodes, src, tgt);
 
-      // Try straight line first (fast path — most common case).
-      const straight = [a, b];
-      if (!polylineIntersectsAnyNode(straight, obstacles)) {
-        pts = straight;
+      // Run the grid-based A* manhattan router.
+      const route = manhattanRoute(a, b, obstacles, EDGE_GAP + 2);
+      if (route && route.length >= 2) {
+        pts = simplifyPath(route);
       } else {
-        // Run the grid-based A* manhattan router.
-        const route = manhattanRoute(a, b, obstacles, EDGE_GAP + 2);
-        if (route && route.length >= 2) {
-          pts = simplifyPath(route);
-        } else {
-          // Fallback: if the grid router produces nothing (shouldn't happen in
-          // a connected graph), use the primary elbow.
-          pts = orthogonalElbow(a, b, bo);
-        }
+        // Fallback: if the grid router produces nothing (shouldn't happen in
+        // a connected graph), use the primary elbow.
+        pts = orthogonalElbow(a, b, bo);
       }
     } else {
       // Legacy behaviour: always orthogonal elbow (backward compatible).

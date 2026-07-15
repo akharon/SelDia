@@ -360,15 +360,15 @@ export function renderMindmapBranch(edge: IREdge, pad: number, sketchy: boolean,
   if (wps.length < 2) return '';
   const a = { x: wps[0].x + pad, y: wps[0].y + pad };
   const b = { x: wps[wps.length - 1].x + pad, y: wps[wps.length - 1].y + pad };
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  // A gentle quadratic curve reads as an organic mindmap branch rather than a
-  // rigid flowchart connector.
+  // Smooth cubic Bézier — reads as organic, hand-drawn branch.
+  const cpx1 = a.x + (b.x - a.x) * 0.5, cpy1 = a.y;
+  const cpx2 = a.x + (b.x - a.x) * 0.5, cpy2 = b.y;
   if (sketchy) {
     const seed = seedFor(edge.id);
-    return roughLine(a.x, a.y, mx, my, { stroke, strokeWidth: 2, roughness: 1.1, seed })
-      + roughLine(mx, my, b.x, b.y, { stroke, strokeWidth: 2, roughness: 1.1, seed: seed + 1 });
+    return roughLine(a.x, a.y, cpx1, cpy1, { stroke, strokeWidth: 2, roughness: 1.1, seed })
+      + roughLine(cpx2, cpy2, b.x, b.y, { stroke, strokeWidth: 2, roughness: 1.1, seed: seed + 1 });
   }
-  return `    <path d="M ${a.x} ${a.y} Q ${mx} ${a.y} ${b.x} ${b.y}" fill="none" stroke="${stroke}" stroke-width="2"/>\n`;
+  return `    <path d="M ${a.x} ${a.y} C ${cpx1} ${cpy1}, ${cpx2} ${cpy2}, ${b.x} ${b.y}" fill="none" stroke="${stroke}" stroke-width="2"/>\n`;
 }
 
 // -----------------------------------------------------------------------------
@@ -648,33 +648,45 @@ function parseDmnLabel(label: string): { isRule: boolean; title: string; conditi
 }
 
 export function renderDmnNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch): string {
+  const dmnKind = ((node.data as any)?.dmnKind as string) || '';
   const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
-  const cx = x + w / 2;
+  const cx = x + w / 2, cy = y + h / 2;
   const seed = seedFor(node.id);
   const { isRule, title, condition, outcome } = parseDmnLabel(node.label);
 
-  if (!isRule) {
-    // Input — a document/data shape: rectangle with a wavy bottom edge.
-    const waveY = y + h - 10;
-    const d = `M ${x} ${y} H ${x + w} V ${waveY} Q ${x + w * 0.75} ${waveY + 12} ${cx} ${waveY} Q ${x + w * 0.25} ${waveY - 12} ${x} ${waveY} Z`;
+  // ── Knowledge Source: document with wavy bottom ──
+  if (dmnKind === 'knowledgeSource' || (!isRule && /knowledge|source|authority/i.test(title))) {
+    const waveY = y + h - 12;
+    const d = `M ${x} ${y} H ${x + w} V ${waveY} Q ${x + w * 0.75} ${waveY + 14} ${cx} ${waveY} Q ${x + w * 0.25} ${waveY - 14} ${x} ${waveY} Z`;
     let el = sketchy
       ? roughRect(x, y, w, h - 6, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed })
       : `    <path d="${d}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
-    el += textBlock(cx, y + h / 2 - 4, 15, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, 'INPUT', 'middle', '700');
+    el += textBlock(cx, y + h / 2 - 4, 15, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, 'KNOWLEDGE', 'middle', '700');
     el += textBlock(cx, y + h / 2 + 12, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, title, 'middle', '600');
     return el;
   }
 
-  // Rule — a small decision-table row: name header, condition body, outcome
-  // footer tinted by verdict (approve=green, deny=red, review=amber).
+  // ── Input Data: oval ──
+  if (dmnKind === 'inputData' || (!isRule && !/knowledge|source/i.test(title))) {
+    let el = sketchy
+      ? roughEllipse(cx, cy, w, h, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed })
+      : `    <ellipse cx="${cx}" cy="${cy}" rx="${w / 2}" ry="${h / 2}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}" stroke-dasharray="4,2"/>\n`;
+    el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.meta, DS.fontFamily, swatch.text, title || node.label, 'middle', '600');
+    return el;
+  }
+
+  // ── Decision / Rule table ──
   const headerH = 26, condH = h - headerH - 30;
   const outcomeSwatch = outcome ? dmnOutcomeSwatch(outcome) : undefined;
+  const isDecision = dmnKind === 'decision';
+  const cornerRx = isDecision ? 0 : DS.radius; // Decision: sharp corners; Rule: rounded
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: DS.neutral.surface, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = sketchy
     ? roughRect(x, y, w, h, style)
-    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${DS.neutral.surface}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
-  el += `    <path d="M ${x} ${y + DS.radius} Q ${x} ${y} ${x + DS.radius} ${y} H ${x + w - DS.radius} Q ${x + w} ${y} ${x + w} ${y + DS.radius} V ${y + headerH} H ${x} Z" fill="${swatch.fill}"/>\n`;
-  el += `    <text x="${cx}" y="${y + headerH / 2 + 5}" text-anchor="middle" font-weight="700" fill="${swatch.text}" font-size="${DS.fontSize.meta}" font-family="${DS.fontFamily}">${esc(title)}</text>\n`;
+    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${cornerRx}" fill="${DS.neutral.surface}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+  // Header bar.
+  el += `    <path d="M ${x} ${y + cornerRx} Q ${x} ${y} ${x + cornerRx} ${y} H ${x + w - cornerRx} Q ${x + w} ${y} ${x + w} ${y + cornerRx} V ${y + headerH} H ${x} Z" fill="${swatch.fill}"/>\n`;
+  el += `    <text x="${cx}" y="${y + headerH / 2 + 5}" text-anchor="middle" font-weight="700" fill="${swatch.text}" font-size="${DS.fontSize.meta}" font-family="${DS.fontFamily}">${esc(title || 'Decision')}</text>\n`;
   if (condition) {
     el += `    <line x1="${x}" y1="${y + headerH}" x2="${x + w}" y2="${y + headerH}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.divider}" opacity="0.5"/>\n`;
     el += `    <text x="${x + 10}" y="${y + headerH + condH / 2 + 4}" text-anchor="start" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.monoFamily}">${esc(condition.length > 30 ? condition.slice(0, 28) + '…' : condition)}</text>\n`;
@@ -1111,15 +1123,32 @@ export function renderTimelineAxis(nodes: IRNode[], pad: number, bounds: { width
 }
 
 export function renderTimelineNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch, midY: number): string {
+  const kind = ((node.data as any)?.timelineKind as string) || 'state';
   const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
   const cx = x + w / 2, cy = y + h / 2;
+
+  // UML Timing lifeline: vertical dashed line with state segments.
+  if (kind === 'lifeline') {
+    const states = (node.data as any)?.states as string[] | undefined || [node.label];
+    const stateH = Math.min(22, (h - 16) / states.length);
+    let el = `<line x1="${cx}" y1="${y}" x2="${cx}" y2="${y + h}" stroke="${swatch.stroke}" stroke-width="1.25" stroke-dasharray="5,4"/>\n`;
+    for (let i = 0; i < states.length; i++) {
+      const sy = y + 8 + i * (stateH + 4);
+      const sw = w * 0.78; const sx = cx - sw / 2;
+      el += `<rect x="${sx}" y="${sy}" width="${sw}" height="${stateH}" rx="3" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="1.25"/>\n`;
+      el += `<text x="${cx}" y="${sy + stateH / 2 + 4}" text-anchor="middle" fill="${swatch.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(states[i])}</text>\n`;
+      el += `<line x1="${cx}" y1="${sy + stateH}" x2="${cx}" y2="${midY}" stroke="${swatch.stroke}" stroke-width="1" stroke-dasharray="3,3"/>\n`;
+    }
+    el += `<circle cx="${cx}" cy="${midY}" r="4" fill="${swatch.stroke}"/>\n`;
+    return el;
+  }
+
+  // Default: event node with tick to spine.
   const seed = seedFor(node.id);
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
-  let el = sketchy
-    ? roughRect(x, y, w, h, style)
+  let el = sketchy ? roughRect(x, y, w, h, style)
     : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
-  // Connector stub + filled tick down to the shared timeline spine.
   const tickY = cy < midY ? y + h : y;
   el += `    <line x1="${cx}" y1="${tickY}" x2="${cx}" y2="${midY}" stroke="${swatch.stroke}" stroke-width="1.5" stroke-dasharray="3,3"/>\n`;
   el += `    <circle cx="${cx}" cy="${midY}" r="5" fill="${swatch.stroke}"/>\n`;

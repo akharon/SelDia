@@ -645,10 +645,11 @@ class SelDiAEngine implements CoreEngine {
 
   /** Shape an edge's path and clip it to the two nodes it joins, so it always
    *  meets them on a border and never lies across one. See render/edge-routing
-   *  for why the layout engine's own endpoints can't be reused. */
-  private routedWaypoints(edge: IREdge, wps: Point[], src?: IRNode, tgt?: IRNode, fan?: Fan): Point[] {
+   *  for why the layout engine's own endpoints can't be reused.
+   *  `allNodes` lets the router avoid crosscuts through unrelated nodes. */
+  private routedWaypoints(edge: IREdge, wps: Point[], src?: IRNode, tgt?: IRNode, fan?: Fan, allNodes?: IRNode[]): Point[] {
     if (wps.length < 2) return wps;
-    return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan);
+    return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes);
   }
 
   private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan): string {
@@ -658,7 +659,8 @@ class SelDiAEngine implements CoreEngine {
       const src = byId?.get(edge.sourceId), tgt = byId?.get(edge.targetId);
       // ER draws its own cardinality marks but wants the same clipped, fanned
       // route as every other edge.
-      const routed = raw.length >= 2 ? this.routedWaypoints(edge, raw, src, tgt, fan) : raw;
+      const allNodes = byId ? [...byId.values()] : undefined;
+      const routed = raw.length >= 2 ? this.routedWaypoints(edge, raw, src, tgt, fan, allNodes) : raw;
       return renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed);
     }
     if (diagramType === DiagramType.GANTT) return renderGanttDependency(edge, pad, sketchy, typeAccent.stroke);
@@ -683,7 +685,8 @@ class SelDiAEngine implements CoreEngine {
     const dash = (s.strokeStyle as string) === 'dashed' ? [6, 4] : undefined;
     const rawWps = edge.waypoints || [];
     if (rawWps.length < 2) return '';
-    const wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan);
+    const allNodes = byId ? [...byId.values()] : undefined;
+    const wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan, allNodes);
     let el: string;
     if (sketchy) {
       const seed = seedFor(edge.id);

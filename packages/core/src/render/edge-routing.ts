@@ -349,6 +349,10 @@ function vertexKey(v: GridVertex): string {
   return `${v.ix}:${v.iy}`;
 }
 
+/** Clearance gap for the A* visibility grid — larger than EDGE_GAP so routes
+ *  stay well away from node borders instead of "walking" along them. */
+const GRID_GAP = EDGE_GAP + 12;
+
 /** True when a horizontal segment at `y` from `x0` to `x1` doesn't intersect
  *  any obstacle. */
 function hClear(x0: number, x1: number, y: number, obstacles: IRNode[], gap: number): boolean {
@@ -389,7 +393,8 @@ function manhattanRoute(
   src: Point,
   tgt: Point,
   obstacles: IRNode[],
-  gap: number
+  gap: number,
+  bendBias = 0
 ): Point[] | null {
   const xs = gridLines(obstacles, gap, [src.x, tgt.x]);
   const ys = gridLines(obstacles, gap, [src.y, tgt.y]);
@@ -460,7 +465,9 @@ function manhattanRoute(
 
       const stepCost = Math.abs(next.x - cur.v.x) + Math.abs(next.y - cur.v.y);
       const ng = cur.g + stepCost;
-      const nf = ng + manhattan(next, tgt);
+      // Small bias per-edge to break ties between equally-short paths,
+      // spreading fanned edges apart instead of routing them identically.
+      const nf = ng + manhattan(next, tgt) + bendBias * 0.01;
 
       // Check if a better path to this vertex is already in open.
       const existing = open.find((n) => n.v.ix === nix && n.v.iy === niy);
@@ -545,7 +552,7 @@ export function routeBetween(
       const obstacles = obstaclesFor(allNodes, src, tgt);
 
       // Run the grid-based A* manhattan router.
-      const route = manhattanRoute(a, b, obstacles, EDGE_GAP + 2);
+      const route = manhattanRoute(a, b, obstacles, GRID_GAP, bo);
       if (route && route.length >= 2) {
         pts = simplifyPath(route);
       } else {

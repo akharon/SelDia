@@ -360,15 +360,16 @@ export function renderMindmapBranch(edge: IREdge, pad: number, sketchy: boolean,
   if (wps.length < 2) return '';
   const a = { x: wps[0].x + pad, y: wps[0].y + pad };
   const b = { x: wps[wps.length - 1].x + pad, y: wps[wps.length - 1].y + pad };
-  // Smooth cubic Bézier — reads as organic, hand-drawn branch.
-  const cpx1 = a.x + (b.x - a.x) * 0.5, cpy1 = a.y;
-  const cpx2 = a.x + (b.x - a.x) * 0.5, cpy2 = b.y;
+  // Quadratic Bézier: control point biased toward the start's horizontal
+  // direction so branches radiate outward from the center node smoothly.
+  const cpx = a.x + (b.x - a.x) * 0.65, cpy = a.y;
   if (sketchy) {
     const seed = seedFor(edge.id);
-    return roughLine(a.x, a.y, cpx1, cpy1, { stroke, strokeWidth: 2, roughness: 1.1, seed })
-      + roughLine(cpx2, cpy2, b.x, b.y, { stroke, strokeWidth: 2, roughness: 1.1, seed: seed + 1 });
+    const mx = (a.x + b.x) / 2;
+    return roughLine(a.x, a.y, mx, a.y, { stroke, strokeWidth: 2, roughness: 1.1, seed })
+      + roughLine(mx, cpy, b.x, b.y, { stroke, strokeWidth: 2, roughness: 1.1, seed: seed + 1 });
   }
-  return `    <path d="M ${a.x} ${a.y} C ${cpx1} ${cpy1}, ${cpx2} ${cpy2}, ${b.x} ${b.y}" fill="none" stroke="${stroke}" stroke-width="2"/>\n`;
+  return `    <path d="M ${a.x} ${a.y} Q ${cpx} ${cpy} ${b.x} ${b.y}" fill="none" stroke="${stroke}" stroke-width="2"/>\n`;
 }
 
 // -----------------------------------------------------------------------------

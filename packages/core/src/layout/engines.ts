@@ -40,12 +40,22 @@ function fallbackRoute(src?: IRNode, tgt?: IRNode): Point[] {
   return [centerOf(src), centerOf(tgt)];
 }
 
-function computeBounds(nodes: IRNode[]): Rect {
+function computeBounds(nodes: IRNode[], edges?: IREdge[]): Rect {
   if (!nodes.length) return { x: 0, y: 0, width: 0, height: 0 };
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of nodes) {
     minX = Math.min(minX, n.position.x); minY = Math.min(minY, n.position.y);
     maxX = Math.max(maxX, n.position.x + n.size.width); maxY = Math.max(maxY, n.position.y + n.size.height);
+  }
+  // Include edge waypoints so detoured routes are not clipped.
+  if (edges) {
+    for (const e of edges) {
+      if (!e.waypoints) continue;
+      for (const p of e.waypoints) {
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+      }
+    }
   }
   return { x: minX, y: minY, width: maxX - minX + 40, height: maxY - minY + 40 };
 }
@@ -117,7 +127,7 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     return { ...e, waypoints: fallbackRoute(src, tgt) };
   });
 
-  return { nodes, edges, bounds: computeBounds(nodes) };
+  return { nodes, edges, bounds: computeBounds(nodes, edges) };
 }
 
 function dirToElk(d: Direction): string {
@@ -195,7 +205,7 @@ export async function layoutWithElk(ir: DiagramIR, opts: AutoLayoutOptions): Pro
     return { ...e, waypoints: bends && bends.length >= 2 ? bends : fallbackRoute(src, tgt) };
   });
 
-  return { nodes, edges, bounds: computeBounds(nodes) };
+  return { nodes, edges, bounds: computeBounds(nodes, edges) };
 }
 
 /** Layout engines that can run synchronously (available to compileSync). */

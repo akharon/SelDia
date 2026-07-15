@@ -287,7 +287,7 @@ class SelDiAEngine implements CoreEngine {
     });
     const edges = ir.edges.map((e) => ({ ...e, waypoints: this.computeWaypoints(e, nodes) }));
     const positioned: DiagramIR = { ...ir, nodes, edges };
-    const bounds = this.computeBounds(nodes);
+    const bounds = this.computeBounds(nodes, edges);
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
@@ -302,12 +302,24 @@ class SelDiAEngine implements CoreEngine {
     return [centerOf(src), centerOf(tgt)];
   }
 
-  private computeBounds(nodes: IRNode[]): Rect {
+  private computeBounds(nodes: IRNode[], edges?: IREdge[]): Rect {
     if (!nodes.length) return { x: 0, y: 0, width: 0, height: 0 };
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of nodes) {
       minX = Math.min(minX, n.position.x); minY = Math.min(minY, n.position.y);
       maxX = Math.max(maxX, n.position.x + n.size.width); maxY = Math.max(maxY, n.position.y + n.size.height);
+    }
+    // Also include edge waypoints so routed edges that extend beyond node
+    // boundaries (obstacle avoidance, fanned anchors) are not clipped by
+    // the SVG viewBox.
+    if (edges) {
+      for (const e of edges) {
+        if (!e.waypoints) continue;
+        for (const p of e.waypoints) {
+          minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+        }
+      }
     }
     return { x: minX, y: minY, width: maxX - minX + 40, height: maxY - minY + 40 };
   }
@@ -315,13 +327,18 @@ class SelDiAEngine implements CoreEngine {
   render(layoutResult: LayoutResult): Result<RenderResult> {
     const nodes = layoutResult.diagram.nodes;
     const edges = layoutResult.diagram.edges;
-    const svg = this.renderToSvg(nodes, edges, layoutResult.bounds, layoutResult.diagram.type);
+    // Recompute bounds to include edge waypoints (the manhattan router may
+    // route waypoints beyond the initial node-only bounds when detouring
+    // around obstacles, and the initial dagre/elk waypoints may also extend
+    // beyond node boundaries).
+    const finalBounds = this.computeBounds(nodes, edges);
+    const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type);
     return {
       ok: true,
       value: {
         svg,
-        width: layoutResult.bounds.width,
-        height: layoutResult.bounds.height,
+        width: finalBounds.width,
+        height: finalBounds.height,
         stats: { nodeCount: nodes.length, edgeCount: edges.length, groupCount: layoutResult.diagram.groups.length, renderTimeMs: 0 },
       },
     };

@@ -455,3 +455,85 @@ export const wireframePlugin: DiagramPlugin = {
   },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [28, 18], rankSpacing: 26 }; },
 };
+
+// -----------------------------------------------------------------------------
+// Cloud — AWS/cloud architecture diagrams with service nodes and cloud boundary
+// -----------------------------------------------------------------------------
+
+export type CloudKind = 'cloud' | 'region' | 'vpc' | 'az' | 'compute' | 'container' | 'serverless' | 'storage' | 'database' | 'network' | 'security' | 'queue' | 'cdn' | 'dns' | 'user';
+
+function cloudKindOf(nd: ASTNodeDecl): CloudKind {
+  const probe = `${nd.id} ${nd.label}`.toLowerCase();
+  if (/\b(region)\b/.test(probe)) return 'region';
+  if (/\b(vpc|virtual\s*private)\b/.test(probe)) return 'vpc';
+  if (/\b(az|availability\s*zone)\b/.test(probe)) return 'az';
+  if (/\b(ec2|vm|instance|compute|server\b|host)\b/.test(probe)) return 'compute';
+  if (/\b(ecs|eks|kubernetes|k8s|container|docker)\b/.test(probe)) return 'container';
+  if (/\b(lambda|function|serverless)\b/.test(probe)) return 'serverless';
+  if (/\b(s3|bucket|storage|object|blob|efs|nfs)\b/.test(probe)) return 'storage';
+  if (/\b(rds|aurora|dynamodb|database|db\b|sql|nosql|postgres|mysql)\b/.test(probe)) return 'database';
+  if (/\b(elb|alb|nlb|load\s*balancer|api\s*gateway|cloudfront|cdn)\b/.test(probe)) return 'cdn';
+  if (/\b(route53|dns|domain)\b/.test(probe)) return 'dns';
+  if (/\b(sqs|sns|queue|message|eventbridge|kafka|stream)\b/.test(probe)) return 'queue';
+  if (/\b(iam|waf|cognito|security|firewall|shield)\b/.test(probe)) return 'security';
+  if (/\b(user|client|browser|mobile|device|endpoint)\b/.test(probe)) return 'user';
+  if (/\b(cloud|aws|azure|gcp|internet)\b/.test(probe)) return 'cloud';
+  return 'compute';
+}
+
+/** Google Material Symbols icon name for each cloud service kind. */
+function cloudIcon(kind: CloudKind): string {
+  switch (kind) {
+    case 'cloud': return 'cloud';
+    case 'region': return 'public';
+    case 'vpc': return 'account_tree';
+    case 'az': return 'hub';
+    case 'compute': return 'dns';
+    case 'container': return 'deployed_code';
+    case 'serverless': return 'function';
+    case 'storage': return 'folder';
+    case 'database': return 'storage';
+    case 'network': return 'share';
+    case 'security': return 'shield';
+    case 'queue': return 'queue';
+    case 'cdn': return 'cloud_sync';
+    case 'dns': return 'language';
+    case 'user': return 'person';
+    default: return 'circle';
+  }
+}
+
+function cloudSize(kind: CloudKind): { width: number; height: number } {
+  switch (kind) {
+    case 'cloud': case 'region': return { width: 260, height: 200 };
+    case 'vpc': return { width: 200, height: 160 };
+    case 'az': return { width: 160, height: 120 };
+    case 'user': return { width: 70, height: 80 };
+    default: return { width: 100, height: 90 };
+  }
+}
+
+export const cloudPlugin: DiagramPlugin = {
+  id: 'seldia-cloud', name: 'Cloud Architecture', version: '1.0.0', diagramType: DiagramType.CLOUD,
+  description: 'Cloud/AWS architecture diagrams',
+  transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR {
+    const nodes: IRNode[] = []; const edges: IREdge[] = [];
+    for (const stmt of ast.body) {
+      if (stmt.kind === 'NodeDecl') {
+        const nd = stmt as ASTNodeDecl;
+        const kind = cloudKindOf(nd);
+        nodes.push({
+          id: nd.id, label: nd.label, shape: ShapeType.RECTANGLE,
+          position: { x: 0, y: 0 }, size: cloudSize(kind), style: { ...(nd.style || {}) },
+          ports: [], classList: [], collapsed: false, data: { ...(nd.data || {}), cloudKind: kind },
+        });
+      }
+      if (stmt.kind === 'EdgeDecl') {
+        const ed = stmt as ASTEdgeDecl;
+        edges.push({ id: `cloude-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+      }
+    }
+    return { id: ast.metadata?.id || 'cloud-1', type: DiagramType.CLOUD, title: ast.title || 'Cloud Architecture', nodes, edges, groups: [], layers: [], metadata: {} };
+  },
+  getDefaultLayoutOptions() { return { direction: 'LR', nodeSpacing: [80, 60], rankSpacing: 100 }; },
+};

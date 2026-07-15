@@ -1601,3 +1601,74 @@ export function renderWireframeNode(node: IRNode, pad: number, _sketchy: boolean
       return label(x, baseline, DS.fontSize.meta, ink, text, 'start', '400');
   }
 }
+
+// -----------------------------------------------------------------------------
+// Cloud — AWS-style architecture diagram with cloud boundary, service nodes
+// -----------------------------------------------------------------------------
+
+export function renderCloudNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch): string {
+  const kind = ((node.data as any)?.cloudKind as string) || 'compute';
+  const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
+  const cx = x + w / 2, cy = y + h / 2;
+  const seed = seedFor(node.id);
+
+  // ── Cloud boundary / Region / VPC / AZ: dashed rect container ──
+  if (kind === 'cloud' || kind === 'region' || kind === 'vpc' || kind === 'az') {
+    const dash = kind === 'cloud' ? '8,4' : kind === 'az' ? '4,3' : '6,3';
+    const fill = kind === 'cloud' ? DS.neutral.fill : 'none';
+    const rx = kind === 'cloud' ? 12 : 8;
+    let el = sketchy
+      ? roughRect(x, y, w, h, { stroke: swatch.stroke, strokeWidth: 1.5, fill, roughness: DS.roughness, fillStyle: 'solid', seed })
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" stroke="${swatch.stroke}" stroke-width="1.5" stroke-dasharray="${dash}"/>\n`;
+    el += textBlock(cx - 6, y - 6, 0, DS.fontSize.meta, DS.fontFamily, swatch.stroke, node.label, 'start', '700');
+    return el;
+  }
+
+  // ── User / Client: simple person icon ──
+  if (kind === 'user') {
+    const r = 10;
+    let el = sketchy
+      ? roughEllipse(cx, y + r + 4, r * 2, r * 2, { stroke: swatch.stroke, strokeWidth: 2, fill: 'none', roughness: DS.roughness, seed })
+      : `    <circle cx="${cx}" cy="${y + r + 4}" r="${r}" fill="none" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+    if (sketchy) {
+      el += roughLine(cx, y + r * 2 + 8, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 1 });
+      el += roughLine(cx - 8, y + h * 0.45, cx + 8, y + h * 0.45, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 2 });
+      el += roughLine(cx - 6, y + h - 10, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 3 });
+      el += roughLine(cx + 6, y + h - 10, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 4 });
+    } else {
+      el += `    <line x1="${cx}" y1="${y + r * 2 + 8}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      el += `    <line x1="${cx - 8}" y1="${y + h * 0.45}" x2="${cx + 8}" y2="${y + h * 0.45}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      el += `    <line x1="${cx - 6}" y1="${y + h - 10}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      el += `    <line x1="${cx + 6}" y1="${y + h - 10}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+    }
+    el += textBlock(cx, y + h + 12, 0, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+    return el;
+  }
+
+  // ── Service nodes: styled rect with distinct color per kind ──
+  const serviceColors: Record<string, { fill: string; stroke: string; label: string }> = {
+    compute: { fill: '#fef2e0', stroke: '#f59e0b', label: 'EC2' },
+    container: { fill: '#f5f0ff', stroke: '#7c3aed', label: 'ECS' },
+    serverless: { fill: '#ffeef5', stroke: '#db2777', label: 'λ' },
+    storage: { fill: '#effff4', stroke: '#16a34a', label: 'S3' },
+    database: { fill: '#eff6ff', stroke: '#2563eb', label: 'DB' },
+    network: { fill: '#fdf5ff', stroke: '#a855f7', label: 'NET' },
+    security: { fill: '#fef2f2', stroke: '#dc2626', label: 'IAM' },
+    queue: { fill: '#fdf0ff', stroke: '#c026d3', label: 'SQS' },
+    cdn: { fill: '#f0fdf4', stroke: '#22c55e', label: 'CDN' },
+    dns: { fill: '#eff6ff', stroke: '#3b82f6', label: 'DNS' },
+  };
+  const sc = serviceColors[kind] || { fill: swatch.fill, stroke: swatch.stroke, label: '' };
+
+  const style: RoughStyle = { stroke: sc.stroke, strokeWidth: DS.stroke.node, fill: sc.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+  let el = sketchy ? roughRect(x, y, w, h, style)
+    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${sc.fill}" stroke="${sc.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+
+  // Service type badge (top-left).
+  if (sc.label) {
+    el += `    <rect x="${x + 6}" y="${y + 6}" width="24" height="14" rx="3" fill="${sc.stroke}" opacity="0.15"/>\n`;
+    el += `    <text x="${x + 18}" y="${y + 17}" text-anchor="middle" fill="${sc.stroke}" font-size="9" font-family="${DS.monoFamily}" font-weight="700">${esc(sc.label)}</text>\n`;
+  }
+  el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.meta, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+  return el;
+}

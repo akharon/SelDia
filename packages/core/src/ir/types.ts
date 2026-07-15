@@ -42,6 +42,7 @@ export enum DiagramType {
   BLOCK = 'block',
   TIMELINE = 'timeline',
   WIREFRAME = 'wireframe',
+  CLOUD = 'cloud',
 }
 
 // -----------------------------------------------------------------------------

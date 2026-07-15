@@ -22,7 +22,7 @@ import { statePlugin } from './diagrams/state.js';
 import { erPlugin } from './diagrams/er.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
-import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin } from './diagrams/misc.js';
+import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
 import { routeBetween, centerOf, computeFans, type Fan } from './render/edge-routing.js';
@@ -54,6 +54,7 @@ import {
   renderTimelineAxis,
   renderTimelineNode,
   renderWireframeNode,
+  renderCloudNode,
 } from './render/custom-renderers.js';
 
 // -----------------------------------------------------------------------------
@@ -151,7 +152,7 @@ class SelDiAEngine implements CoreEngine {
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -500,6 +501,7 @@ class SelDiAEngine implements CoreEngine {
     if (diagramType === DiagramType.FORM) return renderFormNode(node, pad, sketchy, swatch);
     if (diagramType === DiagramType.BLOCK) return renderBlockNode(node, pad, sketchy, swatch);
     if (diagramType === DiagramType.WIREFRAME) return renderWireframeNode(node, pad, sketchy, swatch);
+    if (diagramType === DiagramType.CLOUD) return renderCloudNode(node, pad, sketchy, swatch);
 
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const cx = x + w / 2, cy = y + h / 2;

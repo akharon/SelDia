@@ -107,6 +107,7 @@ const TYPE_ACCENTS: Record<string, Swatch> = {
   block:       swatch('#525252', '#f5f5f5', '#262626'), // gray
   timeline:    swatch('#7c3aed', '#f5f0ff', '#5b21b6'), // violet
   wireframe:   swatch('#334155', '#f8fafc', '#1e293b'), // slate — deliberately ink-on-paper, not a bright accent, to read as "low-fidelity sketch" rather than a finished UI
+  cloud:       swatch('#f59e0b', '#fffbeb', '#78350f'), // amber/orange — AWS-ish warm accent
   mono:        swatch('#111827', '#f9fafb', '#111827'), // near-black
 };
 

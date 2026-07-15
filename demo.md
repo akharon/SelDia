@@ -542,3 +542,44 @@ diagram wireframe "Sign Up" {
     forgot: [Forgot password link]
 }
 ```
+
+## Cloud Architecture
+
+Cloud architecture diagrams show AWS-style service topologies with region/VPC
+boundaries, compute instances, storage buckets, databases, queues, CDN edges,
+DNS, and users — all drawn with the same warm amber accent that reads as
+"AWS Console" without mimicking their trademarked icon set.
+
+`Google Material Symbols` are the icon source (see https://fonts.google.com/icons),
+keeping the diagram vendor-neutral while staying visually familiar.
+
+```seldia
+diagram cloud "Web Application on AWS" {
+  user: [Mobile Client]
+  cdn: [CloudFront CDN]
+  dns: [Route 53 DNS]
+  lb: [Application Load Balancer]
+  web: [Web Server EC2]
+  api: [API Server EC2]
+  worker: [Worker EC2]
+  db: [RDS Database]
+  cache: [ElastiCache Redis]
+  queue: [SQS Queue]
+  bucket: [S3 Bucket storage]
+  auth: [Cognito User Pools security]
+
+  dns --> cdn
+  user --> cdn
+  cdn --> lb
+  lb --> web
+  lb --> api
+  web --> db
+  api --> db
+  api --> cache
+  api --> queue
+  worker --> queue
+  worker --> bucket
+  user --> auth
+  auth --> api
+}
+```

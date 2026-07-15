@@ -466,56 +466,148 @@ export function renderC4Node(node: IRNode, pad: number, sketchy: boolean, swatch
 }
 
 // -----------------------------------------------------------------------------
-// BPMN — thin start-event circle, thick end-event ring, gateway diamond with
-// exclusive-gateway X, task box with the BPMN task-type corner glyph
+// BPMN — industry-standard process diagram shapes with pools, lanes, events
+// (with type glyphs: envelope=message, clock=timer, bolt=error), gateways
+// (X=exclusive, +=parallel, O=inclusive), tasks (with corner glyphs:
+// person=user, gear=service, scroll=script), data objects, data stores.
 // -----------------------------------------------------------------------------
+
+function bpmnTaskGlyph(x: number, y: number, kind: string, stroke: string): string {
+  const gx = x + 8, gy = y + 8, gw = 16, gh = 14;
+  switch (kind) {
+    case 'userTask':
+      return `<circle cx="${gx + gw/2}" cy="${gy + 4}" r="3.5" fill="none" stroke="${stroke}" stroke-width="1.25"/>
+      <path d="M ${gx + 2} ${gy + 12} Q ${gx + gw/2} ${gy + 7} ${gx + gw - 2} ${gy + 12}" fill="none" stroke="${stroke}" stroke-width="1.25"/>`;
+    case 'serviceTask':
+      return `<circle cx="${gx + gw/2}" cy="${gy + gh/2}" r="3" fill="none" stroke="${stroke}" stroke-width="1.25"/>
+      <line x1="${gx + gw/2}" y1="${gy + 1}" x2="${gx + gw/2}" y2="${gy + 3}" stroke="${stroke}" stroke-width="1.25"/>
+      <line x1="${gx + gw/2}" y1="${gy + gh - 1}" x2="${gx + gw/2}" y2="${gy + gh - 3}" stroke="${stroke}" stroke-width="1.25"/>
+      <line x1="${gx + 1}" y1="${gy + gh/2}" x2="${gx + 3}" y2="${gy + gh/2}" stroke="${stroke}" stroke-width="1.25"/>
+      <line x1="${gx + gw - 1}" y1="${gy + gh/2}" x2="${gx + gw - 3}" y2="${gy + gh/2}" stroke="${stroke}" stroke-width="1.25"/>`;
+    case 'scriptTask':
+      return `<rect x="${gx + 2}" y="${gy + 2}" width="${gw - 4}" height="${gh - 4}" rx="1" fill="none" stroke="${stroke}" stroke-width="1"/>
+      <line x1="${gx + 5}" y1="${gy + 5}" x2="${gx + gw - 5}" y2="${gy + 5}" stroke="${stroke}" stroke-width="0.8"/>
+      <line x1="${gx + 5}" y1="${gy + 8}" x2="${gx + gw - 7}" y2="${gy + 8}" stroke="${stroke}" stroke-width="0.8"/>`;
+    default:
+      return `<rect x="${gx + 4}" y="${gy + 4}" width="${gw - 8}" height="${gh - 8}" rx="1" fill="none" stroke="${stroke}" stroke-width="1"/>`;
+  }
+}
+
+function bpmnGatewayMarker(cx: number, cy: number, kind: string, stroke: string, r: number): string {
+  const m = r * 0.22;
+  switch (kind) {
+    case 'parallelGateway':
+      return `<line x1="${cx - m}" y1="${cy}" x2="${cx + m}" y2="${cy}" stroke="${stroke}" stroke-width="2.5"/>
+      <line x1="${cx}" y1="${cy - m}" x2="${cx}" y2="${cy + m}" stroke="${stroke}" stroke-width="2.5"/>`;
+    case 'inclusiveGateway':
+      return `<circle cx="${cx}" cy="${cy}" r="${m * 0.7}" fill="none" stroke="${stroke}" stroke-width="2.5"/>`;
+    default:
+      return `<line x1="${cx - m}" y1="${cy - m}" x2="${cx + m}" y2="${cy + m}" stroke="${stroke}" stroke-width="2.5"/>
+      <line x1="${cx + m}" y1="${cy - m}" x2="${cx - m}" y2="${cy + m}" stroke="${stroke}" stroke-width="2.5"/>`;
+  }
+}
+
+function bpmnEventGlyph(cx: number, cy: number, r: number, kind: string, stroke: string): string {
+  const s = r * 0.45;
+  switch (kind) {
+    case 'messageEvent':
+      return `<rect x="${cx - s}" y="${cy - s * 0.65}" width="${s * 2}" height="${s * 1.3}" rx="1.5" fill="none" stroke="${stroke}" stroke-width="1.25"/>
+      <path d="M ${cx - s} ${cy - s * 0.65} L ${cx} ${cy + s * 0.15} L ${cx + s} ${cy - s * 0.65}" fill="none" stroke="${stroke}" stroke-width="1.25"/>`;
+    case 'timerEvent':
+      return `<circle cx="${cx}" cy="${cy}" r="${s}" fill="none" stroke="${stroke}" stroke-width="1.25"/>
+      <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - s * 0.6}" stroke="${stroke}" stroke-width="1.25"/>
+      <line x1="${cx}" y1="${cy}" x2="${cx + s * 0.5}" y2="${cy}" stroke="${stroke}" stroke-width="1.25"/>`;
+    case 'errorEvent':
+      return `<polygon points="${cx - s * 0.3},${cy - s * 0.9} ${cx + s * 0.15},${cy - s * 0.1} ${cx + s * 0.1},${cy - s * 0.1} ${cx + s * 0.4},${cy + s * 0.9} ${cx - s * 0.05},${cy + s * 0.1} ${cx - s * 0.2},${cy + s * 0.1}" fill="${stroke}" stroke="none"/>`;
+    case 'terminateEvent':
+      return `<circle cx="${cx}" cy="${cy}" r="${s * 0.5}" fill="${stroke}" stroke="none"/>`;
+    default: return '';
+  }
+}
 
 export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch): string {
   const kind = ((node.data as any)?.bpmnKind as string) || 'task';
+  const subKind = ((node.data as any)?.bpmnSubKind as string) || '';
   const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
   const cx = x + w / 2, cy = y + h / 2;
   const seed = seedFor(node.id);
 
+  // ── Pool ──
+  if (kind === 'pool') {
+    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: 2, fill: DS.neutral.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+    let el = sketchy ? roughRect(x, y, w, h, style)
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="${DS.neutral.fill}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+    el += `    <text x="${x + 16}" y="${cy}" text-anchor="middle" fill="${swatch.stroke}" font-size="${DS.fontSize.meta}" font-family="${DS.fontFamily}" font-weight="700" transform="rotate(-90, ${x + 16}, ${cy})">${esc(node.label)}</text>\n`;
+    const lanes = (node.data as any)?.lanes as string[] | undefined;
+    if (lanes && lanes.length > 1) {
+      const laneH = h / lanes.length;
+      for (let i = 1; i < lanes.length; i++) {
+        const ly = y + i * laneH;
+        el += `    <line x1="${x + 36}" y1="${ly}" x2="${x + w}" y2="${ly}" stroke="${swatch.stroke}" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>\n`;
+        el += `    <text x="${x + 44}" y="${ly - 4}" text-anchor="start" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(lanes[i - 1])}</text>\n`;
+      }
+    }
+    return el;
+  }
+
+  // ── Lane ──
+  if (kind === 'lane') {
+    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: 1, fill: 'none', roughness: DS.roughness, fillStyle: 'solid', seed };
+    let el = sketchy ? roughRect(x, y, w, h, style)
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${swatch.stroke}" stroke-width="1" stroke-dasharray="6,4"/>\n`;
+    el += `    <text x="${x + 8}" y="${y + 16}" text-anchor="start" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="600">${esc(node.label)}</text>\n`;
+    return el;
+  }
+
+  // ── Data Object ──
+  if (kind === 'dataObject') {
+    const fold = 16;
+    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+    let el: string;
+    if (sketchy) {
+      el = roughPolygon([[x, y], [x + w - fold, y], [x + w, y + fold], [x + w, y + h], [x, y + h]], style);
+      el += roughLine(x + w - fold, y, x + w, y + fold, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, seed });
+    } else {
+      el = `    <path d="M ${x} ${y} H ${x + w - fold} L ${x + w} ${y + fold} V ${y + h} H ${x} Z" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      el += `    <path d="M ${x + w - fold} ${y} V ${y + fold} H ${x + w}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    }
+    el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
+    return el;
+  }
+
+  // ── Events ──
   if (kind === 'startEvent' || kind === 'endEvent' || kind === 'intermediateEvent') {
     const role = kind === 'startEvent' ? roleSwatch('start') : kind === 'endEvent' ? roleSwatch('stop') : swatch;
     const r = Math.min(w, h) / 2;
     const ringWidth = kind === 'endEvent' ? 3.5 : kind === 'intermediateEvent' ? 2 : 1.75;
     const style: RoughStyle = { stroke: role.stroke, strokeWidth: ringWidth, fill: role.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
-    let el = sketchy
-      ? roughEllipse(cx, cy, r * 2, r * 2, style)
+    let el = sketchy ? roughEllipse(cx, cy, r * 2, r * 2, style)
       : `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="${ringWidth}"/>\n`;
     if (kind === 'intermediateEvent') {
-      // Double ring — inner circle a few px in from the outer border.
-      el += sketchy
-        ? roughEllipse(cx, cy, r * 2 - 10, r * 2 - 10, { ...style, fill: 'none' })
+      el += sketchy ? roughEllipse(cx, cy, r * 2 - 10, r * 2 - 10, { ...style, fill: 'none' })
         : `    <circle cx="${cx}" cy="${cy}" r="${r - 5}" fill="none" stroke="${role.stroke}" stroke-width="1.5"/>\n`;
     }
+    el += bpmnEventGlyph(cx, cy, r, subKind, role.stroke);
     el += textBlock(cx, y + h + 16, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '500');
     return el;
   }
 
+  // ── Gateway ──
   if (kind === 'gateway') {
     const role = roleSwatch('decision');
     const style: RoughStyle = { stroke: role.stroke, strokeWidth: 2, fill: role.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
-    let el = sketchy
-      ? roughPolygon([[cx, y], [x + w, cy], [cx, y + h], [x, cy]], style)
+    let el = sketchy ? roughPolygon([[cx, y], [x + w, cy], [cx, y + h], [x, cy]], style)
       : `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="2"/>\n`;
-    // Exclusive-gateway "X" marker — the common default when the DSL doesn't
-    // distinguish gateway sub-types.
-    const m = w * 0.16;
-    el += `    <line x1="${cx - m}" y1="${cy - m}" x2="${cx + m}" y2="${cy + m}" stroke="${role.stroke}" stroke-width="2.5"/>\n`;
-    el += `    <line x1="${cx + m}" y1="${cy - m}" x2="${cx - m}" y2="${cy + m}" stroke="${role.stroke}" stroke-width="2.5"/>\n`;
+    el += bpmnGatewayMarker(cx, cy, subKind || 'exclusiveGateway', role.stroke, Math.min(w, h) / 2);
     el += textBlock(cx, y + h + 16, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '500');
     return el;
   }
 
-  // Task — rounded rectangle with the BPMN task-type corner glyph (a small
-  // pair of lines, standing in for the "user task" hand icon) top-left.
+  // ── Task ──
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
-  let el = sketchy
-    ? roughRect(x, y, w, h, style)
+  let el = sketchy ? roughRect(x, y, w, h, style)
     : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
-  el += `    <rect x="${x + 8}" y="${y + 8}" width="14" height="10" rx="2" fill="none" stroke="${swatch.stroke}" stroke-width="1.25" opacity="0.6"/>\n`;
+  el += bpmnTaskGlyph(x, y, subKind || 'abstractTask', swatch.stroke);
   el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '500');
   return el;
 }

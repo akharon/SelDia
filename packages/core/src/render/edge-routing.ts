@@ -357,7 +357,7 @@ function hClear(x0: number, x1: number, y: number, obstacles: IRNode[], gap: num
     const r = nodeRect(o, gap);
     // Segment must not cross the obstacle's interior.
     // If the segment's y is strictly above or below the obstacle, it's clear.
-    if (y <= r.x + E || y >= r.y + r.height - E) continue;
+    if (y <= r.y + E || y >= r.y + r.height - E) continue;
     // Check horizontal overlap: does [x0,x1] intersect (r.x, r.x+r.width)?
     const left = Math.min(x0, x1), right = Math.max(x0, x1);
     if (right > r.x + E && left < r.x + r.width - E) return false;

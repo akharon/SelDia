@@ -175,18 +175,21 @@ export function activate(context: vscode.ExtensionContext) {
 
     const workspaceFolders = vscode.workspace.workspaceFolders;
     const choice = await vscode.window.showInformationMessage(
-      'Deploy SelDiA DSL Copilot skill?',
-      { modal: true, detail: 'This teaches Copilot how to write SelDiA diagrams.' },
+      'Deploy SelDiA DSL skill?',
+      { modal: true, detail: 'This teaches Copilot and Claude Code how to write SelDiA diagrams.' },
       'Deploy to Workspace (.github/skills/)',
-      'Deploy for All Workspaces (~/.copilot/skills/)',
+      'Deploy for GitHub Copilot (~/.copilot/skills/)',
+      'Deploy for Claude Code (~/.claude/skills/)',
       'Cancel'
     );
 
     let targetDir: string | null = null;
     if (choice?.startsWith('Deploy to Workspace') && workspaceFolders) {
       targetDir = resolve(workspaceFolders[0].uri.fsPath, '.github', 'skills', 'seldia-dsl');
-    } else if (choice === 'Deploy for All Workspaces (~/.copilot/skills/)') {
+    } else if (choice === 'Deploy for GitHub Copilot (~/.copilot/skills/)') {
       targetDir = resolve(process.env.HOME || '/home', '.copilot', 'skills', 'seldia-dsl');
+    } else if (choice === 'Deploy for Claude Code (~/.claude/skills/)') {
+      targetDir = resolve(process.env.HOME || '/home', '.claude', 'skills', 'seldia-dsl');
     }
 
     if (targetDir) {
@@ -194,7 +197,8 @@ export function activate(context: vscode.ExtensionContext) {
       const targetFile = resolve(targetDir, 'SKILL.md');
       copyFileSync(skillSrc, targetFile);
       // Write manifest
-      const manifest = { name: 'seldia-dsl', version: '1.0.0', deployedBy: 'seldia-vscode-ext@1.0.0', deployedAt: new Date().toISOString(), scope: choice?.includes('Workspace') ? 'workspace' : 'user', skillPath: targetFile, contentHash: 'sha256:deployed' };
+      const scope = choice?.includes('Workspace') ? 'workspace' : (choice?.includes('Claude') ? 'claude' : 'user');
+      const manifest = { name: 'seldia-dsl', version: '1.0.0', deployedBy: 'seldia-vscode-ext@1.0.0', deployedAt: new Date().toISOString(), scope, skillPath: targetFile, contentHash: 'sha256:deployed' };
       writeFileSync(resolve(targetDir, '.sld-skill-manifest.json'), JSON.stringify(manifest, null, 2));
       vscode.window.showInformationMessage(`$(check) SelDiA DSL skill deployed to ${targetDir}`);
     }

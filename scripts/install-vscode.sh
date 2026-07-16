@@ -22,12 +22,14 @@ cd "$ROOT_DIR"
 
 REPACKAGE=false
 DEV_MODE=false
+DEPLOY_SKILL=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repackage|-r)  REPACKAGE=true; shift ;;  # deprecated: always repackaged now
     --dev|-d)        DEV_MODE=true; shift ;;
-    --help|-h)       echo "Usage: ./scripts/install-vscode.sh [--repackage] [--dev]"; exit 0 ;;
+    --deploy-skill)  DEPLOY_SKILL=true; shift ;;
+    --help|-h)       echo "Usage: ./scripts/install-vscode.sh [--repackage] [--dev] [--deploy-skill]"; exit 0 ;;
     *)               echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -97,6 +99,45 @@ fi
 code --install-extension "$VSIX_FILE" 2>&1
 echo ""
 
+# ── Step 6: Deploy Copilot & Claude skills ──────────────────────────────────
+deploy_skill() {
+  local name="$1"         # Display name (e.g. "Copilot", "Claude Code")
+  local target_dir="$2"   # Destination directory (parent of seldia-dsl/)
+  local deployed_by="$3"  # Origin identifier for manifest
+  local target="${target_dir}/seldia-dsl/SKILL.md"
+
+  mkdir -p "$(dirname "$target")"
+  cp "$SKILL_SRC" "$target"
+  cat > "$(dirname "$target")/.sld-skill-manifest.json" <<- JSONEOF
+{
+  "name": "seldia-dsl",
+  "version": "1.0.0",
+  "deployedBy": "${deployed_by}",
+  "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "scope": "user",
+  "skillPath": "${target}",
+  "contentHash": "sha256:deployed"
+}
+JSONEOF
+  echo "   ✅ ${name} skill deployed to: $(dirname "$target")"
+}
+
+if [ "$DEPLOY_SKILL" = true ]; then
+  echo "🧠 Step 6: Deploying skills..."
+  SKILL_SRC="$ROOT_DIR/packages/vscode-ext/resources/skills/seldia-dsl/SKILL.md"
+
+  if [ -f "$SKILL_SRC" ]; then
+    deploy_skill "Copilot" "${HOME}/.copilot/skills" "seldia-vscode-ext@1.0.0 (install-vscode.sh)"
+    deploy_skill "Claude Code" "${HOME}/.claude/skills" "seldia-vscode-ext@1.0.0 (install-vscode.sh)"
+  else
+    echo "   ⚠️  Skill source not found at: ${SKILL_SRC}"
+  fi
+  echo ""
+else
+  echo "🧠 Step 6: Skipping skill deploy (use --deploy-skill to enable)"
+  echo ""
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo "✅ SelDiA VS Code extension installed successfully!"
 echo "   📁 File: $VSIX_FILE"
@@ -104,5 +145,8 @@ echo "   🔄 Reload VS Code to activate the extension."
 echo ""
 echo "💡 Quick checks:"
 echo "   • Create a .sld file → syntax highlighting should activate"
-echo "   • Run 'SelDiA: Deploy Copilot Skill' from command palette"
+if [ "$DEPLOY_SKILL" = true ]; then
+  echo "   • Copilot skill deployed to: ~/.copilot/skills/seldia-dsl/"
+  echo "   • Claude Code skill deployed to: ~/.claude/skills/seldia-dsl/"
+fi
 echo "   • Open a .md file with \`\`\`seldia blocks → inline rendering"

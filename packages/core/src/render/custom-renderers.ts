@@ -12,11 +12,12 @@
 // unchanged regardless of which renderer drew the inside.
 // =============================================================================
 
-import type { IRNode, IREdge } from '../ir/types.js';
+import type { IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { Point } from '../types/common.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './rough.js';
 import { DS, typeSwatch, roleSwatch, seriesColor, type Swatch } from './design-system.js';
 import { ganttDayLabel } from './custom-layout.js';
+import { FontWeight, FontStyle, type GroupStyle } from '../types/style.js';
 
 function esc(s: string): string { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
@@ -1703,5 +1704,82 @@ export function renderCloudNode(node: IRNode, pad: number, sketchy: boolean, swa
     el += `    <text x="${x + 18}" y="${y + 17}" text-anchor="middle" fill="${sc.stroke}" font-size="9" font-family="${DS.monoFamily}" font-weight="700">${esc(sc.label)}</text>\n`;
   }
   el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.meta, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+  return el;
+}
+
+// -----------------------------------------------------------------------------
+// Groups (subgraph containers) — background box + header label, drawn behind
+// their member nodes. Position/size are a bounding box over childNodeIds
+// (computed by the caller via computeGroupBounds), not laid out independently.
+// -----------------------------------------------------------------------------
+
+const DEFAULT_GROUP_STYLE: GroupStyle = {
+  roughness: 0.8,
+  bowing: 1.0,
+  stroke: '#a8a29e',
+  strokeWidth: 1.5,
+  strokeDasharray: '8,4',
+  fill: 'rgba(245,245,244,0.3)',
+  opacity: 1,
+  fontFamily: 'Caveat, Comic Sans MS, cursive, sans-serif',
+  fontWeight: FontWeight.BOLD,
+  fontStyle: FontStyle.NORMAL,
+  fontSize: 14,
+  textColor: '#78716c',
+  padding: 20,
+  borderRadius: 8,
+};
+
+/** Bounding box over a group's direct+nested member nodes, expanded by the
+ *  group's own padding plus room for the header label above the box. Groups
+ *  with no resolvable members collapse to a zero-size box (caller should skip
+ *  rendering those, not draw an empty rect). */
+export function computeGroupBounds(group: IRGroup, allGroups: IRGroup[], nodeById: Map<string, IRNode>): { x: number; y: number; width: number; height: number } {
+  const padding = group.style.padding ?? DEFAULT_GROUP_STYLE.padding;
+  const memberIds = new Set<string>();
+  const collectNodeIds = (g: IRGroup, seen: Set<string>) => {
+    if (seen.has(g.id)) return; // guard against cyclic childGroupIds
+    seen.add(g.id);
+    for (const id of g.childNodeIds) memberIds.add(id);
+    for (const childId of g.childGroupIds) {
+      const child = allGroups.find((c) => c.id === childId);
+      if (child) collectNodeIds(child, seen);
+    }
+  };
+  collectNodeIds(group, new Set());
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const id of memberIds) {
+    const n = nodeById.get(id);
+    if (!n) continue;
+    minX = Math.min(minX, n.position.x);
+    minY = Math.min(minY, n.position.y);
+    maxX = Math.max(maxX, n.position.x + n.size.width);
+    maxY = Math.max(maxY, n.position.y + n.size.height);
+  }
+  if (!isFinite(minX)) return { x: 0, y: 0, width: 0, height: 0 };
+
+  const headerH = Math.round(DEFAULT_GROUP_STYLE.fontSize * 1.6);
+  return {
+    x: minX - padding,
+    y: minY - padding - headerH,
+    width: (maxX - minX) + padding * 2,
+    height: (maxY - minY) + padding * 2 + headerH,
+  };
+}
+
+export function renderGroup(group: IRGroup, pad: number, sketchy: boolean): string {
+  if (group.size.width <= 0 || group.size.height <= 0) return '';
+  const style = { ...DEFAULT_GROUP_STYLE, ...group.style };
+  const x = group.position.x + pad, y = group.position.y + pad, w = group.size.width, h = group.size.height;
+  const seed = seedFor(group.id);
+
+  let el = sketchy
+    ? roughRect(x, y, w, h, { stroke: style.stroke, strokeWidth: style.strokeWidth, fill: style.fill, roughness: style.roughness, bowing: style.bowing, fillStyle: 'solid', seed })
+    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${style.borderRadius}" fill="${style.fill}" stroke="${style.stroke}" stroke-width="${style.strokeWidth}" stroke-dasharray="${style.strokeDasharray}"/>\n`;
+
+  if (group.label) {
+    el += textBlock(x + 10, y + style.fontSize + 4, style.fontSize * 1.2, style.fontSize, style.fontFamily, style.textColor, group.label, 'start', String(style.fontWeight));
+  }
   return el;
 }

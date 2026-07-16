@@ -61,6 +61,19 @@
   white-space: nowrap;
 }
 
+/* Format tag on a block whose source isn't SelDiA DSL (e.g. an imported
+   ```mermaid fence). Deliberately quiet — it answers "what am I looking at?"
+   without implying the block is degraded or needs converting. */
+.seldia-badge-format {
+  font-size: 0.85em;
+  font-weight: 500;
+  opacity: 0.7;
+  padding: 1px 6px;
+  border: 1px solid var(--vscode-panel-border, #454545);
+  border-radius: 3px;
+  text-transform: lowercase;
+}
+
 /* ── Toolbar Buttons ──────────────────────────────────────────────────── */
 /* Transparent/flat by default, like VS Code's own toolbar icon buttons —
    only a hover background, no permanent border/fill (item 5). */

@@ -3,7 +3,7 @@
 // =============================================================================
 
 import type { ID, Diagnostic, Result, Point, Rect } from './types/common.js';
-import type { DiagramIR, LayoutResult, RenderResult, IRNode, IREdge } from './ir/types.js';
+import type { DiagramIR, LayoutResult, RenderResult, IRNode, IREdge, IRGroup } from './ir/types.js';
 import { DiagramType, EdgeRouting } from './ir/types.js';
 import type { DiagramAST } from './ast/nodes.js';
 import type { DiagramPlugin, PluginManager } from './plugin/types.js';
@@ -55,6 +55,8 @@ import {
   renderTimelineNode,
   renderWireframeNode,
   renderCloudNode,
+  renderGroup,
+  computeGroupBounds,
 } from './render/custom-renderers.js';
 
 // -----------------------------------------------------------------------------
@@ -80,6 +82,12 @@ export interface CoreEngine {
    *  (e.g. VS Code's markdown-it fence renderer). Always lays out with
    *  "dagre" — see `layout()`. */
   compileSync(source: string, filePath?: string): Result<RenderResult>;
+  /** Lay out and render an IR that was produced by something other than the
+   *  SelDiA parser — an importer for a foreign format, or an agent that built
+   *  the structure directly. This is the engine's front door for input that
+   *  never was SelDiA DSL text; it is what makes "the engine that runs your
+   *  Mermaid" a real seam rather than a translation hack. */
+  compileIRSync(ir: DiagramIR): Result<RenderResult>;
   /** Full pipeline, honoring the diagram's requested layout engine
    *  (including "elk", which requires async). */
   compile(source: string, filePath?: string): Promise<Result<RenderResult>>;
@@ -217,6 +225,20 @@ class SelDiAEngine implements CoreEngine {
     };
   }
 
+  /** Groups have no independent layout of their own — they're a bounding box
+   *  drawn around wherever their member nodes ended up, computed once after
+   *  node positions are final. Every layout path (dagre, elk, custom, manual)
+   *  must run this before returning, or a group's position/size stay at the
+   *  zero-value the parser left them with. */
+  private layoutGroups(ir: DiagramIR, nodes: IRNode[]): IRGroup[] {
+    if (!ir.groups.length) return ir.groups;
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    return ir.groups.map((g) => {
+      const { x, y, width, height } = computeGroupBounds(g, ir.groups, nodeById);
+      return { ...g, position: { x, y }, size: { width, height } };
+    });
+  }
+
   layout(ir: DiagramIR): Result<LayoutResult> {
     if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
     // Some diagram types have a topology dagre cannot express (sequence
@@ -226,13 +248,13 @@ class SelDiAEngine implements CoreEngine {
     const custom = customLayoutFor(ir.type);
     if (custom) {
       const { nodes, edges, bounds } = custom(ir);
-      const positioned: DiagramIR = { ...ir, nodes, edges };
+      const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
       return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
     }
     // Synchronous path only has dagre available; an "elk" request is honored
     // by layoutAsync() (used by compile()), not here.
     const { nodes, edges, bounds } = layoutWithDagre(ir, this.resolvedLayoutOptions(ir));
-    const positioned: DiagramIR = { ...ir, nodes, edges };
+    const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
@@ -241,7 +263,7 @@ class SelDiAEngine implements CoreEngine {
     const custom = customLayoutFor(ir.type);
     if (custom) {
       const { nodes, edges, bounds } = custom(ir);
-      const positioned: DiagramIR = { ...ir, nodes, edges };
+      const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
       return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
     }
     const requested = (ir.metadata?.layoutEngine as string | undefined) || this.config.defaultLayoutEngine;
@@ -249,7 +271,7 @@ class SelDiAEngine implements CoreEngine {
     const { nodes, edges, bounds } = requested === 'elk' && LAYOUT_ENGINES.has('elk')
       ? await layoutWithElk(ir, opts)
       : layoutWithDagre(ir, opts);
-    const positioned: DiagramIR = { ...ir, nodes, edges };
+    const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
@@ -287,8 +309,9 @@ class SelDiAEngine implements CoreEngine {
       return a ? { ...n, position: { x: a.position.x, y: a.position.y + offsetY }, size: a.size } : { ...n, position: { x: 0, y: 0 } };
     });
     const edges = ir.edges.map((e) => ({ ...e, waypoints: this.computeWaypoints(e, nodes) }));
-    const positioned: DiagramIR = { ...ir, nodes, edges };
-    const bounds = this.computeBounds(nodes, edges);
+    const groups = this.layoutGroups(ir, nodes);
+    const positioned: DiagramIR = { ...ir, nodes, edges, groups };
+    const bounds = this.computeBounds(nodes, edges, groups);
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
@@ -303,7 +326,7 @@ class SelDiAEngine implements CoreEngine {
     return [centerOf(src), centerOf(tgt)];
   }
 
-  private computeBounds(nodes: IRNode[], edges?: IREdge[]): Rect {
+  private computeBounds(nodes: IRNode[], edges?: IREdge[], groups?: IRGroup[]): Rect {
     if (!nodes.length) return { x: 0, y: 0, width: 0, height: 0 };
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of nodes) {
@@ -322,18 +345,29 @@ class SelDiAEngine implements CoreEngine {
         }
       }
     }
+    // Group boxes extend past their member nodes by the group's own padding
+    // plus a header band, so without this a group's border/label can be
+    // clipped by a viewBox sized only to the tightest node bounds.
+    if (groups) {
+      for (const g of groups) {
+        if (g.size.width <= 0 || g.size.height <= 0) continue;
+        minX = Math.min(minX, g.position.x); minY = Math.min(minY, g.position.y);
+        maxX = Math.max(maxX, g.position.x + g.size.width); maxY = Math.max(maxY, g.position.y + g.size.height);
+      }
+    }
     return { x: minX, y: minY, width: maxX - minX + 40, height: maxY - minY + 40 };
   }
 
   render(layoutResult: LayoutResult): Result<RenderResult> {
     const nodes = layoutResult.diagram.nodes;
     const edges = layoutResult.diagram.edges;
+    const groups = layoutResult.diagram.groups;
     // Recompute bounds to include edge waypoints (the manhattan router may
     // route waypoints beyond the initial node-only bounds when detouring
     // around obstacles, and the initial dagre/elk waypoints may also extend
     // beyond node boundaries).
-    const finalBounds = this.computeBounds(nodes, edges);
-    const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type);
+    const finalBounds = this.computeBounds(nodes, edges, groups);
+    const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type, groups);
     return {
       ok: true,
       value: {
@@ -345,7 +379,7 @@ class SelDiAEngine implements CoreEngine {
     };
   }
 
-  private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType): string {
+  private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = []): string {
     // Padding must cover both the configured breathing room AND the extra
     // pixels Rough.js's roughness/multi-stroke wobble can push geometry
     // outward, plus the thickest stroke width in use, so nothing gets
@@ -447,6 +481,13 @@ class SelDiAEngine implements CoreEngine {
       for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderTimelineNode(n, pad, sketchy, nodeSwatch(n, diagramType), midY)}  </g>\n`;
       svg += '</svg>';
       return svg;
+    }
+
+    // Groups draw as a background box behind their member nodes, so they must
+    // be emitted before the edge/node loop below.
+    for (const g of groups) {
+      const content = renderGroup(g, pad, sketchy);
+      if (content) svg += `  <g class="seldia-group" data-seldia-group-id="${this.esc(g.id)}">\n${content}  </g>\n`;
     }
 
     // Wireframe edges are layout-only (they stack controls in reading order);
@@ -788,6 +829,11 @@ class SelDiAEngine implements CoreEngine {
     const r3 = this.transform(r2.value); if (!r3.ok) return r3;
     const r4 = this.layout(r3.value); if (!r4.ok) return r4;
     return this.render(r4.value);
+  }
+
+  compileIRSync(ir: DiagramIR): Result<RenderResult> {
+    const r = this.layout(ir); if (!r.ok) return r;
+    return this.render(r.value);
   }
 
   async compile(source: string, filePath?: string): Promise<Result<RenderResult>> {

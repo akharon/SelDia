@@ -1,8 +1,13 @@
 // =============================================================================
 // SelDiA VS Code — Markdown-it plugin rendering tests
 // =============================================================================
-import { describe, it, expect } from 'vitest';
-import { renderSelDiABlock, blockIdForSource, createSelDiAMarkdownItPlugin } from '../src/markdown-preview/plugin.js';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  renderSelDiABlock,
+  renderMermaidBlock,
+  blockIdForSource,
+  createSelDiAMarkdownItPlugin,
+} from '../src/markdown-preview/plugin.js';
 import { blockIdForSource as editBlockId } from '../src/edit/blocks.js';
 import { createEngine } from '@seldia/core';
 
@@ -82,6 +87,55 @@ describe('renderSelDiABlock', () => {
   });
 });
 
+// The engine positioning lives or dies on this path: a user's existing
+// ```mermaid block, untouched, rendered by SelDiA — and never made worse than
+// if SelDiA weren't installed.
+describe('renderMermaidBlock', () => {
+  const MMD = 'flowchart TD\n  A[Start] --> B{Ok?}\n  B -->|Yes| C[Done]';
+
+  it('renders a Mermaid block through the SelDiA engine', () => {
+    const html = renderMermaidBlock(engine, MMD)!;
+    expect(html).toContain('class="seldia-diagram"');
+    expect(html).toContain('<svg');
+    expect(html).not.toContain('seldia-error');
+  });
+
+  it('labels the block as Mermaid-sourced', () => {
+    const html = renderMermaidBlock(engine, MMD)!;
+    expect(html).toContain('data-seldia-source-format="mermaid"');
+    expect(html).toContain('Mermaid Source');
+    expect(html).toContain('class="language-mermaid"');
+  });
+
+  it('keeps the original Mermaid source verbatim in code mode', () => {
+    const html = renderMermaidBlock(engine, MMD)!;
+    // Escaped for HTML, but otherwise untouched — we render their source, we
+    // don't rewrite it into SelDiA DSL behind their back.
+    expect(html).toContain('A[Start] --&gt; B{Ok?}');
+  });
+
+  it('declines unsupported diagram types so the default fence can have them', () => {
+    expect(renderMermaidBlock(engine, 'pie title Pets\n  "Dogs" : 386')).toBeNull();
+    expect(renderMermaidBlock(engine, 'gantt\n  title A\n  section S\n  t :a1, 2024-01-01, 30d')).toBeNull();
+  });
+
+  it('declines garbage rather than showing an error box in a Mermaid document', () => {
+    expect(renderMermaidBlock(engine, 'not a diagram at all')).toBeNull();
+    expect(renderMermaidBlock(engine, '')).toBeNull();
+  });
+
+  it('attaches importer notes without turning the block into an error', () => {
+    const html = renderMermaidBlock(engine, 'flowchart TD\n subgraph one\n  a --> b\n end')!;
+    expect(html).toContain('data-seldia-notes=');
+    expect(html).not.toContain('seldia-error');
+  });
+
+  it('gives the block a source-derived id, like a SelDiA block', () => {
+    const html = renderMermaidBlock(engine, MMD)!;
+    expect(html).toContain(`data-seldia-block="${blockIdForSource(MMD)}"`);
+  });
+});
+
 describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
   function makeMd() {
     const md: any = { renderer: { rules: {} } };
@@ -113,5 +167,32 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     };
     const out = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
     expect(out).toContain('data-seldia-doc="file:///w/demo.md"');
+  });
+
+  it('intercepts ```mermaid fences and renders them through the engine', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine)(md);
+    const out = md.renderer.rules.fence(
+      [{ info: 'mermaid', content: 'flowchart LR\n  a --> b' }],
+      0, {}, {}, {}
+    );
+    expect(out).toContain('seldia-diagram');
+    expect(out).toContain('<svg');
+    expect(out).toContain('data-seldia-source-format="mermaid"');
+  });
+
+  // The safety property that makes shipping this defensible: for Mermaid we
+  // can't render, the block must come out exactly as it would have without
+  // SelDiA installed — a plain code fence, not a SelDiA error box.
+  it('falls back to the default fence for Mermaid it cannot import', () => {
+    const md = makeMd();
+    const fallback = vi.fn(() => '<pre><code>original</code></pre>');
+    md.renderer.rules.fence = fallback;
+    createSelDiAMarkdownItPlugin(engine)(md);
+    const tokens = [{ info: 'mermaid', content: 'pie title Pets\n  "Dogs" : 386' }];
+    const out = md.renderer.rules.fence(tokens, 0, {}, {}, {});
+    expect(fallback).toHaveBeenCalled();
+    expect(out).toBe('<pre><code>original</code></pre>');
+    expect(out).not.toContain('seldia-error');
   });
 });

@@ -2,7 +2,7 @@
 // SelDiA Core — Engine integration tests
 // =============================================================================
 import { describe, it, expect } from 'vitest';
-import { createEngine } from '../src/index.js';
+import { createEngine, importMermaid } from '../src/index.js';
 
 const engine = createEngine();
 
@@ -132,6 +132,46 @@ describe('layout engine selection', () => {
       expect(dagreResult.value.width).toBeGreaterThan(0);
       expect(elkResult.value.width).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('groups (subgraphs)', () => {
+  it('lays out a group as a bounding box over its member nodes and renders it behind them', () => {
+    const { ir } = importMermaid(`flowchart TD
+      subgraph one [My Group]
+        a --> b
+      end
+      c --> a`);
+    const laid = engine.layout(ir!);
+    expect(laid.ok).toBe(true);
+    if (!laid.ok) return;
+
+    const group = laid.value.diagram.groups[0];
+    expect(group.size.width).toBeGreaterThan(0);
+    expect(group.size.height).toBeGreaterThan(0);
+    const memberA = laid.value.diagram.nodes.find((n) => n.id === 'a')!;
+    const memberB = laid.value.diagram.nodes.find((n) => n.id === 'b')!;
+    // Group bounds must fully contain both member nodes.
+    expect(group.position.x).toBeLessThanOrEqual(memberA.position.x);
+    expect(group.position.y).toBeLessThanOrEqual(Math.min(memberA.position.y, memberB.position.y));
+    expect(group.position.x + group.size.width).toBeGreaterThanOrEqual(memberA.position.x + memberA.size.width);
+    expect(group.position.y + group.size.height).toBeGreaterThanOrEqual(memberB.position.y + memberB.size.height);
+
+    const rendered = engine.render(laid.value);
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    expect(rendered.value.svg).toContain('data-seldia-group-id="one"');
+    expect(rendered.value.svg).toContain('My Group');
+    // The group's <g> must appear before the member nodes' <g> so it renders behind them.
+    const groupIdx = rendered.value.svg.indexOf('data-seldia-group-id="one"');
+    const nodeIdx = rendered.value.svg.indexOf('data-seldia-node-id="a"');
+    expect(groupIdx).toBeLessThan(nodeIdx);
+  });
+
+  it('a diagram with no groups renders with no seldia-group elements', () => {
+    const r = engine.compileSync('fl "T" { a (Start)\n b [Do]\n a -> b }');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.svg).not.toContain('seldia-group');
   });
 });
 

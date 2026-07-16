@@ -20,6 +20,10 @@ export * from './plugin/types.js';
 export type { CoreEngine, EngineOptions } from './engine.js';
 export { createEngine } from './engine.js';
 
+// Importers — other diagram formats as engine inputs
+export type { MermaidImportResult, MermaidImportDiagnostic } from './import/mermaid.js';
+export { importMermaid, isMermaidSource } from './import/mermaid.js';
+
 // Config
 export type { SelDiAConfig } from './config.js';
 export { DEFAULT_CONFIG } from './config.js';

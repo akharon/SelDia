@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { Command } from 'commander';
-import { createEngine } from '@seldia/core';
+import { createEngine, importMermaid } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename } from 'path';
 
@@ -93,6 +93,53 @@ program
       }
       process.exit(1);
     }
+  });
+
+// ── mermaid ───────────────────────────────────────────────────────────────────
+// Render a Mermaid file through SelDiA's engine. No conversion step, no new
+// file to maintain: the .mmd stays the source of truth and SelDiA is just the
+// renderer. That is the whole pitch, reduced to one command.
+program
+  .command('mermaid')
+  .description('Render a Mermaid (.mmd) file to SVG using the SelDiA engine')
+  .argument('<file>', 'Path to .mmd/.mermaid file')
+  .option('-o, --output <path>', 'Output path')
+  .option('--theme <name>', 'Theme name', 'sketchy-light')
+  .action((file, options) => {
+    const inPath = resolve(process.cwd(), file);
+    if (!existsSync(inPath)) {
+      console.error(`❌ File not found: ${inPath}`);
+      process.exit(1);
+    }
+
+    const source = readFileSync(inPath, 'utf-8');
+    const { ir, diagnostics } = importMermaid(source);
+
+    // Diagnostics are worth printing even on success — they say what the
+    // importer approximated, which is exactly the trust question a user has
+    // when handing their diagram to a different renderer.
+    for (const d of diagnostics) console.warn(`⚠️  Line ${d.line}: ${d.message}`);
+
+    if (!ir) {
+      console.error('❌ Could not import this Mermaid diagram.');
+      process.exit(1);
+    }
+
+    const engine = createEngine({ config: { defaultTheme: options.theme } });
+    const result = engine.compileIRSync(ir);
+    if (!result.ok) {
+      console.error('❌ Rendering failed:');
+      for (const err of result.errors) console.error(`   ${err.message}`);
+      process.exit(1);
+    }
+
+    const outPath = options.output
+      ? resolve(process.cwd(), options.output)
+      : resolve(dirname(inPath), basename(inPath, extname(inPath)) + '.svg');
+    writeFileSync(outPath, result.value.svg);
+    console.log(`✅ Rendered ${ir.type} from Mermaid`);
+    console.log(`   Output: ${outPath}`);
+    console.log(`   Nodes: ${result.value.stats.nodeCount}, Edges: ${result.value.stats.edgeCount}`);
   });
 
 // ── validate ──────────────────────────────────────────────────────────────────

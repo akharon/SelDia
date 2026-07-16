@@ -1,8 +1,10 @@
 # SelDiA — Self-Diagramming Architecture
 
-**A unified text-based Diagram-as-Code tool with hand-drawn Rough.js aesthetics.**
+**The diagram engine. Keep your Mermaid — SelDiA keeps it true.**
 
-SelDiA lets you describe 21+ diagram types in a single, clean DSL and renders them as beautifully sketchy SVG diagrams. Built with TypeScript, powered by Rough.js.
+Mermaid is a format. PlantUML is a tool. SelDiA is the *engine* underneath: it parses your diagrams into a real intermediate representation, renders them, validates them, and gives agents a way to query and maintain them as your system changes.
+
+You don't have to rewrite anything. Keep writing Mermaid — keep your GitHub rendering, keep letting your AI generate it from memory. SelDiA runs it.
 
 ```
 diagram flowchart "Login Flow" {
@@ -19,30 +21,37 @@ diagram flowchart "Login Flow" {
 }
 ```
 
+*(The SelDiA DSL above is the engine's native format — its full power, for those who want it. It is not the price of admission.)*
+
+## Why an engine?
+
+Generating a diagram is solved and commoditized — every model writes Mermaid from memory. **Keeping a diagram true as the system drifts is not solved.** That takes an IR, diagnostics, and round-tripping: parse → structure → validate → write back. Mermaid is a parser bolted to a renderer; PlantUML is a Java monolith. Neither has the layer this needs. SelDiA does.
+
+The wedge is *drift*, not drawing. See [docs/market.md](docs/market.md) for the full reasoning.
+
 ## Features
 
-- 🎨 **21+ diagram types** — Flowchart, Sequence, Class, C4 (4 levels), BPMN, State, ER, Gantt, Mindmap, and more
+- 🔀 **Runs other formats** — Mermaid in, rendered through SelDiA's engine; export back out so it still renders natively on GitHub
+- 🧠 **A real IR** — a typed intermediate representation between text and pixels, so diagrams are queryable and mutable, not just drawable
+- 🤖 **Agent-facing** — LSP diagnostics mean a model can be told it's wrong and self-correct, instead of rendering garbage silently
+- 🎨 **30 diagram types** — Flowchart, Sequence, Class, C4 (4 levels), BPMN, DMN, State, ER, Gantt, Mindmap, Sankey, Gitgraph, and more
 - ✏️ **Hand-drawn style** — Rough.js sketchy rendering, or smooth fallback
 - 📐 **Smart layout** — Dagre hierarchical layout, d3-force for network graphs
-- 🎭 **5 built-in themes** — Sketchy Light/Dark, Blueprint, Monochrome, Clean
-- 🔧 **VS Code extension** — Syntax highlighting, LSP (diagnostics, completion, hover, go-to-definition), live preview, interactive editing
-- 🔄 **Bidirectional sync** — Edit visually or in code; changes sync both ways
+- 🔧 **VS Code extension** — Syntax highlighting, LSP, live preview, interactive editing
 - 📄 **Markdown integration** — Embed diagrams in `.md` files with ` ```seldia ` fenced blocks
 - 📑 **PDF export** — Convert Markdown with embedded diagrams to professional PDF
-- 🤖 **Copilot skill** — Teach GitHub Copilot to write SelDiA DSL
 - 🌐 **Web components** — `<seldia-viewer>` for embedding diagrams anywhere
 
 ## Packages
 
 | Package | Description |
 |---------|-------------|
-| `@seldia/core` | Parser, engine, types, plugin system, all diagram plugins |
-| `@seldia/render` | Rough.js SVG rendering, themes, shape factory |
-| `@seldia/layout` | Layout engines (Dagre, d3-force) |
-| `@seldia/interaction` | Zoom/pan, drag-drop, selection, collapse/expand, tooltips, ARIA |
+| `@seldia/core` | Parser, IR, engine (layout + rendering), plugin system, all diagram plugins |
 | `@seldia/cli` | CLI tools: `compile`, `validate`, `serve`, `init` |
 | `@seldia/web` | Web components (`<seldia-viewer>`) |
 | `@seldia/vscode-ext` | VS Code extension with full IDE integration |
+
+> `@seldia/render`, `@seldia/layout`, and `@seldia/interaction` exist in the tree but are **not wired into the shipped product** — `@seldia/core`'s engine reimplements layout and rendering inline. They're slated to be wired through or deleted; see [next_steps.md §3](docs/next_steps.md#3-known-technical-debt-carried-from-prior-internal-review).
 
 ## Quick Start
 

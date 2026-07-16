@@ -27,8 +27,9 @@ Everything in Tier 1 below serves that bet directly. Tier 2/3 are real but shoul
 
 *The safety property to preserve:* an unimportable block **falls back to the default fence**, so installing SelDiA can never make a Mermaid document render worse than not having it. Never replace that fallback with a SelDiA error box in a document whose author never asked for SelDiA.
 
+*Shipped since:* **Subgraphs** — the Mermaid importer now parses `subgraph`/`end` (including nesting) into `IRGroup`s, and the engine gained group support end-to-end: a bounding-box layout post-pass over each group's member nodes (`engine.ts` `layoutGroups()`), inclusion in viewBox bounds, and a renderer (`renderGroup()` in `custom-renderers.ts`) that draws a background box + label behind the member nodes. This was bigger than it looked — `groups` existed on the IR type but nothing in the layout engine or renderer consumed it, for *any* diagram type, DSL included. It's now general engine capability, not Mermaid-specific.
+
 *Still open, in rough priority order:*
-- **Subgraphs** — currently flattened (nodes survive, the grouping is lost). The IR has `groups`; wire them up. This is the biggest single fidelity gap.
 - **State, gantt, pie, gitgraph, mindmap, journey** — all have IR equivalents already; each is an importer function, not new engine work.
 - **Styling directives** — `style`/`classDef`/`linkStyle` are skipped; they map onto `IRNode.style`.
 - **Mermaid export** — the return leg. Emit Mermaid from IR where it maps cleanly, so output still rides GitHub's native rendering. Nothing exists yet.

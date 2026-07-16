@@ -994,7 +994,6 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
       el += `    <circle cx="${fx}" cy="${botY}" r="3" fill="${swatch.stroke}"/>\n`;
     }
     el += textBlock(cx, y + h * 0.62 - 8, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '700');
-    el += textBlock(cx, y + h + 4, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
     return el;
   }
   if (kind === 'database' || kind === 'storage') {
@@ -1335,6 +1334,14 @@ export function renderChartAxes(nodes: IRNode[], pad: number, scale: ChartScale)
 
   el += `    <line x1="${axisX}" y1="${p.top}" x2="${axisX}" y2="${p.bottom}" stroke="${DS.neutral.stroke}" stroke-width="1.25"/>\n`;
   el += `    <line x1="${axisX}" y1="${p.bottom}" x2="${p.right}" y2="${p.bottom}" stroke="${DS.neutral.stroke}" stroke-width="1.25"/>\n`;
+
+  // Vertical guide lines at each category's x position — helps visually align
+  // data points to their category label, especially on line and scatter charts.
+  for (const n of nodes) {
+    const x = n.position.x + pad + n.size.width / 2;
+    el += `    <line x1="${x}" y1="${p.top}" x2="${x}" y2="${p.bottom}" stroke="${DS.neutral.stroke}" stroke-width="1" stroke-opacity="0.15" stroke-dasharray="2,4"/>\n`;
+  }
+
   el += '  </g>\n';
   return el;
 }

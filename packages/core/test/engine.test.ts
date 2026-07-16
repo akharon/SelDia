@@ -7,49 +7,49 @@ import { createEngine } from '../src/index.js';
 const engine = createEngine();
 
 const DIAGRAMS: Array<[string, string]> = [
-  ['flowchart', `diagram flowchart "Login" {
-    start: (Start)
-    validate: [Validate]
-    decision: {Valid?}
-    ok: [Dashboard]
-    err: [Error]
-    start --> validate
-    validate --> decision
-    decision -->|"Yes"| ok
-    decision -->|"No"| err
+  ['flowchart', `fl "Login" {
+    start (Start)
+    validate [Validate]
+    decision diamond "Valid?"
+    ok [Dashboard]
+    err [Error]
+    start -> validate
+    validate -> decision
+    decision -> ok: "Yes"
+    decision -> err: "No"
   }`],
-  ['sequence', `diagram sequence "API" {
-    participant client: "Client"
-    participant server: "Server"
+  ['sequence', `seq "API" {
+    client "Client"
+    server "Server"
     client -> server: "GET /x"
-    server --> client: "200"
+    server -> client: "200"
   }`],
-  ['class', `diagram class "M" { user: [User]\n account: [Account]\n user --> account }`],
-  ['c4-context', `diagram c4-context "Ctx" {
-    person customer: "Customer"
-    system banking: "Banking"
+  ['class', `cls "M" { user [User]\n account [Account]\n user -> account }`],
+  ['c4-context', `c4c "Ctx" {
+    person customer "Customer"
+    system banking "Banking"
     customer -> banking: "Uses"
   }`],
-  ['state', `diagram state "S" { [*] --> A\n A --> B: go\n B --> [*] }`],
-  ['bpmn', `diagram bpmn "P" {
-    startEvent s: "Start"
-    task t: "Work"
-    endEvent e: "End"
-    s --> t --> e
+  ['state', `st "S" { [*] -> A\n A -> B: go\n B -> [*] }`],
+  ['bpmn', `bpmn "P" {
+    s (Start)
+    t [Work]
+    e (End)
+    s -> t -> e
   }`],
-  ['er', `diagram er "D" { user: [User]\n account: [Account]\n user --> account }`],
-  ['mindmap', `diagram mindmap "O" { root: [Root]\n a: [A]\n b: [B]\n root --> a\n root --> b }`],
+  ['er', `er "D" { user [User]\n account [Account]\n user -> account }`],
+  ['mindmap', `mind "O" { root [Root]\n a [A]\n b [B]\n root -> a\n root -> b }`],
 ];
 
 describe('compileSync', () => {
   it('is synchronous and returns a result (not a Promise)', () => {
-    const r = engine.compileSync('diagram flowchart "T" { a: (Start) }');
+    const r = engine.compileSync('fl "T" { a (Start) }');
     expect(typeof (r as any).then).toBe('undefined');
     expect(r.ok).toBe(true);
   });
 
   it('async compile() delegates to the same result', async () => {
-    const src = 'diagram flowchart "T" { a: (Start)\n b: [Do]\n a --> b }';
+    const src = 'fl "T" { a (Start)\n b [Do]\n a -> b }';
     const sync = engine.compileSync(src);
     const async = await engine.compile(src);
     expect(async.ok).toBe(sync.ok);
@@ -69,7 +69,7 @@ describe('compileSync', () => {
 
 describe('SVG identity attributes', () => {
   it('stamps data-seldia-node-id on every node', () => {
-    const r = engine.compileSync('diagram flowchart "T" { alpha: (Start)\n beta: [Do]\n alpha --> beta }');
+    const r = engine.compileSync('fl "T" { alpha (Start)\n beta [Do]\n alpha -> beta }');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.svg).toContain('data-seldia-node-id="alpha"');
@@ -81,7 +81,7 @@ describe('SVG identity attributes', () => {
 
 describe('error handling', () => {
   it('reports errors for invalid syntax without throwing', () => {
-    const r = engine.compileSync('diagram flowchart { broken {{{ }');
+    const r = engine.compileSync('fl "T" { broken {{{ }');
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.errors.length).toBeGreaterThan(0);
@@ -104,15 +104,15 @@ describe('themes', () => {
 });
 
 describe('layout engine selection', () => {
-  const SRC = 'diagram flowchart "T" { a: (Start)\n b: [Do]\n c: [Done]\n a --> b\n b --> c }';
+  const SRC = 'fl "T" { a (Start)\n b [Do]\n c [Done]\n a -> b\n b -> c }';
 
   it('compileSync() always uses dagre, even when elk is requested in the DSL', () => {
-    const r = engine.compileSync('diagram flowchart "T" { layout elk\n a: (Start)\n b: [Do]\n a --> b }');
+    const r = engine.compileSync('fl "T" { layout elk\n a (Start)\n b [Do]\n a -> b }');
     expect(r.ok).toBe(true);
   });
 
   it('compile() honors an elk layout request asynchronously', async () => {
-    const r = await engine.compile('diagram flowchart "T" { layout elk\n a: (Start)\n b: [Do]\n a --> b }');
+    const r = await engine.compile('fl "T" { layout elk\n a (Start)\n b [Do]\n a -> b }');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.svg).toContain('data-seldia-node-id="a"');
   });
@@ -137,7 +137,7 @@ describe('layout engine selection', () => {
 
 describe('diagram-wide manual layout override', () => {
   it('a single manually-positioned node disables auto layout for the whole diagram', () => {
-    const src = 'diagram flowchart "T" { a: (Start) { x: 500, y: 500 }\n b: [Do]\n c: [Done]\n a --> b\n b --> c }';
+    const src = 'fl "T" { a (Start) { x: 500, y: 500 }\n b [Do]\n c [Done]\n a -> b\n b -> c }';
     const parsed = engine.parse(src);
     expect(parsed.ok).toBe(true);
     const laid = (parsed as any).ok
@@ -155,7 +155,7 @@ describe('diagram-wide manual layout override', () => {
   });
 
   it('a diagram with no manual overrides is positioned entirely by the auto engine', () => {
-    const src = 'diagram flowchart "T" { a: (Start)\n b: [Do]\n a --> b }';
+    const src = 'fl "T" { a (Start)\n b [Do]\n a -> b }';
     const r = engine.compileSync(src);
     expect(r.ok).toBe(true);
   });

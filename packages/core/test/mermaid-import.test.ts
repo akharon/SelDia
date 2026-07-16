@@ -299,9 +299,9 @@ describe('ER import', () => {
 
 describe('failure handling', () => {
   it('reports unsupported types instead of throwing, and yields no IR', () => {
-    const { ir, diagnostics } = importMermaid('pie title Pets\n "Dogs" : 386');
+    const { ir, diagnostics } = importMermaid('journey\n title Trip\n section Go\n  Walk: 5: Me');
     expect(ir).toBeUndefined();
-    expect(diagnostics[0].message).toMatch(/Unsupported Mermaid diagram type: "pie"/);
+    expect(diagnostics[0].message).toMatch(/Unsupported Mermaid diagram type: "journey"/);
   });
 
   it('reports an empty source', () => {
@@ -325,5 +325,83 @@ flowchart LR
       B->>A: also fine`);
     expect(ir!.edges.map((e) => e.label)).toEqual(['fine', 'also fine']);
     expect(diagnostics).toHaveLength(1);
+  });
+});
+
+describe('state diagram import', () => {
+  it('imports transitions and gives each [*] its own start/end pseudostate node', () => {
+    const ir = irOf(`stateDiagram-v2
+      [*] --> Idle
+      Idle --> Running: start
+      Running --> [*]: done`);
+    expect(ir.type).toBe(DiagramType.STATE);
+    expect(ir.nodes.find((n) => n.id === 'Idle')).toBeTruthy();
+    expect(ir.nodes.find((n) => n.id === 'Running')).toBeTruthy();
+    const pseudostates = ir.nodes.filter((n) => n.shape === ShapeType.CIRCLE);
+    expect(pseudostates).toHaveLength(2);
+    expect(ir.edges.map((e) => e.label)).toEqual([undefined, 'start', 'done']);
+  });
+});
+
+describe('gantt import', () => {
+  it('imports tasks with dates encoded into the label the layout parser expects', () => {
+    const ir = irOf(`gantt
+      title Sprint
+      section Build
+      Design: 2026-01-06, 3d
+      Implement: 2026-01-09, 5d`);
+    expect(ir.type).toBe(DiagramType.GANTT);
+    expect(ir.nodes).toHaveLength(2);
+    expect(ir.nodes[0].label).toMatch(/^Design: Jan 6/);
+    expect(ir.nodes[1].label).toMatch(/^Implement: Jan 9/);
+  });
+});
+
+describe('pie import', () => {
+  it('imports slices with the value folded into a second label line', () => {
+    const ir = irOf(`pie title Pets
+      "Dogs" : 386
+      "Cats" : 85`);
+    expect(ir.type).toBe(DiagramType.CHART_PIE);
+    expect(ir.nodes).toHaveLength(2);
+    expect(ir.nodes[0].label).toBe('Dogs\nDogs: 386');
+    expect(ir.nodes[1].label).toBe('Cats\nCats: 85');
+  });
+});
+
+describe('gitGraph import', () => {
+  it('imports commits and branches, chaining parent commits via edges', () => {
+    const ir = irOf(`gitGraph
+      commit id: "init"
+      branch feature
+      checkout feature
+      commit id: "add thing"
+      checkout main
+      merge feature`);
+    expect(ir.type).toBe(DiagramType.GITGRAPH);
+    expect(ir.nodes.map((n) => n.label)).toEqual([
+      'main: init',
+      'feature: add thing',
+      'main: merge feature',
+    ]);
+    expect(ir.edges).toHaveLength(2);
+  });
+});
+
+describe('mindmap import', () => {
+  it('builds a tree from indentation depth', () => {
+    const ir = irOf(`mindmap
+  root((Root))
+    Origins
+      Long history
+    Research
+      On effectiveness`);
+    expect(ir.type).toBe(DiagramType.MINDMAP);
+    expect(ir.nodes).toHaveLength(5);
+    expect(ir.nodes[0].label).toBe('Root');
+    // Origins and Research are both direct children of root.
+    const rootId = ir.nodes[0].id;
+    const childEdges = ir.edges.filter((e) => e.sourceId === rootId);
+    expect(childEdges).toHaveLength(2);
   });
 });

@@ -2343,15 +2343,16 @@ flowchart TD
 ````
 
 **Currently imported:** `flowchart`/`graph`, `sequenceDiagram`, `classDiagram`,
-`erDiagram`.
+`erDiagram`, `stateDiagram`/`stateDiagram-v2`, `gantt`, `pie`, `gitGraph`,
+`mindmap`. `subgraph` blocks import as real groups, not flattened nodes.
 
 **What happens to everything else:** the block renders exactly as it would if
-SelDiA weren't installed. A diagram type SelDiA can't import yet (`pie`, `gantt`,
-`gitGraph`…) falls through untouched to VS Code's own Mermaid support. Installing
-SelDiA never makes a Mermaid document render worse.
+SelDiA weren't installed. A diagram type SelDiA can't import (`journey`,
+`timeline`, `quadrantChart`, `requirementDiagram`…) falls through untouched to
+VS Code's own Mermaid support. Installing SelDiA never makes a Mermaid document
+render worse.
 
-**Known gap:** `subgraph` blocks are flattened — the nodes render, the grouping
-box doesn't. Styling directives (`style`, `classDef`, `linkStyle`) are ignored.
+**Known gap:** styling directives (`style`, `classDef`, `linkStyle`) are ignored.
 
 You can also render a Mermaid file straight from the CLI:
 

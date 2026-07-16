@@ -8,10 +8,11 @@
 // would make every Mermaid construct hostage to whatever the DSL can express,
 // which is the leak that would re-open the format war.
 //
-// Scope: flowchart, sequence, class, and ER — the four types that make up the
-// overwhelming bulk of Mermaid in the wild. Unsupported diagram types report a
-// diagnostic rather than throwing, so a document containing one bad block still
-// renders its other blocks.
+// Scope: flowchart, sequence, class, ER, state, gantt, pie, gitGraph, and
+// mindmap. Journey is deliberately not covered — there is no IR/renderer for
+// it anywhere in the engine yet (not a Mermaid-import gap, an engine gap).
+// Unsupported diagram types report a diagnostic rather than throwing, so a
+// document containing one bad block still renders its other blocks.
 // =============================================================================
 
 import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
@@ -37,6 +38,11 @@ const HEADER_TYPES: Array<[RegExp, DiagramType]> = [
   [/^sequenceDiagram\b/i, DiagramType.SEQUENCE],
   [/^classDiagram\b/i, DiagramType.CLASS],
   [/^erDiagram\b/i, DiagramType.ER],
+  [/^stateDiagram(-v2)?\b/i, DiagramType.STATE],
+  [/^gantt\b/i, DiagramType.GANTT],
+  [/^pie\b/i, DiagramType.CHART_PIE],
+  [/^gitGraph\b/i, DiagramType.GITGRAPH],
+  [/^mindmap\b/i, DiagramType.MINDMAP],
 ];
 
 /** Mermaid direction token → SelDiA layout direction. */
@@ -686,6 +692,315 @@ function importEr(lines: string[], diagnostics: MermaidImportDiagnostic[]): Diag
 }
 
 // -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+function importState(lines: string[], diagnostics: MermaidImportDiagnostic[]): DiagramIR {
+  const nodes = new Map<string, IRNode>();
+  const edges: IREdge[] = [];
+  let startCounter = 0, endCounter = 0;
+
+  // `[*]` is Mermaid's shared start/end pseudostate token; every occurrence on
+  // the source side of a transition is really a distinct start node, and every
+  // occurrence on the target side a distinct end node, or two unrelated
+  // transitions collapse onto the same pseudostate and render as one node with
+  // edges crossing between transitions that were never connected.
+  const ensure = (ref: string, isSource: boolean): string => {
+    if (ref !== '[*]') {
+      if (!nodes.has(ref)) nodes.set(ref, makeNode(ref, ref, ShapeType.ROUNDED_RECTANGLE));
+      return ref;
+    }
+    const id = isSource ? `__start_${startCounter++}` : `__end_${endCounter++}`;
+    nodes.set(id, makeNode(id, '[*]', ShapeType.CIRCLE));
+    return id;
+  };
+
+  lines.forEach((raw, i) => {
+    const lineNo = i + 1;
+    const line = raw.trim();
+    if (!line || line.startsWith('%%') || /^stateDiagram(-v2)?\b/i.test(line)) return;
+    if (/^(state|note|end|direction)\b/i.test(line)) return;
+
+    const m = line.match(/^(\[\*\]|[\w.-]+)\s*-->\s*(\[\*\]|[\w.-]+)\s*(?::\s*(.*))?$/);
+    if (!m) {
+      diagnostics.push({ line: lineNo, message: `Unrecognized state statement: "${line}"` });
+      return;
+    }
+    const source = ensure(m[1], true);
+    const target = ensure(m[2], false);
+    edges.push({
+      id: `st-${source}-${target}-${edges.length}`,
+      sourceId: source,
+      targetId: target,
+      label: m[3] ? cleanLabel(m[3]) : undefined,
+      style: {},
+      routing: EdgeRouting.ORTHOGONAL,
+      bidirectional: false,
+      classList: [],
+      data: {},
+    });
+  });
+
+  return {
+    id: 'mermaid-state',
+    type: DiagramType.STATE,
+    title: 'State Diagram',
+    nodes: [...nodes.values()],
+    edges,
+    groups: [],
+    layers: [],
+    metadata: { importedFrom: 'mermaid' },
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Gantt
+// -----------------------------------------------------------------------------
+
+const GANTT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Mermaid dates a task with `YYYY-MM-DD` and a duration/end like `5d` or
+ *  another `YYYY-MM-DD`; the SelDiA layout's own label parser
+ *  (`parseGanttLabel` in `custom-layout.ts`) only understands `"Mon D"` /
+ *  `"Mon D-D2"` text, so dates are converted to that vocabulary here rather
+ *  than passed through raw. */
+function ganttDateToLabel(iso: string): string {
+  const m = iso.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const month = GANTT_MONTHS[Math.max(0, Math.min(11, parseInt(m[1], 10) - 1))];
+  return `${month} ${parseInt(m[2], 10)}`;
+}
+
+function addDaysToIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function importGantt(lines: string[], diagnostics: MermaidImportDiagnostic[]): DiagramIR {
+  const nodes: IRNode[] = [];
+  let lastEndIso: string | null = null;
+
+  lines.forEach((raw, i) => {
+    const lineNo = i + 1;
+    const line = raw.trim();
+    if (!line || line.startsWith('%%') || /^gantt\b/i.test(line)) return;
+    if (/^(title|dateFormat|axisFormat|excludes|todayMarker|section)\b/i.test(line)) return;
+
+    // `Task name : [tag,] [id,] start, duration|end`
+    const parts = line.split(':');
+    if (parts.length < 2) {
+      diagnostics.push({ line: lineNo, message: `Unrecognized gantt statement: "${line}"` });
+      return;
+    }
+    const title = parts[0].trim();
+    const fields = parts.slice(1).join(':').split(',').map((f) => f.trim()).filter(Boolean);
+    // Drop Mermaid's optional status/tag tokens (active, done, crit, milestone)
+    // and an optional task id — only date-shaped fields carry the schedule.
+    const dateFields = fields.filter((f) => /^\d{4}-\d{2}-\d{2}$|^\d+[dwmh]$/i.test(f));
+    const isMilestone = /\bmilestone\b/i.test(line);
+
+    let startIso: string | null = null;
+    let endIso: string | null = null;
+    for (const f of dateFields) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(f)) {
+        if (!startIso) startIso = f; else endIso = f;
+      } else {
+        const dur = f.match(/^(\d+)d$/i);
+        const days = dur ? parseInt(dur[1], 10) : 1;
+        const base = startIso || lastEndIso;
+        if (base) endIso = addDaysToIso(base, days);
+      }
+    }
+    if (!startIso) startIso = lastEndIso || new Date().toISOString().slice(0, 10);
+    if (!endIso) endIso = isMilestone ? startIso : addDaysToIso(startIso, 1);
+    lastEndIso = endIso;
+
+    const id = `task-${nodes.length}`;
+    const label = isMilestone || startIso === endIso
+      ? `${title}: ${ganttDateToLabel(startIso)}`
+      : `${title}: ${ganttDateToLabel(startIso)}-${parseInt(endIso.slice(8, 10), 10)}`;
+    nodes.push(makeNode(id, label, ShapeType.RECTANGLE));
+  });
+
+  return {
+    id: 'mermaid-gantt',
+    type: DiagramType.GANTT,
+    title: 'Gantt Chart',
+    nodes,
+    edges: [],
+    groups: [],
+    layers: [],
+    metadata: { importedFrom: 'mermaid' },
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Pie
+// -----------------------------------------------------------------------------
+
+function importPie(lines: string[], diagnostics: MermaidImportDiagnostic[]): DiagramIR {
+  const nodes: IRNode[] = [];
+
+  lines.forEach((raw, i) => {
+    const lineNo = i + 1;
+    const line = raw.trim();
+    if (!line || line.startsWith('%%') || /^pie\b/i.test(line) || /^title\b/i.test(line)) return;
+
+    // `"Category" : 42.5`
+    const m = line.match(/^"([^"]*)"\s*:\s*(-?\d+(?:\.\d+)?)$/);
+    if (!m) {
+      diagnostics.push({ line: lineNo, message: `Unrecognized pie statement: "${line}"` });
+      return;
+    }
+    const [, category, value] = m;
+    // parseChartCategory (custom-renderers.ts) reads the label's first line as
+    // the category name and scans subsequent lines for "Name: number" — this
+    // two-line shape is what makes the slice carry its real value instead of
+    // defaulting to 1.
+    const label = `${category}\n${category}: ${value}`;
+    nodes.push(makeNode(`slice-${nodes.length}`, label, ShapeType.RECTANGLE));
+  });
+
+  return {
+    id: 'mermaid-pie',
+    type: DiagramType.CHART_PIE,
+    title: 'Pie Chart',
+    nodes,
+    edges: [],
+    groups: [],
+    layers: [],
+    metadata: { importedFrom: 'mermaid' },
+  };
+}
+
+// -----------------------------------------------------------------------------
+// GitGraph
+// -----------------------------------------------------------------------------
+
+function importGitgraph(lines: string[], diagnostics: MermaidImportDiagnostic[]): DiagramIR {
+  const nodes: IRNode[] = [];
+  const edges: IREdge[] = [];
+  let branch = 'main';
+  // Last commit id on each branch, for linear chaining and for `checkout`
+  // switching back to resume a branch's own history rather than main's.
+  const lastCommitOnBranch = new Map<string, string>();
+  let commitCounter = 0;
+
+  lines.forEach((raw, i) => {
+    const lineNo = i + 1;
+    const line = raw.trim();
+    if (!line || line.startsWith('%%') || /^gitGraph\b/i.test(line)) return;
+
+    const branchDecl = line.match(/^branch\s+([\w.\-/]+)/i);
+    if (branchDecl) {
+      branch = branchDecl[1];
+      if (!lastCommitOnBranch.has(branch)) {
+        // A new branch starts from wherever its parent branch currently is.
+        const parentTip = [...lastCommitOnBranch.values()].pop();
+        if (parentTip) lastCommitOnBranch.set(branch, parentTip);
+      }
+      return;
+    }
+    const checkout = line.match(/^checkout\s+([\w.\-/]+)/i);
+    if (checkout) { branch = checkout[1]; return; }
+
+    const commit = line.match(/^commit(?:\s+id:\s*"([^"]*)")?(?:\s+tag:\s*"([^"]*)")?/i);
+    if (commit) {
+      const message = commit[1] || `commit ${++commitCounter}`;
+      const id = `c${commitCounter}`;
+      nodes.push(makeNode(id, `${branch}: ${message}`, ShapeType.CIRCLE));
+      const parent = lastCommitOnBranch.get(branch);
+      if (parent) {
+        edges.push({
+          id: `git-${parent}-${id}`, sourceId: parent, targetId: id, style: {},
+          routing: EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {},
+        });
+      }
+      lastCommitOnBranch.set(branch, id);
+      return;
+    }
+
+    const merge = line.match(/^merge\s+([\w.\-/]+)/i);
+    if (merge) {
+      const fromTip = lastCommitOnBranch.get(merge[1]);
+      const intoTip = lastCommitOnBranch.get(branch);
+      const id = `c${++commitCounter}`;
+      nodes.push(makeNode(id, `${branch}: merge ${merge[1]}`, ShapeType.CIRCLE));
+      if (intoTip) edges.push({ id: `git-${intoTip}-${id}`, sourceId: intoTip, targetId: id, style: {}, routing: EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {} });
+      if (fromTip && fromTip !== intoTip) edges.push({ id: `git-${fromTip}-${id}`, sourceId: fromTip, targetId: id, style: {}, routing: EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {} });
+      lastCommitOnBranch.set(branch, id);
+      return;
+    }
+
+    diagnostics.push({ line: lineNo, message: `Unrecognized gitGraph statement: "${line}"` });
+  });
+
+  return {
+    id: 'mermaid-gitgraph',
+    type: DiagramType.GITGRAPH,
+    title: 'Git Graph',
+    nodes,
+    edges,
+    groups: [],
+    layers: [],
+    metadata: { importedFrom: 'mermaid' },
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Mindmap
+// -----------------------------------------------------------------------------
+
+/** Mermaid mindmap nesting is indentation-based, not bracket-delimited — each
+ *  line's leading whitespace depth determines its parent (the nearest
+ *  preceding line with strictly less indentation). */
+function importMindmap(lines: string[], diagnostics: MermaidImportDiagnostic[]): DiagramIR {
+  const nodes: IRNode[] = [];
+  const edges: IREdge[] = [];
+  // Stack of {indent, id} for ancestors currently in scope.
+  const stack: Array<{ indent: number; id: string }> = [];
+  let counter = 0;
+
+  lines.forEach((raw, i) => {
+    const lineNo = i + 1;
+    if (!raw.trim() || raw.trim().startsWith('%%') || /^mindmap\b/i.test(raw.trim())) return;
+
+    const indent = raw.length - raw.trimStart().length;
+    let text = raw.trim();
+    // Strip Mermaid's optional shape delimiters around the node text, e.g.
+    // `root((Root))`, `id[Rect]`, `id(Rounded)` — reuse the flowchart shape
+    // table so a mindmap node's chosen shape carries through too.
+    const parsed = parseNodeRef(text) || { id: `mm-${counter}`, label: text, shape: ShapeType.RECTANGLE };
+    const id = `mm-${counter++}`;
+    nodes.push(makeNode(id, parsed.label || text, parsed.shape));
+
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    const parent = stack[stack.length - 1];
+    if (parent) {
+      edges.push({
+        id: `mm-edge-${parent.id}-${id}`, sourceId: parent.id, targetId: id, style: {},
+        routing: EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {},
+      });
+    } else if (nodes.length > 1) {
+      diagnostics.push({ line: lineNo, message: `Mindmap node "${text}" has no parent (indentation may be inconsistent)` });
+    }
+    stack.push({ indent, id });
+  });
+
+  return {
+    id: 'mermaid-mindmap',
+    type: DiagramType.MINDMAP,
+    title: 'Mindmap',
+    nodes,
+    edges,
+    groups: [],
+    layers: [],
+    metadata: { importedFrom: 'mermaid' },
+  };
+}
+
+// -----------------------------------------------------------------------------
 // Entry point
 // -----------------------------------------------------------------------------
 
@@ -697,7 +1012,7 @@ export function isMermaidSource(source: string): boolean {
     .find((l) => l && !l.startsWith('%%') && !l.startsWith('---'));
   if (!first) return false;
   return HEADER_TYPES.some(([re]) => re.test(first)) ||
-    /^(stateDiagram|gantt|pie|journey|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram)\b/i.test(first);
+    /^(journey|timeline|quadrantChart|requirementDiagram)\b/i.test(first);
 }
 
 /**
@@ -724,7 +1039,7 @@ export function importMermaid(source: string): MermaidImportResult {
   if (!match) {
     diagnostics.push({
       line: 1,
-      message: `Unsupported Mermaid diagram type: "${first.split(/\s+/)[0]}". Supported: flowchart, sequenceDiagram, classDiagram, erDiagram.`,
+      message: `Unsupported Mermaid diagram type: "${first.split(/\s+/)[0]}". Supported: flowchart, sequenceDiagram, classDiagram, erDiagram, stateDiagram, gantt, pie, gitGraph, mindmap.`,
     });
     return { diagnostics };
   }
@@ -738,6 +1053,16 @@ export function importMermaid(source: string): MermaidImportResult {
       return { ir: importClass(lines, diagnostics), diagnostics };
     case DiagramType.ER:
       return { ir: importEr(lines, diagnostics), diagnostics };
+    case DiagramType.STATE:
+      return { ir: importState(lines, diagnostics), diagnostics };
+    case DiagramType.GANTT:
+      return { ir: importGantt(lines, diagnostics), diagnostics };
+    case DiagramType.CHART_PIE:
+      return { ir: importPie(lines, diagnostics), diagnostics };
+    case DiagramType.GITGRAPH:
+      return { ir: importGitgraph(lines, diagnostics), diagnostics };
+    case DiagramType.MINDMAP:
+      return { ir: importMindmap(lines, diagnostics), diagnostics };
     default:
       return { diagnostics };
   }

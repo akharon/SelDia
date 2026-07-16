@@ -371,7 +371,7 @@ class SelDiAEngine implements CoreEngine {
     const legendH = chartLegendHeight(chartSeriesNames, bw);
     const bh = bounds.height + pad * 2 + legendH;
     const bg = this.config.render.background || '#ffffff';
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}">\n`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="100%" style="max-width:${bw}px">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);
 

@@ -49,9 +49,9 @@ echo ""
 # ── Step 2: Build the extension ──────────────────────────────────────────────
 echo "📦 Step 2: Building extension..."
 if [ "$DEV_MODE" = true ]; then
-  npx turbo run build --filter=seldia-vscode 2>&1 | tail -3
+  npx turbo run build --force --filter=seldia-vscode 2>&1 | tail -3
 else
-  npm run build 2>&1 | tail -3
+  npx turbo run build --force 2>&1 | tail -3
 fi
 echo "   ✅ Build complete"
 echo ""

@@ -57,7 +57,7 @@ echo ""
 # ── Build step ────────────────────────────────────────────────
 if [ "$SKIP_BUILD" = false ]; then
   echo -e "${YELLOW}🔨 Building all packages...${NC}"
-  if ! npx turbo run build 2>&1; then
+  if ! npx turbo run build --force 2>&1; then
     echo ""
     echo -e "${RED}✗ Build failed${NC}"
     exit 1

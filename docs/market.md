@@ -98,17 +98,33 @@ More diagram types. **SelDiA already has 30 and is losing to tools with 15.** Ty
 
 ---
 
-## 5. Positioning
+## 5. Positioning — the category change
 
-**Avoid:** "The tool with the most diagram types." Type coverage is a real strength but a losing pitch — it's what D2 tried on quality, and breadth doesn't move someone off a format their platform already renders.
+**The surgical move: stop being a third diagram *format* and become the diagram *engine* that runs everyone's — Mermaid and PlantUML included.** You don't beat an incumbent format in a format war; you demote it to an input your engine supports.
 
-**Recommended:**
+### The frame inversion
 
-> **"Diagrams your agents can maintain. Generate with any AI, keep them true in your repo."**
+- **Old frame (losing):** "SelDiA vs. Mermaid" — a format war against a format with native GitHub rendering and total LLM training-data coverage. This is D2's four-year losing script.
+- **New frame (winning):** "SelDiA runs your Mermaid." Users keep their format, their GitHub rendering, their AI-generation habits. SelDiA sits underneath as the engine that parses, validates, queries, and keeps diagrams true — the layer neither competitor has an architecture for.
 
-Target: engineering teams whose docs are drifting out of date faster than they can hand-fix them — architecture docs, ADRs, runbooks. The wedge is *drift*, not drawing. That's a problem Mermaid structurally cannot solve (no IR, no diagnostics, no sync) and PlantUML won't (no markdown-native path, no agent story).
+### Why this wins rather than merely competes
 
-**The honest risk:** SelDiA is a full alternative *ecosystem* — DSL, renderer, extension, CLI — competing against a format with native platform rendering and total LLM training-data coverage. That is a hard fight on the merits and an unwinnable one head-on. The Mermaid-import bridge is what converts it from "replace your format" to "improve your format," which is the only version of this fight that's winnable.
+1. **It converts both competitors' strengths into distribution.** Every Mermaid diagram in every repo becomes SelDiA's addressable market on day one — no rewrite, no lock-in, no training-data problem. Mermaid's ubiquity stops being the wall and becomes the funnel.
+2. **It's structurally uncopyable by the incumbents.** Mermaid can't become an engine — it's a parser bolted to a renderer with a decade of syntax debt. PlantUML can't — a Java monolith with no markdown path. SelDiA's IR is the only asset in this market that supports the engine position.
+3. **It rides the real trend.** Most diagrams will soon be AI-generated and AI-read (§3). In that world nobody wins by owning the syntax humans type; the winner owns the layer agents call. Formats commoditize; engines don't.
+
+### The pitch
+
+> **"Keep your Mermaid. SelDiA keeps it true."**
+> The diagram engine agents use to render, validate, and maintain any diagram-as-code format in your repo.
+
+The three-word test: Mermaid is *a format*. PlantUML is *a tool*. **SelDiA is *the engine*.** Positioned this way, SelDiA never argues syntax again — the SelDiA DSL becomes the engine's native format for those who want its full power, not the price of admission.
+
+**Avoid:** "The tool with the most diagram types." Type breadth is real but it's a *format-war* pitch — it concedes the losing frame. Same for "better-looking output" (D2's failed pitch).
+
+Target: engineering teams whose architecture docs, ADRs, and runbooks drift out of date faster than anyone hand-fixes them. The wedge is *drift*, not drawing — a problem Mermaid structurally cannot solve (no IR, no diagnostics, no sync) and PlantUML won't (no markdown-native path, no agent story).
+
+**The honest risk, restated under the new frame:** the engine position is only credible if Mermaid ingestion is excellent — not a demo-grade importer. A leaky bridge re-opens the format war. Mermaid import is therefore not one feature among several; it is the positioning itself, made executable.
 
 ---
 

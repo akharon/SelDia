@@ -7,9 +7,11 @@
 
 ## 1. The strategic bet (from market.md)
 
-> **Mermaid is the format AI writes. SelDiA should be the format AI maintains.**
+> **SelDiA is not a third diagram format. It is the diagram *engine* that runs everyone's — Mermaid and PlantUML included.**
 
-Generation is commodity — every frontier LLM already knows Mermaid syntax, none know SelDiA's. Competing there is unwinnable head-on (see D2's four years of losing to Mermaid on pure capability). The unclaimed ground is **maintenance**: keeping a diagram true as the system it describes drifts, which requires an IR, diagnostics, and round-tripping — the one set of assets SelDiA has that Mermaid structurally doesn't.
+The category change, not a feature fight: a format war against Mermaid (native GitHub rendering, total LLM training coverage) is unwinnable — it's D2's four-year losing script. Instead, demote the competition to input formats. Users keep their Mermaid; SelDiA sits underneath as the engine that parses, validates, queries, and keeps diagrams true as the system drifts. That layer requires an IR, diagnostics, and round-tripping — the one set of assets SelDiA has that neither competitor's architecture can grow.
+
+The pitch: **"Keep your Mermaid. SelDiA keeps it true."** Mermaid is a format, PlantUML is a tool, SelDiA is the engine. The SelDiA DSL remains the engine's native format for those who want its full power — not the price of admission.
 
 Everything in Tier 1 below serves that bet directly. Tier 2/3 are real but should wait.
 
@@ -19,7 +21,18 @@ Everything in Tier 1 below serves that bet directly. Tier 2/3 are real but shoul
 
 ### Tier 1 — do these next, in order
 
-**1. Mermaid import.** Highest leverage item in the project. Parse Mermaid syntax into SelDiA's IR (`packages/core/src/ir/types.ts`) and render it through SelDiA's engine. This neutralizes the training-data gap (any LLM writes Mermaid → SelDiA ingests and renders it better) and removes the adoption cliff (no rewrite required to try SelDiA). Export back to Mermaid where the IR maps cleanly, so output can still ride GitHub's native rendering.
+**1. Mermaid import — foundation landed, not finished.** This is the engine positioning made executable, and it must be excellent rather than demo-grade (a leaky bridge re-opens the format war).
+
+*Shipped:* a Mermaid→IR frontend ([`core/src/import/mermaid.ts`](../packages/core/src/import/mermaid.ts)) covering **flowchart, sequence, class, and ER** — the bulk of real-world Mermaid. It's a true frontend (source→IR directly, not a translation through SelDiA DSL text), joined to the pipeline by `engine.compileIRSync(ir)`. Reachable two ways: ` ```mermaid ` fences now render through SelDiA in the Markdown preview, and `seldia mermaid <file.mmd>` renders from the CLI. Covered by 27 importer tests + 9 preview tests.
+
+*The safety property to preserve:* an unimportable block **falls back to the default fence**, so installing SelDiA can never make a Mermaid document render worse than not having it. Never replace that fallback with a SelDiA error box in a document whose author never asked for SelDiA.
+
+*Still open, in rough priority order:*
+- **Subgraphs** — currently flattened (nodes survive, the grouping is lost). The IR has `groups`; wire them up. This is the biggest single fidelity gap.
+- **State, gantt, pie, gitgraph, mindmap, journey** — all have IR equivalents already; each is an importer function, not new engine work.
+- **Styling directives** — `style`/`classDef`/`linkStyle` are skipped; they map onto `IRNode.style`.
+- **Mermaid export** — the return leg. Emit Mermaid from IR where it maps cleanly, so output still rides GitHub's native rendering. Nothing exists yet.
+- **A fidelity corpus** — pull real Mermaid from public repos and diff imported-vs-expected structure. "Excellent, not demo-grade" needs evidence, and unit tests on hand-written samples aren't it. Note the two bugs found only by rendering to SVG and *looking* (class members and ER attributes silently dropped, because both renderers read structure from the newline-joined label rather than a `data` bag) — the class of bug that unit tests on IR shape cannot catch.
 
 **2. Rendering-distribution path.** SelDiA cannot beat GitHub's native Mermaid rendering, so route around it instead of competing with it: a GitHub Action that renders `.seldia`/` ```seldia ` blocks to committed SVG on push, and promotion of the existing `<seldia-viewer>` web component as the embeddable answer. A diagram that only renders inside one editor's preview pane isn't solving the maintenance problem for a team.
 
@@ -55,6 +68,7 @@ Most items from the rendering-quality pass (per-type visual grammar, `\n`→`<ts
 
 ## 4. Positioning (from market.md)
 
-> "Diagrams your agents can maintain. Generate with any AI, keep them true in your repo."
+> "Keep your Mermaid. SelDiA keeps it true."
+> The diagram engine agents use to render, validate, and maintain any diagram-as-code format in your repo.
 
-Target: teams whose architecture docs/ADRs/runbooks drift out of date faster than anyone hand-fixes them. That's a problem Mermaid can't solve (no IR, no diagnostics, no sync) and PlantUML won't (no markdown-native path, no agent story). The wedge is drift, not drawing — see [market.md §5](market.md#5-positioning) for the full reasoning and the risk that comes with it.
+Target: teams whose architecture docs/ADRs/runbooks drift out of date faster than anyone hand-fixes them. That's a problem Mermaid can't solve (no IR, no diagnostics, no sync) and PlantUML won't (no markdown-native path, no agent story). The wedge is drift, not drawing; the category is *engine*, not *format* — see [market.md §5](market.md#5-positioning--the-category-change) for the full reasoning and the risk that comes with it.

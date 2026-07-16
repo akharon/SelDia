@@ -57,24 +57,23 @@
 
 ### What is SelDiA?
 
-SelDiA (**Sel**f-**Di**agramming **A**rchitecture) is a **text-based Diagram-as-Code** tool. You describe diagrams in a clean, human-readable language, and SelDiA renders them with a distinctive **hand-drawn aesthetic** powered by Rough.js.
+SelDiA (**Sel**f-**Di**agramming **A**rchitecture) is a **diagram engine** for text-based Diagram-as-Code. It parses diagrams into a typed intermediate representation (IR), renders them with a distinctive hand-drawn aesthetic powered by Rough.js, validates them, and exposes them as structures that tools and agents can query and maintain.
+
+The important word is *engine*, not *format*. Mermaid is a format; PlantUML is a tool; SelDiA is the layer underneath that can run either one. You keep the syntax you already write — SelDiA is what renders and maintains it.
 
 ### Why SelDiA?
 
-| Feature | SelDiA |
-|---------|--------|
-| **One language** for ALL diagram types | ✅ Flowcharts, sequences, class, C4, BPMN, charts, forms… |
-| **Hand-drawn look** | ✅ Unique Rough.js sketchy rendering |
-| **Version-controllable** | ✅ Plain text `.seldia` files — diff, merge, review |
-| **Auto-layout** | ✅ Intelligent positioning; manual overrides supported |
-| **Interactive** | ✅ Zoom, pan, expand/collapse in web views |
-| **Export anywhere** | ✅ SVG, PNG, PDF, HTML |
-| **VS Code native** | ✅ Syntax highlighting, live preview, autocomplete |
-| **Free & open source** | ✅ MIT licensed |
+Anything can draw a diagram. The problem SelDiA is built for is what happens *after*: a diagram that was true six months ago and quietly isn't anymore.
+
+- **You don't have to switch formats.** Keep your Mermaid, keep your GitHub rendering, keep letting AI generate it from memory. SelDiA runs it.
+- **Your diagram is a structure, not a picture.** The IR sits between text and pixels, so a diagram can be queried ("what depends on auth-service?"), mutated, and written back — not just re-drawn from scratch.
+- **Mistakes surface instead of rendering.** LSP diagnostics mean a broken diagram *tells you*. Formats without an IR fail silently or render garbage; that matters most when the author is a model, because a model can be told it's wrong and fix itself.
+- **One engine, 30 diagram types.** Flowcharts, sequences, class, C4, BPMN, DMN, ER, gantt, mindmap, sankey, gitgraph, charts, forms — the SelDiA DSL is the engine's native format, available in full when you want it.
+- **The usual table stakes**, all present: plain-text and version-controllable, auto-layout with manual overrides, SVG/PNG/PDF/HTML export, VS Code integration, MIT licensed.
 
 ### File Extension
 
-SelDiA diagrams use the `.seldia` file extension.
+SelDiA diagrams use the `.sld` file extension (this is what the VS Code extension and `examples/` use; some older docs say `.seldia`).
 
 ---
 
@@ -2088,6 +2087,10 @@ group <id> "<label>" {
 ### 9.1 Commands
 
 ```bash
+# Render an existing Mermaid file through the SelDiA engine — no conversion,
+# no new file: the .mmd stays your source of truth.
+seldia mermaid diagram.mmd -o output.svg
+
 # Compile a diagram to SVG
 seldia compile diagram.seldia -o output.svg
 
@@ -2321,6 +2324,40 @@ The system provides a modern web interface for banking operations.
 | Generic | ` ```seldia ` |
 | Type-specific | ` ```seldia-flowchart `, ` ```seldia-c4context ` |
 | Comment-hint | ` ``` ` with `// seldia flowchart "Title"` as first line |
+| **Mermaid** | ` ```mermaid ` — your existing blocks, rendered by SelDiA (see below) |
+
+### 11.3.1 Your existing Mermaid blocks
+
+You don't need to convert anything. SelDiA renders ` ```mermaid ` fences through
+its own engine, in place, with the same toolbar (zoom, export, view source) as a
+native block. Your source stays Mermaid — it still renders natively on GitHub,
+and your AI can still write it from memory.
+
+````markdown
+```mermaid
+flowchart TD
+    A[User visits /login] --> B{Has session?}
+    B -->|Yes| C[(Load profile)]
+    B -->|No| D[Show login form]
+```
+````
+
+**Currently imported:** `flowchart`/`graph`, `sequenceDiagram`, `classDiagram`,
+`erDiagram`.
+
+**What happens to everything else:** the block renders exactly as it would if
+SelDiA weren't installed. A diagram type SelDiA can't import yet (`pie`, `gantt`,
+`gitGraph`…) falls through untouched to VS Code's own Mermaid support. Installing
+SelDiA never makes a Mermaid document render worse.
+
+**Known gap:** `subgraph` blocks are flattened — the nodes render, the grouping
+box doesn't. Styling directives (`style`, `classDef`, `linkStyle`) are ignored.
+
+You can also render a Mermaid file straight from the CLI:
+
+```bash
+seldia mermaid architecture.mmd -o architecture.svg
+```
 
 ### 11.4 Visual Editing
 

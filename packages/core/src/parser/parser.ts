@@ -303,15 +303,19 @@ const SHAPE_KEYWORDS = new Set([
   'hexagon', 'hex', 'parallelogram', 'para', 'cylinder', 'cyli', 'db',
   'cloud', 'stadium', 'flag', 'actor', 'person', 'system', 'queue',
   'boundary', 'control', 'entity', 'database', 'storage',
-  'container', 'component',
+  'container', 'component', 'gateway',
 ]);
 
 function isShapeKeyword(word: string): boolean {
-  return SHAPE_KEYWORDS.has(word.toLowerCase());
+  // Strip C4 _Ext / _ext suffix so system_Ext matches 'system'
+  const normalized = word.replace(/_ext$/i, '');
+  return SHAPE_KEYWORDS.has(normalized.toLowerCase());
 }
 
 function shapeKeywordToShapeType(word: string): ShapeType {
-  switch (word.toLowerCase()) {
+  // Normalize: strip _Ext / _ext suffix before lookup
+  const normalized = word.replace(/_ext$/i, '').toLowerCase();
+  switch (normalized) {
     case 'rounded': case 'round': return ShapeType.ROUNDED_RECTANGLE;
     case 'rect': case 'rectangle': return ShapeType.RECTANGLE;
     case 'diamond': return ShapeType.DIAMOND;
@@ -323,6 +327,7 @@ function shapeKeywordToShapeType(word: string): ShapeType {
     case 'stadium': return ShapeType.STADIUM;
     case 'flag': case 'note': return ShapeType.NOTE;
     case 'actor': case 'person': case 'user': return ShapeType.ACTOR;
+    case 'gateway': return ShapeType.DIAMOND;
     case 'system': case 'container': case 'component':
     case 'queue': case 'boundary':
     case 'control': case 'entity': return ShapeType.RECTANGLE;
@@ -518,6 +523,7 @@ class Parser {
       chart: 'chart', git: 'gitgraph',
       form: 'form', sankey: 'sankey',
       block: 'block', time: 'timeline',
+      wireframe: 'wireframe', cloud: 'cloud',
     };
     type = TYPE_ALIASES[type] || type;
 
@@ -1219,7 +1225,8 @@ export function checkSyntax(source: string, filePath?: string): SyntaxCheckResul
   const diagramTypes = ['fl','seq','cls','er','st','uc','act','comp','deploy',
     'bpmn','dmn','gantt','mind','net','chart','git','form','sankey','block','time',
     'c4c','c4con','c4comp','c4code','flowchart','sequence','class','state','usecase',
-    'activity','component','deployment','mindmap','network','gitgraph','timeline'];
+    'activity','component','deployment','mindmap','network','gitgraph','timeline',
+    'wireframe','cloud','wire','chart-bar','chart-line','chart-pie','chart-radar','chart-scatter'];
   const firstWord = source.trim().split(/[\s"{]/)[0].toLowerCase();
   if (!diagramTypes.includes(firstWord) && !/^diagram\b/i.test(source.trim())) {
     diagnostics.push({

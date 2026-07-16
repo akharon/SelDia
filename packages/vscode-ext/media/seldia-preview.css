@@ -119,7 +119,10 @@
   min-height: 100px;
   /* No max-height or overflow:auto here — the container's height adapts to
      the diagram's natural height so the diagram window always fits its
-     content without scrollbars or empty space. */
+     content without scrollbars or empty space.
+     overflow:visible is essential when zoomed out via CSS transform so the
+     scaled-down SVG doesn't get clipped by the container bounds. */
+  overflow: visible;
   border-radius: 0 0 3px 3px;
 }
 

@@ -32,18 +32,33 @@
     return container.querySelector('.seldia-diagram-svg svg') as SVGSVGElement | null;
   }
   function naturalSize(svg: SVGSVGElement): { w: number; h: number } {
-    const w = svg.viewBox?.baseVal?.width || svg.width.baseVal.value || svg.getBoundingClientRect().width;
-    const h = svg.viewBox?.baseVal?.height || svg.height.baseVal.value || svg.getBoundingClientRect().height;
+    // Use viewBox dimensions when available — they represent the diagram's
+    // intrinsic size regardless of CSS scaling. Fall back to bounding rect
+    // only when viewBox is absent.
+    const vb = svg.viewBox;
+    if (vb && vb.baseVal && vb.baseVal.width > 0 && vb.baseVal.height > 0) {
+      return { w: vb.baseVal.width, h: vb.baseVal.height };
+    }
+    const w = svg.width.baseVal.value || svg.getBoundingClientRect().width;
+    const h = svg.height.baseVal.value || svg.getBoundingClientRect().height;
     return { w, h };
   }
   function applyZoom(container: HTMLElement, blockId: string, scale: number) {
     const svg = svgOf(container);
     if (!svg) return;
     const { w, h } = naturalSize(svg);
-    svg.style.transform = '';
-    svg.style.width = `${w * scale}px`;
-    svg.style.height = `${h * scale}px`;
-    svg.style.maxWidth = 'none';
+    // Use CSS transform: scale() instead of explicit width/height so the
+    // SVG's natural layout size stays unchanged and the browser handles
+    // visual scaling from the center via transform-origin. This keeps the
+    // viewBox intact, avoids clipping at the container edges, and lets the
+    // container's overflow:visible show the entire scaled diagram.
+    svg.style.width = `${w}px`;
+    svg.style.height = `${h}px`;
+    svg.style.transform = `scale(${scale})`;
+    svg.style.transformOrigin = 'top left';
+    // When scaled down, the SVG occupies less visual space than its layout
+    // box — shift the container's justify-content:center to keep it centred.
+    svg.style.marginRight = `${w * (1 - scale)}px`;
     zoomState.set(blockId, scale);
   }
   function scaleOf(blockId: string): number {

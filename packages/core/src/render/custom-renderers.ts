@@ -328,34 +328,30 @@ export function renderGanttDependency(edge: IREdge, pad: number, sketchy: boolea
 // Mindmap — organic radial nodes + curved connectors
 // -----------------------------------------------------------------------------
 
-export function renderMindmapNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch, isRoot: boolean): string {
+export function renderMindmapNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch, isRoot: boolean, branchColor: string): string {
   const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
   const cx = x + w / 2, cy = y + h / 2;
   const seed = seedFor(node.id);
   const depth = ((node.data as any)?.mindmapDepth as number) ?? (isRoot ? 0 : 1);
-  // Depth reads visually as: filled+bold at the root, progressively lighter
-  // fill / thinner stroke / smaller text further out — the "levels" a radial
-  // map needs so branch depth is legible without following every line.
-  // A group-level opacity (rather than a `fill-opacity` attribute) tapers
-  // both the sketchy Rough.js strokes and the plain-SVG fallback alike —
-  // Rough.js has no opacity option of its own, so a per-attribute fill-opacity
-  // would only ever show up in the non-sketchy path.
   const groupOpacity = isRoot ? 1 : Math.max(0.55, 1 - depth * 0.14);
-  const fill = isRoot ? swatch.stroke : swatch.fill;
+  // Root uses its own swatch; branches use their assigned palette colour
+  // so each main branch is visually distinct while its sub-branches keep
+  // the same hue (just lighter with depth).
+  const fill = isRoot ? swatch.stroke : branchColor;
   const textColor = isRoot ? '#ffffff' : swatch.text;
   const strokeW = isRoot ? 2.25 : Math.max(1, DS.stroke.node - (depth - 1) * 0.25);
   const fontSize = Math.max(10, DS.fontSize.label - (depth - 1) * 1.5);
-  const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: strokeW, fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+  const style: RoughStyle = { stroke: branchColor, strokeWidth: strokeW, fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = `    <g opacity="${groupOpacity}">\n`;
   el += sketchy
     ? roughRect(x, y, w, h, style)
-    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${swatch.stroke}" stroke-width="${strokeW}"/>\n`;
+    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${branchColor}" stroke-width="${strokeW}"/>\n`;
   el += textBlock(cx, cy + fontSize * 0.35, Math.round(fontSize * 1.3), fontSize, DS.fontFamily, textColor, node.label, 'middle', isRoot ? '700' : depth <= 1 ? '600' : '500');
   el += '    </g>\n';
   return el;
 }
 
-export function renderMindmapBranch(edge: IREdge, pad: number, sketchy: boolean, stroke: string): string {
+export function renderMindmapBranch(edge: IREdge, pad: number, sketchy: boolean, branchColor: string): string {
   const wps = edge.waypoints || [];
   if (wps.length < 2) return '';
   const a = { x: wps[0].x + pad, y: wps[0].y + pad };
@@ -366,10 +362,10 @@ export function renderMindmapBranch(edge: IREdge, pad: number, sketchy: boolean,
   if (sketchy) {
     const seed = seedFor(edge.id);
     const mx = (a.x + b.x) / 2;
-    return roughLine(a.x, a.y, mx, a.y, { stroke, strokeWidth: 2, roughness: 1.1, seed })
-      + roughLine(mx, cpy, b.x, b.y, { stroke, strokeWidth: 2, roughness: 1.1, seed: seed + 1 });
+    return roughLine(a.x, a.y, mx, a.y, { stroke: branchColor, strokeWidth: 2, roughness: 1.1, seed })
+      + roughLine(mx, cpy, b.x, b.y, { stroke: branchColor, strokeWidth: 2, roughness: 1.1, seed: seed + 1 });
   }
-  return `    <path d="M ${a.x} ${a.y} Q ${cpx} ${cpy} ${b.x} ${b.y}" fill="none" stroke="${stroke}" stroke-width="2"/>\n`;
+  return `    <path d="M ${a.x} ${a.y} Q ${cpx} ${cpy} ${b.x} ${b.y}" fill="none" stroke="${branchColor}" stroke-width="2"/>\n`;
 }
 
 // -----------------------------------------------------------------------------

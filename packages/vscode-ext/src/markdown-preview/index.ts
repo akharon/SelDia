@@ -46,19 +46,13 @@
   function applyZoom(container: HTMLElement, blockId: string, scale: number) {
     const svg = svgOf(container);
     if (!svg) return;
-    const { w, h } = naturalSize(svg);
-    // Use CSS transform: scale() instead of explicit width/height so the
-    // SVG's natural layout size stays unchanged and the browser handles
-    // visual scaling from the center via transform-origin. This keeps the
-    // viewBox intact, avoids clipping at the container edges, and lets the
-    // container's overflow:visible show the entire scaled diagram.
-    svg.style.width = `${w}px`;
-    svg.style.height = `${h}px`;
+    // Use CSS transform: scale() from the centre so the diagram stays
+    // visually centred without changing its layout size. No explicit
+    // width/height — the SVG's natural width="100%" fills the container
+    // and transform scales the painting from the middle outward/inward.
+    // overflow:visible on the parent lets zoomed-in content breathe.
     svg.style.transform = `scale(${scale})`;
-    svg.style.transformOrigin = 'top left';
-    // When scaled down, the SVG occupies less visual space than its layout
-    // box — shift the container's justify-content:center to keep it centred.
-    svg.style.marginRight = `${w * (1 - scale)}px`;
+    svg.style.transformOrigin = 'center center';
     zoomState.set(blockId, scale);
   }
   function scaleOf(blockId: string): number {

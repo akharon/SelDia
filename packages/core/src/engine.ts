@@ -485,7 +485,9 @@ class SelDiAEngine implements CoreEngine {
     if (diagramType === DiagramType.GANTT) return renderGanttRow(node, pad, sketchy, swatch);
     if (diagramType === DiagramType.MINDMAP) {
       const isRoot = (node.data as any)?.mindmapRoot === true;
-      return renderMindmapNode(node, pad, sketchy, swatch, isRoot);
+      const branchIdx = ((node.data as any)?.mindmapBranch as number) ?? 0;
+      const branchColor = isRoot ? swatch.stroke : seriesColor(branchIdx);
+      return renderMindmapNode(node, pad, sketchy, swatch, isRoot, branchColor);
     }
     if (diagramType === DiagramType.GITGRAPH) return renderGitCommit(node, pad, sketchy);
     if (diagramType === DiagramType.C4_CONTEXT || diagramType === DiagramType.C4_CONTAINER || diagramType === DiagramType.C4_COMPONENT) {
@@ -683,7 +685,11 @@ class SelDiAEngine implements CoreEngine {
       return renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed);
     }
     if (diagramType === DiagramType.GANTT) return renderGanttDependency(edge, pad, sketchy, typeAccent.stroke);
-    if (diagramType === DiagramType.MINDMAP) return renderMindmapBranch(edge, pad, sketchy, typeAccent.stroke);
+    if (diagramType === DiagramType.MINDMAP) {
+      const srcNode = byId?.get(edge.sourceId);
+      const branchIdx = ((srcNode?.data as any)?.mindmapBranch as number) ?? 0;
+      return renderMindmapBranch(edge, pad, sketchy, seriesColor(branchIdx));
+    }
     if (diagramType === DiagramType.GITGRAPH) {
       const srcLane = (edge.data as any)?.srcLane;
       return renderGitLane(edge, pad, sketchy, srcLane ?? 0);

@@ -201,9 +201,11 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
   const byId = new Map(ir.nodes.map((n) => [n.id, n]));
   const positions = new Map<string, Point>();
   const depths = new Map<string, number>();
+  const branchIdx = new Map<string, number>(); // root→0, each root-child→0,1,2… inherited by descendants
   const cx = 500, cy = 400;
   positions.set(rootNode.id, { x: cx, y: cy });
   depths.set(rootNode.id, 0);
+  branchIdx.set(rootNode.id, 0);
 
   // Ring radius per depth uses a diminishing gap (each level 78% of the
   // previous) so the map tapers inward instead of spacing every level by the
@@ -215,7 +217,7 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
     for (let d = 1; d <= depth; d++) { r += gap; gap *= 0.78; }
     return r;
   };
-  function place(id: string, depth: number, angleStart: number, angleEnd: number) {
+  function place(id: string, depth: number, angleStart: number, angleEnd: number, parentBranch: number) {
     const kids = childrenOf.get(id) || [];
     if (kids.length === 0) return;
     const span = angleEnd - angleStart;
@@ -225,7 +227,8 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
       const r = ringRadius(depth);
       positions.set(kidId, { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
       depths.set(kidId, depth);
-      place(kidId, depth + 1, angle - step / 2 * 0.9, angle + step / 2 * 0.9);
+      branchIdx.set(kidId, parentBranch);
+      place(kidId, depth + 1, angle - step / 2 * 0.9, angle + step / 2 * 0.9, parentBranch);
     });
   }
   // Full circle fan for the root's direct children; each branch then gets its
@@ -236,8 +239,9 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
     const r1 = ringRadius(1);
     positions.set(kidId, { x: cx + r1 * Math.cos(angle), y: cy + r1 * Math.sin(angle) });
     depths.set(kidId, 1);
+    branchIdx.set(kidId, i);
     const fanWidth = Math.PI / Math.max(1, rootKids.length) * 1.6;
-    place(kidId, 2, angle - fanWidth / 2, angle + fanWidth / 2);
+    place(kidId, 2, angle - fanWidth / 2, angle + fanWidth / 2, i);
   });
 
   // Node size and stroke weight taper with depth — the root reads as the
@@ -254,7 +258,7 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
     const x = p.x - w / 2, y = p.y - h / 2;
     minX = Math.min(minX, x); minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
-    return { ...n, position: { x, y }, size: { width: w, height: h }, data: { ...n.data, mindmapRoot: n.id === rootNode.id, mindmapDepth: depth } };
+    return { ...n, position: { x, y }, size: { width: w, height: h }, data: { ...n.data, mindmapRoot: n.id === rootNode.id, mindmapDepth: depth, mindmapBranch: branchIdx.get(n.id) ?? 0 } };
   });
   const shiftX = -minX + 40, shiftY = -minY + 40;
   const shifted = nodes.map((n) => ({ ...n, position: { x: n.position.x + shiftX, y: n.position.y + shiftY } }));

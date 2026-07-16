@@ -2038,7 +2038,8 @@ SelDiA/
 │
 ├── docs/                            # Documentation
 │   ├── arch.md                      # Architecture & design document (this file)
-│   ├── plan.md                      # Implementation plan & roadmap
+│   ├── market.md                    # Competitive position vs. Mermaid/PlantUML/D2
+│   ├── next_steps.md                # Current roadmap & open technical debt
 │   ├── user_guide.md                # User guide with DSL reference
 │   │   ├── dsl-reference.md
 │   │   ├── diagram-types/

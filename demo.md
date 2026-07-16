@@ -44,62 +44,62 @@ Each diagram block has a toolbar with three modes:
 ## Flowchart
 
 ```seldia
-diagram flowchart "User Login" {
-    start: (Start)
-    login: [Enter Credentials]
-    validate: {Valid?}
-    dashboard: [Show Dashboard]
-    error: [Show Error]
+fl "User Login" {
+    start (Start)
+    login [Enter Credentials]
+    validate diamond "Valid?"
+    dashboard [Show Dashboard]
+    error [Show Error]
 
-    start --> login
-    login --> validate
-    validate --> dashboard: "yes"
-    validate --> error: "no"
-    error --> login
+    start -> login
+    login -> validate
+    validate -> dashboard: "yes"
+    validate -> error: "no"
+    error -> login
 }
 ```
 
 ## Sequence
 
 ```seldia
-diagram sequence "OAuth Flow" {
-    participant browser: "Browser"
-    participant server: "Auth Server"
-    participant db: "Database"
+seq "OAuth Flow" {
+browser "Browser"
+server "Auth Server"
+db "Database"
 
     browser -> server: "POST /login"
     server -> db: "SELECT user"
-    db --> server: "user record"
+    db -> server: "user record"
     server -> server: "validate password"
-    server --> browser: "200 + JWT"
+    server -> browser: "200 + JWT"
 }
 ```
 
 ## Class
 
 ```seldia
-diagram class "Core Classes" {
-    CoreEngine: "CoreEngine\n+compile(source: string): Result\n+getTheme(name: string): Theme"
-    Parser: "Parser\n+parse(tokens: Token[]): AST"
-    Analyzer: "Analyzer\n+analyze(ast: AST): Result"
-    Renderer: "Renderer\n+render(ir: IR): string"
+cls "Core Classes" {
+    CoreEngine "CoreEngine\n+compile(source: string): Result\n+getTheme(name: string): Theme"
+    Parser "Parser\n+parse(tokens: Token[]): AST"
+    Analyzer "Analyzer\n+analyze(ast: AST): Result"
+    Renderer "Renderer\n+render(ir: IR): string"
 
-    CoreEngine --> Parser: "uses"
-    CoreEngine --> Analyzer: "uses"
-    CoreEngine --> Renderer: "uses"
+    CoreEngine -> Parser: "uses"
+    CoreEngine -> Analyzer: "uses"
+    CoreEngine -> Renderer: "uses"
 }
 ```
 
 ## State Machine
 
 ```seldia
-diagram state "Interaction States" {
-    [*] --> Idle
-    Idle --> Selected: "click node"
-    Selected --> Dragging: "drag start"
-    Dragging --> Idle: "drag end"
-    Selected --> Editing: "dblClick"
-    Editing --> Idle: "Enter / Esc"
+st "Interaction States" {
+    [*] -> Idle
+    Idle -> Selected: "click node"
+    Selected -> Dragging: "drag start"
+    Dragging -> Idle: "drag end"
+    Selected -> Editing: "dblClick"
+    Editing -> Idle: "Enter / Esc"
 }
 ```
 
@@ -110,41 +110,41 @@ sized to hold them. Cardinality follows the arrow: `A --> B` puts the "one"
 tick on `A` and the crow's foot on `B`.
 
 ```seldia
-diagram er "Shop" {
-    Customer: [Customer\nid PK\nemail string\nname string]
-    Order: [Order\nid PK\ncustomer_id FK\nplaced_at date]
-    Product: [Product\nid PK\nsku string\nprice decimal]
+er "Shop" {
+    Customer [Customer\nid PK\nemail string\nname string]
+    Order [Order\nid PK\ncustomer_id FK\nplaced_at date]
+    Product [Product\nid PK\nsku string\nprice decimal]
 
-    Customer --> Order: "places"
-    Order --> Product: "contains"
+    Customer -> Order: "places"
+    Order -> Product: "contains"
 }
 ```
 
 ## C4 — Context
 
 ```seldia
-diagram c4 context "Internet Banking" {
-    person customer: "Customer" "A bank customer"
-    system banking: "Internet Banking" "Manage accounts and payments"
-    system_Ext mainframe: "Mainframe Banking" "Core banking system"
+c4c "Internet Banking" {
+    person customer "Customer" "A bank customer"
+    system banking "Internet Banking" "Manage accounts and payments"
+    system_Ext mainframe "Mainframe Banking" "Core banking system"
 
-    customer --> banking: "Views accounts, makes payments"
-    banking --> mainframe: "Uses"
+    customer -> banking: "Views accounts, makes payments"
+    banking -> mainframe: "Uses"
 }
 ```
 
 ## C4 — Container
 
 ```seldia
-diagram c4 container "System" {
-    user: "User"
-    web: "Web App"
-    api: "API"
-    db: "Database"
+c4con "System" {
+    user "User"
+    web "Web App"
+    api "API"
+    db "Database"
 
-    user --> web
-    web --> api
-    api --> db
+    user -> web
+    web -> api
+    api -> db
 }
 ```
 
@@ -155,128 +155,128 @@ The third C4 level: the components inside a single container. `component`,
 keyword, so a `database` is drawn as a cylinder and a `person` as an actor.
 
 ```seldia
-diagram c4 component "API Application" {
-    person user: "Customer" "Uses the web app"
-    component signin: "Sign In Controller" "Handles authentication requests"
-    component accounts: "Accounts Controller" "Serves account summaries"
-    component security: "Security Component" "Checks credentials"
-    component facade: "Mainframe Facade" "Talks to the core banking system"
-    database db: "Database" "Stores user credentials"
+c4comp "API Application" {
+    person user "Customer" "Uses the web app"
+    component signin "Sign In Controller" "Handles authentication requests"
+    component accounts "Accounts Controller" "Serves account summaries"
+    component security "Security Component" "Checks credentials"
+    component facade "Mainframe Facade" "Talks to the core banking system"
+    database db "Database" "Stores user credentials"
 
-    user --> signin: "Submits credentials"
-    signin --> security: "Validates"
-    security --> db: "Reads from"
-    user --> accounts: "Views balances"
-    accounts --> facade: "Fetches accounts"
+    user -> signin: "Submits credentials"
+    signin -> security: "Validates"
+    security -> db: "Reads from"
+    user -> accounts: "Views balances"
+    accounts -> facade: "Fetches accounts"
 }
 ```
 
 ## BPMN
 
 ```seldia
-diagram bpmn "Order Fulfillment" {
-    startEvent start: "Order Received"
-    task validate: "Validate Order"
-    gateway payment: "Payment OK?"
-    task ship: "Ship Order"
-    task refund: "Process Refund"
-    endEvent done: "Order Complete"
-    endEvent cancelled: "Order Cancelled"
+bpmn "Order Fulfillment" {
+    start "Order Received"
+    validate "Validate Order"
+    gateway payment "Payment OK?"
+    ship "Ship Order"
+    refund "Process Refund"
+    done "Order Complete"
+    cancelled "Order Cancelled"
 
-    start --> validate
-    validate --> payment
-    payment --> ship: "yes"
-    payment --> refund: "no"
-    ship --> done
-    refund --> cancelled
+    start -> validate
+    validate -> payment
+    payment -> ship: "yes"
+    payment -> refund: "no"
+    ship -> done
+    refund -> cancelled
 }
 ```
 
 ## DMN — Decision Table
 
 ```seldia
-diagram dmn "Loan Approval" {
-    age: "Input: Applicant Age"
-    income: "Input: Annual Income"
-    creditScore: "Input: Credit Score"
+dmn "Loan Approval" {
+    age "Input: Applicant Age"
+    income "Input: Annual Income"
+    creditScore "Input: Credit Score"
 
-    approve: "Rule: Approve\nage >= 18 AND income > 30000\n-> APPROVE"
-    review: "Rule: Manual Review\ncreditScore <= 700\n-> REVIEW"
-    denyAge: "Rule: Deny (Age)\nage < 18\n-> DENY"
+    approve "Rule: Approve\nage >= 18 AND income > 30000\n-> APPROVE"
+    review "Rule: Manual Review\ncreditScore <= 700\n-> REVIEW"
+    denyAge "Rule: Deny (Age)\nage < 18\n-> DENY"
 
-    age --> approve
-    income --> approve
-    creditScore --> approve
-    age --> denyAge
+    age -> approve
+    income -> approve
+    creditScore -> approve
+    age -> denyAge
 }
 ```
 
 ## Component
 
 ```seldia
-diagram component "App" {
-    ui: [Web UI]
-    api: [API Service]
-    payments: [Payment Microservice]
-    iface: ((Payment Interface))
-    cache: [Redis Cache]
-    store: [Database]
+comp "App" {
+    ui [Web UI]
+    api [API Service]
+    payments [Payment Microservice]
+    iface ((Payment Interface))
+    cache [Redis Cache]
+    store [Database]
 
-    ui --> api
-    api --> payments
-    payments --> iface
-    api --> cache
-    api --> store
+    ui -> api
+    api -> payments
+    payments -> iface
+    api -> cache
+    api -> store
 }
 ```
 
 ## Use Case
 
 ```seldia
-diagram usecase "ATM" {
-    customer: (Customer)
-    withdraw: [Withdraw Cash]
-    balance: [Check Balance]
+uc "ATM" {
+    customer (Customer)
+    withdraw [Withdraw Cash]
+    balance [Check Balance]
 
-    customer --> withdraw
-    customer --> balance
+    customer -> withdraw
+    customer -> balance
 }
 ```
 
 ## Activity
 
 ```seldia
-diagram activity "Checkout" {
-    start: (Start)
-    cart: [Review Cart]
-    pay: [Pay]
-    done: (Done)
+act "Checkout" {
+    start (Start)
+    cart [Review Cart]
+    pay [Pay]
+    done (Done)
 
-    start --> cart
-    cart --> pay
-    pay --> done
+    start -> cart
+    cart -> pay
+    pay -> done
 }
 ```
 
 ## Deployment
 
 ```seldia
-diagram deployment "Production" {
-    phone: [Mobile Device]
-    lb: [Load Balancer]
-    web1: [Web Server 1]
-    web2: [Web Server 2]
-    env: [App Container]
-    jar: [order-service.jar]
-    db: [Database]
+deploy "Production" {
+    phone [Mobile Device]
+    lb [Load Balancer]
+    web1 [Web Server 1]
+    web2 [Web Server 2]
+    env [App Container]
+    jar [order-service.jar]
+    db [Database]
 
-    phone --> lb
-    lb --> web1
-    lb --> web2
-    web1 --> env
-    env --> jar
-    web2 --> db
-    jar --> db
+    phone -> lb
+    lb -> web1
+    lb -> web2
+    web1 -> env
+    env -> jar
+    web2 -> db
+    jar -> db
 }
 ```
 
@@ -287,67 +287,67 @@ automatically from the project's total span — a two-week sprint gets daily
 ticks, a multi-year roadmap gets yearly ones, with no configuration needed.
 
 ```seldia
-diagram gantt "Project Alpha" {
-    t1: [Requirements: Jan 6-17]
-    t2: [Architecture: Jan 13-24]
-    t3: [Sprint 1: Jan 27 - Feb 14]
-    t4: [Sprint 2: Feb 17 - Mar 7]
-    m1: [MVP Release: Mar 10]
+gantt "Project Alpha" {
+    t1 [Requirements: Jan 6-17]
+    t2 [Architecture: Jan 13-24]
+    t3 [Sprint 1: Jan 27 - Feb 14]
+    t4 [Sprint 2: Feb 17 - Mar 7]
+    m1 [MVP Release: Mar 10]
 
-    t1 --> t2
-    t2 --> t3
-    t3 --> t4
-    t4 --> m1
+    t1 -> t2
+    t2 -> t3
+    t3 -> t4
+    t4 -> m1
 }
 ```
 
 ## Mind Map
 
 ```seldia
-diagram mindmap "System Features" {
-    root: "MyApp"
-    frontend: "Frontend"
-    backend: "Backend"
-    devops: "DevOps"
+mind "System Features" {
+    root "MyApp"
+    frontend "Frontend"
+    backend "Backend"
+    devops "DevOps"
 
-    root --> frontend
-    frontend --> dashboard: "Dashboard"
-    frontend --> profile: "User Profile"
-    root --> backend
-    backend --> auth: "Auth Service"
-    backend --> gateway: "API Gateway"
-    root --> devops
-    devops --> cicd: "CI/CD"
-    devops --> monitoring: "Monitoring"
+    root -> frontend
+    frontend -> dashboard: "Dashboard"
+    frontend -> profile: "User Profile"
+    root -> backend
+    backend -> auth: "Auth Service"
+    backend -> gateway: "API Gateway"
+    root -> devops
+    devops -> cicd: "CI/CD"
+    devops -> monitoring: "Monitoring"
 }
 ```
 
 ## Network
 
 ```seldia
-diagram network "Office" {
-    internet: [Internet]
-    firewall: [Firewall]
-    router: [Router]
-    lb: [Load Balancer]
-    switch: [Switch]
-    ap: [Wifi Access Point]
-    pc1: [Workstation 1]
-    pc2: [Workstation 2]
-    server: [App Server]
-    db: [Database]
-    nas: [Storage NAS]
+net "Office" {
+    internet [Internet]
+    firewall [Firewall]
+    router [Router]
+    lb [Load Balancer]
+    switch [Switch]
+    ap [Wifi Access Point]
+    pc1 [Workstation 1]
+    pc2 [Workstation 2]
+    server [App Server]
+    db [Database]
+    nas [Storage NAS]
 
-    internet --> firewall
-    firewall --> router
-    router --> lb
-    router --> switch
-    lb --> server
-    switch --> ap
-    switch --> pc1
-    switch --> pc2
-    server --> db
-    server --> nas
+    internet -> firewall
+    firewall -> router
+    router -> lb
+    router -> switch
+    lb -> server
+    switch -> ap
+    switch -> pc1
+    switch -> pc2
+    server -> db
+    server -> nas
 }
 ```
 
@@ -357,144 +357,144 @@ Multi-series charts get an automatic legend (name → color) whenever more than
 one series is present.
 
 ```seldia
-diagram chart bar "Monthly Sales" {
-    jan: "Jan\nRevenue: 120  Costs: 80"
-    feb: "Feb\nRevenue: 200  Costs: 100"
-    mar: "Mar\nRevenue: 150  Costs: 90"
-    apr: "Apr\nRevenue: 180  Costs: 95"
+chart bar "Monthly Sales" {
+    jan "Jan\nRevenue: 120  Costs: 80"
+    feb "Feb\nRevenue: 200  Costs: 100"
+    mar "Mar\nRevenue: 150  Costs: 90"
+    apr "Apr\nRevenue: 180  Costs: 95"
 
-    jan --> feb
-    feb --> mar
-    mar --> apr
+    jan -> feb
+    feb -> mar
+    mar -> apr
 }
 ```
 
 ## Chart (Line)
 
 ```seldia
-diagram chart line "Weekly Active Users" {
-    w1: "Wk1\nDesktop: 120  Mobile: 90"
-    w2: "Wk2\nDesktop: 140  Mobile: 130"
-    w3: "Wk3\nDesktop: 130  Mobile: 160"
-    w4: "Wk4\nDesktop: 155  Mobile: 175"
+chart line "Weekly Active Users" {
+    w1 "Wk1\nDesktop: 120  Mobile: 90"
+    w2 "Wk2\nDesktop: 140  Mobile: 130"
+    w3 "Wk3\nDesktop: 130  Mobile: 160"
+    w4 "Wk4\nDesktop: 155  Mobile: 175"
 
-    w1 --> w2
-    w2 --> w3
-    w3 --> w4
+    w1 -> w2
+    w2 -> w3
+    w3 -> w4
 }
 ```
 
 ## Chart (Pie)
 
 ```seldia
-diagram chart pie "Market Share" {
-    alpha: "Alpha\n40"
-    beta: "Beta\n35"
-    gamma: "Gamma\n25"
+chart pie "Market Share" {
+    alpha "Alpha\n40"
+    beta "Beta\n35"
+    gamma "Gamma\n25"
 }
 ```
 
 ## Chart (Radar)
 
 ```seldia
-diagram chart radar "Team Skills" {
-    speed: "Speed\nTeamA: 8  TeamB: 6"
-    power: "Power\nTeamA: 5  TeamB: 9"
-    stamina: "Stamina\nTeamA: 7  TeamB: 7"
+chart radar "Team Skills" {
+    speed "Speed\nTeamA: 8  TeamB: 6"
+    power "Power\nTeamA: 5  TeamB: 9"
+    stamina "Stamina\nTeamA: 7  TeamB: 7"
 }
 ```
 
 ## Chart (Scatter)
 
 ```seldia
-diagram chart scatter "Response Time vs Load" {
-    p1: "10 req/s\nLatency: 20"
-    p2: "50 req/s\nLatency: 35"
-    p3: "100 req/s\nLatency: 80"
-    p4: "150 req/s\nLatency: 140"
+chart scatter "Response Time vs Load" {
+    p1 "10 req/s\nLatency: 20"
+    p2 "50 req/s\nLatency: 35"
+    p3 "100 req/s\nLatency: 80"
+    p4 "150 req/s\nLatency: 140"
 }
 ```
 
 ## Git Graph
 
 ```seldia
-diagram gitgraph "Feature Flow" {
-    main1: [main: init]
-    main2: [main: release]
-    feat1: [feature: work]
+git "Feature Flow" {
+    main1 [main: init]
+    main2 [main: release]
+    feat1 [feature: work]
 
-    main1 --> feat1
-    feat1 --> main2
+    main1 -> feat1
+    feat1 -> main2
 }
 ```
 
 ## Form
 
 ```seldia
-diagram form "User Registration" {
-    name: [Name: text, required]
-    email: [Email: email, required]
-    age: [Age: number, 18-120]
-    theme: [Theme: Light / Dark / System]
-    submit: [Submit: Register]
+form "User Registration" {
+    name [Name: text, required]
+    email [Email: email, required]
+    age [Age: number, 18-120]
+    theme [Theme: Light / Dark / System]
+    submit [Submit: Register]
 
-    name --> email
-    email --> age
-    age --> theme
-    theme --> submit
+    name -> email
+    email -> age
+    age -> theme
+    theme -> submit
 }
 ```
 
 ## Sankey
 
 ```seldia
-diagram sankey "Energy Flow" {
-    solar: "Solar (120)"
-    wind: "Wind (80)"
-    coal: "Coal (200)"
-    grid: "Electricity Grid"
-    storage: "Battery Storage"
-    loss: "Transmission Loss"
+sankey "Energy Flow" {
+    solar "Solar (120)"
+    wind "Wind (80)"
+    coal "Coal (200)"
+    grid "Electricity Grid"
+    storage "Battery Storage"
+    loss "Transmission Loss"
 
-    solar --> grid: "110"
-    solar --> storage: "10"
-    wind --> grid: "75"
-    coal --> grid: "190"
-    coal --> loss: "10"
+    solar -> grid: "110"
+    solar -> storage: "10"
+    wind -> grid: "75"
+    coal -> grid: "190"
+    coal -> loss: "10"
 }
 ```
 
 ## Block
 
 ```seldia
-diagram block "SelDiA Architecture" {
-    cli: [CLI]
-    web: [Web App]
-    vscode: [VS Code]
-    engine: [Core Engine]
-    layout: [Layout]
-    render: [Renderer]
+block "SelDiA Architecture" {
+    cli [CLI]
+    web [Web App]
+    vscode [VS Code]
+    engine [Core Engine]
+    layout [Layout]
+    render [Renderer]
 
-    cli --> engine
-    web --> engine
-    vscode --> engine
-    engine --> layout
-    layout --> render
+    cli -> engine
+    web -> engine
+    vscode -> engine
+    engine -> layout
+    layout -> render
 }
 ```
 
 ## Timeline
 
 ```seldia
-diagram timeline "Roadmap" {
-    q1: [Q1: MVP]
-    q2: [Q2: Beta]
-    q3: [Q3: GA]
-    q4: [Q4: Scale]
+time "Roadmap" {
+    q1 [Q1: MVP]
+    q2 [Q2: Beta]
+    q3 [Q3: GA]
+    q4 [Q4: Scale]
 
-    q1 --> q2
-    q2 --> q3
-    q3 --> q4
+    q1 -> q2
+    q2 -> q3
+    q3 -> q4
 }
 ```
 
@@ -521,25 +521,25 @@ fills to that fraction. Controls stack top-to-bottom in the order written —
 edges are only needed to override that order and are never drawn.
 
 ```seldia
-diagram wireframe "Sign Up" {
-    nav: [Navbar MyApp]
-    title: [H1 Create your account]
-    pic: [Profile avatar]
-    name: [Full name field]
-    email: [Email field]
-    pass: [Password field]
-    bio: [Short bio textarea]
-    role: [Role dropdown]
-    volume: [Notification volume slider 70%]
-    notify: [Enable email updates toggle on]
-    terms: [I accept the terms checkbox checked]
-    news: [Subscribe to newsletter checkbox]
-    plan_pro: [Pro plan radio selected]
-    plan_free: [Free plan radio]
-    div: [divider]
-    upload: [Upload progress 60%]
-    submit: [Create account button]
-    forgot: [Forgot password link]
+wireframe "Sign Up" {
+    nav [Navbar MyApp]
+    title [H1 Create your account]
+    pic [Profile avatar]
+    name [Full name field]
+    email [Email field]
+    pass [Password field]
+    bio [Short bio textarea]
+    role [Role dropdown]
+    volume [Notification volume slider 70%]
+    notify [Enable email updates toggle on]
+    terms [I accept the terms checkbox checked]
+    news [Subscribe to newsletter checkbox]
+    plan_pro [Pro plan radio selected]
+    plan_free [Free plan radio]
+    div [divider]
+    upload [Upload progress 60%]
+    submit [Create account button]
+    forgot [Forgot password link]
 }
 ```
 
@@ -554,32 +554,32 @@ DNS, and users — all drawn with the same warm amber accent that reads as
 keeping the diagram vendor-neutral while staying visually familiar.
 
 ```seldia
-diagram cloud "Web Application on AWS" {
-  user: [Mobile Client]
-  cdn: [CloudFront CDN]
-  dns: [Route 53 DNS]
-  lb: [Application Load Balancer]
-  web: [Web Server EC2]
-  api: [API Server EC2]
-  worker: [Worker EC2]
-  db: [RDS Database]
-  cache: [ElastiCache Redis]
-  queue: [SQS Queue]
-  bucket: [S3 Bucket storage]
-  auth: [Cognito User Pools security]
+cloud "Web Application \non AWS" {
+  user [Mobile Client]
+  cdn [CloudFront CDN]
+  dns [Route 53 DNS]
+  lb [Application \nLoad Balancer]
+  web [Web Server EC2]
+  api [API Server EC2]
+  worker [Worker EC2]
+  db [RDS Database]
+  cache [ElastiCache \nRedis]
+  queue [SQS Queue]
+  bucket [S3 Bucket storage]
+  auth [Cognito User \nPools security]
 
-  dns --> cdn
-  user --> cdn
-  cdn --> lb
-  lb --> web
-  lb --> api
-  web --> db
-  api --> db
-  api --> cache
-  api --> queue
-  worker --> queue
-  worker --> bucket
-  user --> auth
-  auth --> api
+  dns -> cdn
+  user -> cdn
+  cdn -> lb
+  lb -> web
+  lb -> api
+  web -> db
+  api -> db
+  api -> cache
+  api -> queue
+  worker -> queue
+  worker -> bucket
+  user -> auth
+  auth -> api
 }
 ```

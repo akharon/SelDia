@@ -46,13 +46,30 @@
   function applyZoom(container: HTMLElement, blockId: string, scale: number) {
     const svg = svgOf(container);
     if (!svg) return;
-    // Use CSS transform: scale() from the centre so the diagram stays
-    // visually centred without changing its layout size. No explicit
-    // width/height — the SVG's natural width="100%" fills the container
-    // and transform scales the painting from the middle outward/inward.
-    // overflow:visible on the parent lets zoomed-in content breathe.
-    svg.style.transform = `scale(${scale})`;
-    svg.style.transformOrigin = 'center center';
+    if (scale === 1) {
+      // Default: let the SVG's natural width="100%" auto-fit the container.
+      // Clear any zoom overrides so the diagram snaps back to responsive fit.
+      svg.style.width = '';
+      svg.style.height = '';
+      svg.style.maxWidth = '';
+      svg.style.transform = '';
+      svg.style.transformOrigin = '';
+      zoomState.delete(blockId);
+      return;
+    }
+    // Zoom by changing the SVG's pixel width relative to its viewBox
+    // (natural) dimensions.  A wider SVG → more detail (zoom-in, scrollbars
+    // appear); a narrower SVG → overview (zoom-out).  overflow:auto on the
+    // parent .seldia-diagram-svg adds a horizontal scrollbar when the SVG
+    // outgrows the container — no clipping, no transform hacks.
+    const { w, h } = naturalSize(svg);
+    const aspect = w > 0 ? h / w : 1;
+    const targetW = Math.round(w * scale);
+    svg.style.width = `${targetW}px`;
+    svg.style.height = `${Math.round(targetW * aspect)}px`;
+    svg.style.maxWidth = 'none'; // override engine's max-width so zoom-in works
+    svg.style.transform = '';
+    svg.style.transformOrigin = '';
     zoomState.set(blockId, scale);
   }
   function scaleOf(blockId: string): number {
@@ -129,6 +146,10 @@
     const svg = svgOf(container);
     if (!svg) return;
     const clone = svg.cloneNode(true) as SVGElement;
+    // Reset zoom styles so the export shows the diagram at its natural size.
+    clone.style.width = '';
+    clone.style.height = '';
+    clone.style.maxWidth = '';
     clone.style.transform = '';
     const str = new XMLSerializer().serializeToString(clone);
     const url = URL.createObjectURL(new Blob([str], { type: 'image/svg+xml' }));

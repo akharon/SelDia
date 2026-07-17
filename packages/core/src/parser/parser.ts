@@ -385,10 +385,28 @@ class Tokenizer {
 const SHAPE_KEYWORDS = new Set([
   'rounded', 'rect', 'rectangle', 'diamond', 'circle', 'ellipse',
   'hexagon', 'hex', 'parallelogram', 'para', 'cylinder', 'cyli', 'db',
-  'cloud', 'stadium', 'flag', 'actor', 'person', 'system', 'queue',
+  'cloud', 'stadium', 'flag', 'actor', 'person', 'participant', 'system', 'queue',
   'boundary', 'control', 'entity', 'database', 'storage',
   'container', 'component', 'gateway',
 ]);
+
+/**
+ * Re-join tokens of an unquoted label using their original columns, so
+ * `GET /authorize` doesn't come back as `GET / authorize`. Tokens on one line
+ * are gap-reconstructed from `col`; a quoted segment keeps its quotes, since
+ * the tokenizer strips them from `value` (`Click "Login"`).
+ */
+function joinTokenText(toks: Token[]): string {
+  let out = '';
+  let prevEnd = -1;
+  for (const t of toks) {
+    const text = t.type === TokenType.STRING ? `"${t.value}"` : t.value;
+    if (prevEnd >= 0 && t.col > prevEnd) out += ' '.repeat(Math.min(t.col - prevEnd, 2));
+    out += text;
+    prevEnd = t.col + text.length;
+  }
+  return out.trim();
+}
 
 function isShapeKeyword(word: string): boolean {
   // Strip C4 _Ext / _ext suffix so system_Ext matches 'system'
@@ -410,7 +428,7 @@ function shapeKeywordToShapeType(word: string): ShapeType {
     case 'cloud': return ShapeType.CLOUD;
     case 'stadium': return ShapeType.STADIUM;
     case 'flag': case 'note': return ShapeType.NOTE;
-    case 'actor': case 'person': case 'user': return ShapeType.ACTOR;
+    case 'actor': case 'person': case 'user': case 'participant': return ShapeType.ACTOR;
     case 'gateway': return ShapeType.DIAMOND;
     case 'system': case 'container': case 'component':
     case 'queue': case 'boundary':
@@ -700,13 +718,19 @@ class Parser {
           if (this.peek().type === TokenType.STRING) {
             label = this.consume().value;
           } else if (this.peek().type === TokenType.IDENT) {
-            let parts = '';
+            // An unquoted label runs to the end of its own line and no
+            // further. There's no NEWLINE token, so the line number is the
+            // only terminator available — without it this loop ran to the
+            // closing brace and swallowed every following statement into one
+            // label (a whole sequence diagram collapsed to a single edge).
+            const labelLine = this.peek().line;
+            const labelToks: Token[] = [];
             while (this.peek().type !== TokenType.EOF && this.peek().type !== TokenType.RBRACE &&
-                   this.peek().type !== TokenType.KW_DIAGRAM) {
-              const t = this.consume();
-              parts += t.value + ' ';
+                   this.peek().type !== TokenType.KW_DIAGRAM &&
+                   this.peek().line === labelLine) {
+              labelToks.push(this.consume());
             }
-            label = parts.trim();
+            label = joinTokenText(labelToks);
           }
         }
         stmts.push({
@@ -786,6 +810,19 @@ class Parser {
     };
   }
 
+  // Sequence-diagram control fragments (`alt`/`else`/`opt`/`loop`/`par`, all
+  // closed by `end`) are documented in user_guide.md but had no grammar at
+  // all, so a file using them failed to parse outright. They're consumed here
+  // as line-scoped markers: the fragment's own header/`end` lines produce no
+  // statement, and the messages inside them parse normally as edges. That
+  // renders the file correctly minus the fragment's visual box — a nesting
+  // bracket around a time range of messages, which IRGroup (a bounding box
+  // over member *nodes*) can't express. Keeping the marker keyword and label
+  // on the AST so a future sequence-fragment renderer has them to work with.
+  private isFragmentKeyword(v: string): boolean {
+    return /^(alt|else|opt|loop|par|critical|break)$/i.test(v);
+  }
+
   parseStatement(): ASTStatement | null {
     // Skip comments
     if (this.peek().type === TokenType.COMMENT) {
@@ -840,6 +877,25 @@ class Parser {
       const next2 = this.peek(2);
       const tokLower = tok.value.toLowerCase();
 
+      // `end` closes a fragment — a bare marker with nothing after it.
+      if (tokLower === 'end' && next.line !== tok.line) {
+        const t = this.consume();
+        return { kind: 'Comment', text: 'end', loc: this.loc(t) } as ASTStatement;
+      }
+      // `alt valid credentials` / `loop retry` / bare `par`. Only when the
+      // keyword isn't being used as an ordinary node or edge id — `alt (Box)`,
+      // `alt -> b` and `alt: "x"` must still declare a node called "alt".
+      if (this.isFragmentKeyword(tokLower) &&
+          next.type !== TokenType.SHAPE && next.type !== TokenType.ARROW &&
+          next.type !== TokenType.COLON && next.type !== TokenType.STRING) {
+        const kw = this.consume();
+        let text = kw.value;
+        while (this.peek().type !== TokenType.EOF && this.peek().line === kw.line) {
+          text += ' ' + this.consume().value;
+        }
+        return { kind: 'Comment', text: text.trim(), loc: this.loc(kw) } as ASTStatement;
+      }
+
       // Bare theme name: sketchy [light|dark], smooth [light|dark], mono
       if (tokLower === 'sketchy' || tokLower === 'smooth' || tokLower === 'mono') {
         return this.parseBareTheme();
@@ -873,8 +929,14 @@ class Parser {
         return this.parseNodeDecl();
       }
       // shape id "Label" — typed node (C4-style: rectangle server "Web Server")
+      // The COLON variant (`person customer: "Bank Customer"`, `participant
+      // user: "User"`) is the spelling examples/ actually uses; it reads as a
+      // separate keyword form but is the same declaration, so it routes here
+      // and parseTypedNodeDecl() eats the optional colon before the label.
       if (isShapeKeyword(tok.value) && next.type === TokenType.IDENT &&
-          (next2.type === TokenType.STRING || next2.type === TokenType.SHAPE || next2.type === TokenType.LBRACE || next2.type === TokenType.ARROW)) {
+          (next2.type === TokenType.STRING || next2.type === TokenType.SHAPE ||
+           next2.type === TokenType.LBRACE || next2.type === TokenType.ARROW ||
+           next2.type === TokenType.COLON)) {
         return this.parseTypedNodeDecl();
       }
       // id <-- or id -- or id <-> — reverse/undirected/bidirectional edge
@@ -1010,6 +1072,9 @@ class Parser {
     const shape = shapeKeywordToShapeType(shapeKw);
     const idTok = this.consume(); // node id
 
+    // Optional colon between id and label: `participant user: "User"`.
+    if (this.peek().type === TokenType.COLON) this.consume();
+
     let label = idTok.value;
     if (this.peek().type === TokenType.STRING) {
       label = this.consume().value;
@@ -1085,14 +1150,18 @@ class Parser {
       if (this.peek().type === TokenType.STRING) {
         label = this.consume().value;
       } else if (this.peek().type === TokenType.IDENT) {
-        let parts = '';
+        // Bounded to the label's own line — see the matching loop in
+        // parseStatements(); an unterminated label otherwise consumes every
+        // subsequent statement in the diagram body.
+        const labelLine = this.peek().line;
+        const labelToks: Token[] = [];
         while (this.peek().type !== TokenType.EOF && this.peek().type !== TokenType.RBRACE &&
                this.peek().type !== TokenType.LBRACE &&
-               this.peek().type !== TokenType.KW_DIAGRAM && this.peek().type !== TokenType.KW_GROUP) {
-          const t = this.consume();
-          parts += t.value + ' ';
+               this.peek().type !== TokenType.KW_DIAGRAM && this.peek().type !== TokenType.KW_GROUP &&
+               this.peek().line === labelLine) {
+          labelToks.push(this.consume());
         }
-        label = parts.trim();
+        label = joinTokenText(labelToks);
       }
     }
 
@@ -1328,12 +1397,25 @@ export function checkSyntax(source: string, filePath?: string): SyntaxCheckResul
     'c4c','c4con','c4comp','c4code','flowchart','sequence','class','state','usecase',
     'activity','component','deployment','mindmap','network','gitgraph','timeline',
     'wireframe','cloud','wire','chart-bar','chart-line','chart-pie','chart-radar','chart-scatter'];
-  const firstWord = source.trim().split(/[\s"{]/)[0].toLowerCase();
-  if (!diagramTypes.includes(firstWord) && !/^diagram\b/i.test(source.trim())) {
+  // The tokenizer skips comments and blank lines, so this pre-check has to as
+  // well — reading the raw first word made a leading `// ...` banner (which
+  // every file in examples/ opens with) look like the diagram declaration and
+  // rejected the file before the parser ever ran.
+  let declLine = 0;
+  let declText = '';
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t === '' || t.startsWith('//')) continue;
+    declLine = i + 1;
+    declText = t;
+    break;
+  }
+  const firstWord = declText.split(/[\s"{]/)[0].toLowerCase();
+  if (declText && !diagramTypes.includes(firstWord) && !/^diagram\b/i.test(declText)) {
     diagnostics.push({
       severity: DiagnosticSeverity.ERROR,
       message: 'No diagram declaration found — expected "<type> \"Title\" { ... }"',
-      source: { file: filePath || '<unknown>', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1, offset: 0 },
+      source: { file: filePath || '<unknown>', startLine: declLine, startColumn: 1, endLine: declLine, endColumn: 1, offset: 0 },
       code: 'SYNTAX_ERR',
     });
   }

@@ -1,0 +1,15 @@
+gitGraph
+    commit id: "init"
+    commit id: "setup ci"
+    branch feature/login
+    checkout feature/login
+    commit id: "add login form"
+    commit id: "add validation"
+    checkout main
+    commit id: "hotfix"
+    merge feature/login
+    branch feature/logout
+    checkout feature/logout
+    commit id: "add logout"
+    checkout main
+    merge feature/logout

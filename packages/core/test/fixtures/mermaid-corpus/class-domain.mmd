@@ -1,0 +1,26 @@
+classDiagram
+    class Order {
+        +String id
+        +Date createdAt
+        +OrderStatus status
+        +addItem(item)
+        +calculateTotal() Number
+    }
+    class LineItem {
+        +String sku
+        +Number quantity
+        +Number unitPrice
+    }
+    class Customer {
+        +String id
+        +String email
+    }
+    class OrderStatus {
+        <<enumeration>>
+        PENDING
+        SHIPPED
+        DELIVERED
+    }
+    Order "1" *-- "many" LineItem : contains
+    Customer "1" --> "many" Order : places
+    Order --> OrderStatus

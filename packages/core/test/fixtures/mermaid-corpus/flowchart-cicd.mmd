@@ -1,0 +1,18 @@
+flowchart LR
+    subgraph CI [Continuous Integration]
+        commit[Push to main] --> lint[Lint & Typecheck]
+        lint --> test{Tests pass?}
+        test -->|No| notify[Notify author]
+        test -->|Yes| build[Build artifact]
+    end
+    subgraph CD [Continuous Deployment]
+        build --> stage[Deploy to staging]
+        stage --> smoke{Smoke tests OK?}
+        smoke -->|No| rollback[Rollback]
+        smoke -->|Yes| prod[(Deploy to prod)]
+    end
+    notify --> commit
+    classDef danger fill:#f66,stroke:#900,stroke-width:2px
+    class rollback,notify danger
+    style prod fill:#9f9,stroke:#060
+    linkStyle 3 stroke:#f00,stroke-width:2px

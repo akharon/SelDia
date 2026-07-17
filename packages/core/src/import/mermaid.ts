@@ -13,12 +13,15 @@
 // it anywhere in the engine yet (not a Mermaid-import gap, an engine gap).
 // Unsupported diagram types report a diagnostic rather than throwing, so a
 // document containing one bad block still renders its other blocks.
+//
+// Flowchart also imports styling directives (`style`, `classDef`+`class`,
+// `linkStyle`), mapped onto IRNode.style / IREdge.style.
 // =============================================================================
 
 import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
-import { StrokeStyle } from '../types/style.js';
+import { StrokeStyle, type NodeStyle, type EdgeStyle } from '../types/style.js';
 import { sizeForLabel } from '../layout/text-measure.js';
 import { erEntitySize } from '../render/custom-renderers.js';
 
@@ -152,6 +155,49 @@ function splitAmpersand(side: string): string[] {
   return parts.map((p) => p.trim()).filter(Boolean);
 }
 
+/**
+ * Parse Mermaid's inline CSS-like style string (`fill:#f9f,stroke:#333,
+ * stroke-width:2px`) into a `Partial<NodeStyle>` / `Partial<EdgeStyle>`.
+ * Both node and edge styling directives share this same property syntax, so
+ * one parser serves `style`, `classDef`, and `linkStyle`.
+ */
+function parseStyleDecl(decl: string): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const pair of decl.split(',')) {
+    const idx = pair.indexOf(':');
+    if (idx < 0) continue;
+    const key = pair.slice(0, idx).trim().toLowerCase();
+    const value = pair.slice(idx + 1).trim();
+    switch (key) {
+      case 'fill':
+        out.fill = value;
+        break;
+      case 'stroke':
+        out.stroke = value;
+        break;
+      case 'stroke-width': {
+        const w = parseFloat(value);
+        if (!Number.isNaN(w)) out.strokeWidth = w;
+        break;
+      }
+      case 'stroke-dasharray':
+        out.strokeDasharray = value;
+        break;
+      case 'color':
+        out.textColor = value;
+        break;
+      case 'opacity': {
+        const o = parseFloat(value);
+        if (!Number.isNaN(o)) out.opacity = o;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return out;
+}
+
 function makeNode(id: string, label: string, shape: ShapeType): IRNode {
   return {
     id,
@@ -277,6 +323,14 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
   const nodes = new Map<string, IRNode>();
   const edges: IREdge[] = [];
   const groups = new Map<string, IRGroup>();
+  const classDefs = new Map<string, Partial<NodeStyle>>();
+  // classDef/class can be declared in either order relative to the node
+  // mention, and class can name several nodes at once, so class assignments
+  // are collected and resolved against classDefs after the whole source is
+  // walked rather than applied inline.
+  const classAssignments: Array<{ nodeIds: string[]; className: string }> = [];
+  const linkStyles = new Map<number, Partial<EdgeStyle>>();
+  let defaultLinkStyle: Partial<EdgeStyle> | undefined;
   // Stack of currently-open subgraphs, innermost last — a node/edge mentioned
   // while nested inside N subgraphs belongs directly to the innermost one;
   // the outer ones get it transitively via childGroupIds.
@@ -350,9 +404,43 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
       groupStack.pop();
       return;
     }
+    // `style nodeId fill:#f9f,stroke:#333`
+    const styleDecl = line.match(/^style\s+([\w.-]+)\s+(.+)$/i);
+    if (styleDecl) {
+      const id = ensure(styleDecl[1], lineNo);
+      if (id) Object.assign(nodes.get(id)!.style, parseStyleDecl(styleDecl[2]));
+      return;
+    }
+    // `classDef className fill:#f9f,stroke:#333`
+    const classDefDecl = line.match(/^classDef\s+([\w-]+)\s+(.+)$/i);
+    if (classDefDecl) {
+      classDefs.set(classDefDecl[1], parseStyleDecl(classDefDecl[2]));
+      return;
+    }
+    // `class nodeId1,nodeId2 className`
+    const classDecl = line.match(/^class\s+([\w.,\s-]+?)\s+([\w-]+)$/i);
+    if (classDecl) {
+      const nodeIds = classDecl[1].split(',').map((s) => s.trim()).filter(Boolean).map((r) => ensure(r, lineNo)).filter((id): id is string => !!id);
+      classAssignments.push({ nodeIds, className: classDecl[2] });
+      return;
+    }
+    // `linkStyle 0,2 stroke:#ff3,stroke-width:2px` (or `linkStyle default ...`)
+    const linkStyleDecl = line.match(/^linkStyle\s+(default|[\d,\s]+)\s+(.+)$/i);
+    if (linkStyleDecl) {
+      const parsed = parseStyleDecl(linkStyleDecl[2]) as Partial<EdgeStyle>;
+      if (/^default$/i.test(linkStyleDecl[1].trim())) {
+        defaultLinkStyle = parsed;
+      } else {
+        for (const tok of linkStyleDecl[1].split(',')) {
+          const idx = parseInt(tok.trim(), 10);
+          if (!Number.isNaN(idx)) linkStyles.set(idx, parsed);
+        }
+      }
+      return;
+    }
     // Constructs we deliberately don't model yet — skip quietly rather than
     // corrupting the diagram with a half-understood interpretation.
-    if (/^(click|style|classDef|class|linkStyle|direction)\b/i.test(line)) {
+    if (/^click\b/i.test(line)) {
       return;
     }
 
@@ -390,6 +478,30 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
       }
     }
   });
+
+  // classDef styles apply after direct `style` lines, matching Mermaid's own
+  // cascade (a class assigns a look, an explicit `style` line overrides it) —
+  // so class-derived properties are merged in first, then anything already on
+  // the node's style from a `style` line is layered back on top.
+  for (const { nodeIds, className } of classAssignments) {
+    const classStyle = classDefs.get(className);
+    for (const id of nodeIds) {
+      const node = nodes.get(id);
+      if (!node) continue;
+      node.classList.push(className);
+      if (classStyle) node.style = { ...classStyle, ...node.style };
+    }
+  }
+
+  // `linkStyle` applies by declaration order of edges in source, which is
+  // also array-push order here — resolved as a post-pass (not inline at push
+  // time) because Mermaid convention puts style directives after the edges
+  // they target.
+  if (defaultLinkStyle || linkStyles.size) {
+    edges.forEach((edge, i) => {
+      Object.assign(edge.style, defaultLinkStyle, linkStyles.get(i));
+    });
+  }
 
   return {
     id: 'mermaid-flowchart',

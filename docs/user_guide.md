@@ -2345,6 +2345,8 @@ flowchart TD
 **Currently imported:** `flowchart`/`graph`, `sequenceDiagram`, `classDiagram`,
 `erDiagram`, `stateDiagram`/`stateDiagram-v2`, `gantt`, `pie`, `gitGraph`,
 `mindmap`. `subgraph` blocks import as real groups, not flattened nodes.
+Styling directives (`style`, `classDef`+`class`, `linkStyle`) carry through
+onto node and edge appearance.
 
 **What happens to everything else:** the block renders exactly as it would if
 SelDiA weren't installed. A diagram type SelDiA can't import (`journey`,
@@ -2352,13 +2354,18 @@ SelDiA weren't installed. A diagram type SelDiA can't import (`journey`,
 VS Code's own Mermaid support. Installing SelDiA never makes a Mermaid document
 render worse.
 
-**Known gap:** styling directives (`style`, `classDef`, `linkStyle`) are ignored.
-
 You can also render a Mermaid file straight from the CLI:
 
 ```bash
 seldia mermaid architecture.mmd -o architecture.svg
 ```
+
+**Exporting back to Mermaid:** `exportMermaid(ir)` (in `@seldia/core`) emits
+Mermaid source for the same set of types the importer covers, so a diagram
+edited in SelDiA can still be committed as `.mmd`/a fenced block that renders
+natively on GitHub. It's best-effort — anything with no Mermaid equivalent is
+dropped rather than guessed at — and is currently a library function only,
+not yet exposed as a CLI command or preview action.
 
 ### 11.4 Visual Editing
 

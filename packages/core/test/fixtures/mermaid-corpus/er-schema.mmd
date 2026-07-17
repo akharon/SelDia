@@ -1,0 +1,25 @@
+erDiagram
+    CUSTOMER {
+        string id PK
+        string email
+        string name
+    }
+    ORDER {
+        string id PK
+        string customer_id FK
+        date created_at
+        float total
+    }
+    LINE_ITEM {
+        string order_id FK
+        string product_id FK
+        int quantity
+    }
+    PRODUCT {
+        string id PK
+        string sku
+        float price
+    }
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE_ITEM : contains
+    PRODUCT ||--o{ LINE_ITEM : "ordered as"

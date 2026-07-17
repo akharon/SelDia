@@ -1,0 +1,14 @@
+sequenceDiagram
+    actor User
+    participant Client
+    participant AuthServer as Auth Server
+    participant API
+
+    User->>Client: Enter credentials
+    Client->>AuthServer: POST /login
+    AuthServer-->>Client: JWT token
+    Client->>API: GET /profile
+    API->>AuthServer: Validate token
+    AuthServer-->>API: Token valid
+    API-->>Client: Profile data
+    Client-->>User: Render dashboard

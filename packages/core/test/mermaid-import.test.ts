@@ -161,6 +161,44 @@ describe('flowchart import', () => {
   });
 });
 
+describe('flowchart styling directives', () => {
+  it('applies style lines to node style', () => {
+    const { ir } = importMermaid(`flowchart TD
+      a --> b
+      style a fill:#f9f,stroke:#333,stroke-width:2px`);
+    const a = ir!.nodes.find((n) => n.id === 'a')!;
+    expect(a.style.fill).toBe('#f9f');
+    expect(a.style.stroke).toBe('#333');
+    expect(a.style.strokeWidth).toBe(2);
+  });
+
+  it('applies classDef + class to named nodes, with style overriding class', () => {
+    const { ir } = importMermaid(`flowchart TD
+      a --> b
+      classDef important fill:#f00,stroke:#900
+      class a,b important
+      style a fill:#0f0`);
+    const a = ir!.nodes.find((n) => n.id === 'a')!;
+    const b = ir!.nodes.find((n) => n.id === 'b')!;
+    expect(a.classList).toEqual(['important']);
+    expect(a.style.fill).toBe('#0f0');
+    expect(a.style.stroke).toBe('#900');
+    expect(b.classList).toEqual(['important']);
+    expect(b.style.fill).toBe('#f00');
+  });
+
+  it('applies linkStyle by edge index, including default', () => {
+    const { ir } = importMermaid(`flowchart TD
+      a --> b
+      b --> c
+      linkStyle default stroke:#888
+      linkStyle 1 stroke:#f00,stroke-width:3px`);
+    expect(ir!.edges[0].style.stroke).toBe('#888');
+    expect(ir!.edges[1].style.stroke).toBe('#f00');
+    expect(ir!.edges[1].style.strokeWidth).toBe(3);
+  });
+});
+
 describe('sequence import', () => {
   it('parses participants, actors and aliases', () => {
     const ir = irOf(`sequenceDiagram

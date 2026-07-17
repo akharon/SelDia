@@ -24,6 +24,9 @@ export { createEngine } from './engine.js';
 export type { MermaidImportResult, MermaidImportDiagnostic } from './import/mermaid.js';
 export { importMermaid, isMermaidSource } from './import/mermaid.js';
 
+// Exporters — IR back out to other diagram formats
+export { exportMermaid, isMermaidExportable } from './export/mermaid.js';
+
 // Config
 export type { SelDiAConfig } from './config.js';
 export { DEFAULT_CONFIG } from './config.js';

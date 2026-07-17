@@ -73,7 +73,7 @@ Anything can draw a diagram. The problem SelDiA is built for is what happens *af
 
 ### File Extension
 
-SelDiA diagrams use the `.sld` file extension (this is what the VS Code extension and `examples/` use; some older docs say `.seldia`).
+SelDiA diagrams use the `.sld` file extension — this is what the VS Code extension and `examples/` register.
 
 ---
 
@@ -95,7 +95,7 @@ seldia --version
 
 ### Your First Diagram
 
-Create a file called `hello.seldia`:
+Create a file called `hello.sld`:
 
 ```
 diagram flowchart "Hello World" {
@@ -110,7 +110,7 @@ diagram flowchart "Hello World" {
 Render it:
 
 ```bash
-seldia compile hello.seldia -o hello.svg
+seldia compile hello.sld -o hello.svg
 ```
 
 Open `hello.svg` in any browser or image viewer — you'll see a simple flowchart with hand-drawn style.
@@ -119,9 +119,9 @@ Open `hello.svg` in any browser or image viewer — you'll see a simple flowchar
 
 ```bash
 # Start a live preview server — opens browser automatically
-seldia serve hello.seldia
+seldia serve hello.sld
 
-# Every time you save hello.seldia, the preview updates instantly
+# Every time you save hello.sld, the preview updates instantly
 ```
 
 ---
@@ -2092,25 +2092,25 @@ group <id> "<label>" {
 seldia mermaid diagram.mmd -o output.svg
 
 # Compile a diagram to SVG
-seldia compile diagram.seldia -o output.svg
+seldia compile diagram.sld -o output.svg
 
 # Compile to PNG (2x Retina scale)
-seldia compile diagram.seldia -o output.png --scale 2
+seldia compile diagram.sld -o output.png --scale 2
 
 # Compile to PDF
-seldia compile diagram.seldia -o output.pdf
+seldia compile diagram.sld -o output.pdf
 
 # Compile to interactive HTML
-seldia compile diagram.seldia -o output.html --interactive
+seldia compile diagram.sld -o output.html --interactive
 
 # Validate without rendering
-seldia validate diagram.seldia
+seldia validate diagram.sld
 
 # Start live preview server
-seldia serve diagram.seldia --port 3000
+seldia serve diagram.sld --port 3000
 
 # Scaffold a new diagram
-seldia init flowchart --title "My Flow" -o myflow.seldia
+seldia init flowchart --title "My Flow" -o myflow.sld
 
 # List available themes
 seldia theme list
@@ -2119,9 +2119,9 @@ seldia theme list
 seldia theme show sketchy-light
 
 # Create a custom theme scaffold
-seldia theme create my-company -o my-theme.seldia
+seldia theme create my-company -o my-theme.sld
 
-# Batch compile all .seldia files in a directory
+# Batch compile all .sld files in a directory
 seldia compile src/diagrams/ -o out/ --batch
 
 # Export Markdown to PDF with rendered diagrams
@@ -2190,8 +2190,8 @@ Create `seldia.config.json` in your project root:
     <script src="https://unpkg.com/@seldia/web"></script>
 </head>
 <body>
-    <!-- Viewer: display a diagram from a .seldia file -->
-    <seldia-viewer src="./diagram.seldia" theme="sketchy-light"></seldia-viewer>
+    <!-- Viewer: display a diagram from a .sld file -->
+    <seldia-viewer src="./diagram.sld" theme="sketchy-light"></seldia-viewer>
 
     <!-- Editor: edit a diagram inline -->
     <seldia-editor diagram="flowchart" theme="sketchy-dark">
@@ -2249,7 +2249,7 @@ function DiagramPage() {
 **`<seldia-viewer>`:**
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `src` | URL | Load .seldia file from URL |
+| `src` | URL | Load .sld file from URL |
 | `dsl` | string | Inline DSL source |
 | `theme` | string | Theme ID |
 | `interactive` | boolean | Enable zoom/pan/selection |
@@ -2274,9 +2274,9 @@ Install `SelDiA` from the VS Code Marketplace, or search for `@seldia/vscode-ext
 
 ### 11.2 Features
 
-- **Syntax highlighting** for `.seldia` files and ` ```seldia ` blocks in Markdown
+- **Syntax highlighting** for `.sld` files and ` ```seldia ` blocks in Markdown
 - **Markdown Diagram Detection** — SelDiA code blocks in `.md` files are auto-detected and rendered inline
-- **Live preview** — open a `.seldia` file, press `Ctrl+Shift+P` → "SelDiA: Open Preview"
+- **Live preview** — open a `.sld` file, press `Ctrl+Shift+P` → "SelDiA: Open Preview"
 - **Visual editing** — double-click shapes to edit labels, drag to reposition, right-click for context menu
 - **Code ↔ Diagram toggle** — switch between DSL source and rendered diagram with `Ctrl+Shift+V`
 - **Autocomplete** — suggestions for diagram keywords, shapes, and theme properties
@@ -2486,7 +2486,7 @@ seldia md2pdf docs/ --batch -o pdfs/
 |----------|--------|
 | `Ctrl+Shift+V` | Toggle Code / Diagram view |
 | `Ctrl+Shift+T` | Cycle through diagram themes |
-| `Ctrl+Shift+E` | Export diagram to SVG (standalone .seldia files) |
+| `Ctrl+Shift+E` | Export diagram to SVG (standalone .sld files) |
 | `Ctrl+Shift+P` → "SelDiA: Export Markdown to PDF" | Export .md file to PDF |
 | `Ctrl+Shift+P` → "SelDiA: Open Preview" | Open live preview |
 | `Ctrl+Shift+P` → "SelDiA: Insert Diagram Block" | Insert ` ```seldia ` block in Markdown |
@@ -2525,7 +2525,7 @@ With the `seldia-dsl` skill active, you can ask Copilot:
 | *"What diagram type should I use for a microservices architecture?"* | Recommend C4 Container or Component diagram |
 | *"Convert this class diagram to an ER diagram"* | Translate between diagram types |
 | *"Explain what this SelDiA diagram shows"* | Read and describe the diagram's structure |
-| *"Fix the syntax error in this .seldia file"* | Diagnose and correct DSL issues |
+| *"Fix the syntax error in this .sld file"* | Diagnose and correct DSL issues |
 
 #### Deployment
 
@@ -2570,7 +2570,7 @@ Copilot auto-detects diagram-related requests and loads the skill automatically 
 2. On deployment, `SKILL.md` is copied to the appropriate Copilot skills directory
 3. Copilot discovers the skill via its `name` and `description` fields
 4. When you ask a diagram-related question, Copilot loads the skill and uses its knowledge to generate correct SelDiA code
-5. The extension tracks the deployed version via a manifest file (`.seldia-skill-manifest.json`) and can detect when updates are available
+5. The extension tracks the deployed version via a manifest file (`.sld-skill-manifest.json`) and can detect when updates are available
 
 #### Customizing the Skill
 
@@ -2735,17 +2735,17 @@ await engine.plugins.install(myCustomPlugin);
 ```
 diagrams/
 ├── architecture/
-│   ├── system-context.seldia
-│   ├── containers.seldia
-│   └── components.seldia
+│   ├── system-context.sld
+│   ├── containers.sld
+│   └── components.sld
 ├── processes/
-│   ├── order-flow.seldia
-│   └── payment-flow.seldia
+│   ├── order-flow.sld
+│   └── payment-flow.sld
 ├── data/
-│   ├── er-diagram.seldia
-│   └── class-diagram.seldia
+│   ├── er-diagram.sld
+│   └── class-diagram.sld
 └── shared/
-    └── theme.seldia
+    └── theme.sld
 ```
 
 ### 13.2 Naming Conventions
@@ -2762,7 +2762,7 @@ diagrams/
 
 ### 13.4 Version Control
 
-Since `.seldia` files are plain text:
+Since `.sld` files are plain text:
 - Commit them to Git alongside your code
 - Review diagram changes in pull requests
 - Use meaningful commit messages for diagram changes
@@ -2798,7 +2798,7 @@ Since `.seldia` files are plain text:
 Enable debug mode to see detailed information:
 
 ```bash
-seldia compile diagram.seldia --debug
+seldia compile diagram.sld --debug
 ```
 
 This outputs:

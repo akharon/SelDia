@@ -212,6 +212,48 @@ export class VisualEditHandler {
     this.notifyUndoRedoState();
   }
 
+  /** Add a new edge between two *existing* nodes (Edit-mode "draw edge"
+   *  gesture: click a source node, then a target node). Mirrors the
+   *  add-edge half of handleNodeAdd's connectFromId branch, but as its own
+   *  entry point since here neither endpoint is a newly-created node — both
+   *  already exist in currentIr, so unlike handleNodeAdd this only ever
+   *  emits an edge line, never a node line. */
+  handleEdgeAdd(sourceId: string, targetId: string): void {
+    if (!this.currentIr) return;
+    if (sourceId === targetId) return; // no self-loop from the draw gesture
+    const sourceExists = this.currentIr.nodes.some((n) => n.id === sourceId);
+    const targetExists = this.currentIr.nodes.some((n) => n.id === targetId);
+    if (!sourceExists || !targetExists) return;
+
+    const edgeId = `e${this.currentIr.edges.length + 1}`;
+    const generatedDsl = `    ${sourceId} --> ${targetId}`;
+
+    const op: AddEdgeOp = {
+      type: 'add-edge',
+      edgeId,
+      sourceId,
+      targetId,
+      generatedDsl,
+    };
+
+    const txn: EditTransaction = {
+      id: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      description: `Added edge '${sourceId}' -> '${targetId}'`,
+      operations: [op],
+      timestamp: Date.now(),
+    };
+
+    this.undoManager.push(txn);
+
+    // Insert before the closing brace, same convention as handleNodeAdd.
+    const insertPos = this.currentSource.lastIndexOf('}');
+    if (insertPos >= 0) {
+      this.callbacks.onDslPatch(generatedDsl + '\n', insertPos, 0);
+    }
+
+    this.notifyUndoRedoState();
+  }
+
   handleNodeDelete(nodeId: string): void {
     if (!this.currentIr) return;
 

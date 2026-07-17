@@ -46,6 +46,58 @@ export interface Swatch {
   accent: string;
 }
 
+// ── Palette override (theming without a fork) ──────────────────────────────
+// A caller (CLI --theme flag, a custom Theme, or an ad-hoc palette) can swap
+// every color this module hands out without touching a renderer function.
+// This stays a plain module-level slot (not a parameter threaded through
+// every render* call) because those functions are called from many sites
+// across engine.ts and custom-renderers.ts and retrofitting a parameter
+// everywhere would be a much larger, riskier change for the same effect.
+// The engine sets this once per render() call and clears it in a finally
+// block, so it never leaks between unrelated compiles.
+export interface PaletteOverride {
+  /** Overrides every per-type accent swatch with this single stroke/fill/text
+   *  triple (accent = stroke). Leave undefined to keep per-type hues. */
+  nodeStroke?: string;
+  nodeFill?: string;
+  nodeText?: string;
+  /** Edge stroke color. */
+  edgeStroke?: string;
+  /** Canvas/page background. */
+  background?: string;
+  /** Neutral text/muted/fill colors (falls back to the built-in neutrals). */
+  neutralText?: string;
+  neutralMuted?: string;
+  neutralFill?: string;
+}
+
+let activeOverride: PaletteOverride | undefined;
+
+/** Set the active palette override. Call `clearPaletteOverride()` when done
+ *  (the engine does this in a finally block around each render). */
+export function setPaletteOverride(override: PaletteOverride | undefined): void {
+  activeOverride = override;
+}
+
+export function clearPaletteOverride(): void {
+  activeOverride = undefined;
+}
+
+export function getPaletteOverride(): PaletteOverride | undefined {
+  return activeOverride;
+}
+
+function applyOverride(base: Swatch): Swatch {
+  if (!activeOverride) return base;
+  const stroke = activeOverride.nodeStroke ?? base.stroke;
+  return {
+    stroke,
+    fill: activeOverride.nodeFill ?? base.fill,
+    text: activeOverride.nodeText ?? base.text,
+    accent: stroke,
+  };
+}
+
 // ── Shared neutrals ─────────────────────────────────────────────────────────
 // One typographic + geometric contract for every diagram type.
 export const DS = {
@@ -69,14 +121,20 @@ export const DS = {
   /** Sketchy roughness — low, so hand-drawn reads as "crafted" not "messy". */
   roughness: 0.9,
 
-  /** Shared neutrals used when a node has no accent/role of its own. */
-  neutral: {
-    text: '#1f2933',
-    muted: '#5b6b7b',
-    edge: '#64748b',
-    fill: '#f6f8fb',
-    stroke: '#94a3b8',
-    surface: '#ffffff',
+  /** Shared neutrals used when a node has no accent/role of its own.
+   *  Live getters (not plain fields) so a PaletteOverride set via
+   *  setPaletteOverride() is picked up without threading a parameter through
+   *  every call site that reads DS.neutral.*. */
+  get neutral() {
+    const o = activeOverride;
+    return {
+      text: o?.neutralText ?? '#1f2933',
+      muted: o?.neutralMuted ?? '#5b6b7b',
+      edge: o?.edgeStroke ?? '#64748b',
+      fill: o?.neutralFill ?? '#f6f8fb',
+      stroke: '#94a3b8',
+      surface: '#ffffff',
+    };
   },
 } as const;
 
@@ -121,9 +179,9 @@ const CHART: Swatch = swatch('#0369a1', '#eef6ff', '#075985');
  *  an unknown/future type still looks like part of the family. */
 export function typeSwatch(type: DiagramType | string): Swatch {
   const t = String(type);
-  if (t.startsWith('c4')) return C4;
-  if (t.startsWith('chart')) return CHART;
-  return TYPE_ACCENTS[t] || swatch('#4f46e5', '#eef0ff', '#312e81');
+  if (t.startsWith('c4')) return applyOverride(C4);
+  if (t.startsWith('chart')) return applyOverride(CHART);
+  return applyOverride(TYPE_ACCENTS[t] || swatch('#4f46e5', '#eef0ff', '#312e81'));
 }
 
 // ── Semantic roles ──────────────────────────────────────────────────────────
@@ -146,7 +204,13 @@ const ROLE_SWATCHES: Record<SemanticRole, Swatch> = {
 };
 
 export function roleSwatch(role: SemanticRole): Swatch {
-  return ROLE_SWATCHES[role];
+  // Routed through applyOverride() for the same reason typeSwatch() is: a
+  // palette that reskins type accents but leaves role colors at their
+  // light-mode values would put a bright green `[Start]` fill on a dark
+  // background. Roles lose their hue distinction under an override that sets
+  // nodeStroke/nodeFill — that's the intended trade for legibility, and
+  // matches what a caller asking for "high-contrast" is actually asking for.
+  return applyOverride(ROLE_SWATCHES[role]);
 }
 
 // ── Chart series palette ────────────────────────────────────────────────────
@@ -173,4 +237,39 @@ export function seriesColor(index: number): string {
 // ── helpers ─────────────────────────────────────────────────────────────────
 function swatch(stroke: string, fill: string, text: string): Swatch {
   return { stroke, fill, text, accent: stroke };
+}
+
+/** Named built-in palettes, resolved by id (e.g. CLI `--theme dark`). These
+ *  are lighter-weight than a full `Theme` (types/style.ts) — just the color
+ *  handful the renderer actually varies per-theme — since a full Theme also
+ *  carries Rough.js roughness/font settings that most callers don't want to
+ *  override just to reskin colors. */
+export const BUILTIN_PALETTES: Record<string, PaletteOverride> = {
+  default: {},
+  dark: {
+    nodeStroke: '#93c5fd',
+    nodeFill: '#1e293b',
+    nodeText: '#e2e8f0',
+    edgeStroke: '#94a3b8',
+    background: '#0f172a',
+    neutralText: '#e2e8f0',
+    neutralMuted: '#94a3b8',
+    neutralFill: '#1e293b',
+  },
+  'high-contrast': {
+    nodeStroke: '#000000',
+    nodeFill: '#ffffff',
+    nodeText: '#000000',
+    edgeStroke: '#000000',
+    background: '#ffffff',
+    neutralText: '#000000',
+    neutralMuted: '#000000',
+    neutralFill: '#ffffff',
+  },
+};
+
+export function resolvePalette(idOrOverride: string | PaletteOverride | undefined): PaletteOverride | undefined {
+  if (!idOrOverride) return undefined;
+  if (typeof idOrOverride === 'string') return BUILTIN_PALETTES[idOrOverride];
+  return idOrOverride;
 }

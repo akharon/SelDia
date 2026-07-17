@@ -1,7 +1,7 @@
 ---
 name: seldia-dsl
-description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 21 types: flowchart, sequence, class, er, state, usecase, activity, component, deployment, c4, bpmn, dmn, gantt, mindmap, network, chart, gitgraph, form, sankey, block, timeline. Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
-argument-hint: '[diagram description or .seldia file path]'
+description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 21 types: flowchart, sequence, class, er, state, usecase, activity, component, deployment, c4, bpmn, dmn, gantt, mindmap, network, chart, gitgraph, form, sankey, block, timeline. Rough.js hand-drawn rendering. Use for any text-to-diagram .sld files.'
+argument-hint: '[diagram description or .sld file path]'
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 ## Usage
 
-When user asks to create/modify a diagram or write `.seldia`/`.sld` files, output ` ```seldia ` fenced blocks (raw DSL for standalone files). Choose diagram type:
+When user asks to create/modify a diagram or write `.sld` files, output ` ```seldia ` fenced blocks (raw DSL for standalone files). Choose diagram type:
 
 | Need | Type |
 |------|------|

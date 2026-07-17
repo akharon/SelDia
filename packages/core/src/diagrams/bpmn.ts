@@ -29,7 +29,37 @@ function bpmnKindOf(nd: ASTNodeDecl): 'startEvent' | 'endEvent' | 'intermediateE
     case 'datastore': return 'dataStore';
     case 'task': default:
       if (/\b(pool|swimlane)\b/.test(probe)) return 'pool';
+      // No type keyword: fall back to the shape the author actually wrote.
+      // resources/templates/bpmn.sld documents `(event) [task] {gateway}` as
+      // the BPMN shape vocabulary, but without this the shape was dropped and
+      // every node collapsed to 'task' — so a whole process rendered (and
+      // exported) as a flat wall of tasks with no events or gateways.
+      if (!kw) {
+        const shapeKind = shapeToBpmnKind(nd);
+        if (shapeKind) return shapeKind;
+      }
       return 'task';
+  }
+}
+
+/** Map the DSL shape a BPMN node was declared with onto a BPMN kind, per the
+ *  `(event) [task] {gateway}` vocabulary in resources/templates/bpmn.sld.
+ *
+ *  Note `(…)` lexes to ROUNDED_RECTANGLE and `[…]` to RECTANGLE, so the two
+ *  are distinguishable here even though both are rectangles — that difference
+ *  is the only record of which one the author typed. `((…))` (true CIRCLE) is
+ *  accepted as an event too, since a reader writing a circle in a process
+ *  diagram means an event.
+ *
+ *  Events can't be told apart start-vs-end by shape alone, so they resolve to
+ *  a generic event; orientation is settled from edge topology later in
+ *  resolveEventOrientation(). */
+function shapeToBpmnKind(nd: ASTNodeDecl): 'gateway' | 'task' | 'intermediateEvent' | null {
+  switch (nd.shape) {
+    case ShapeType.DIAMOND: return 'gateway';
+    case ShapeType.CIRCLE: case ShapeType.ROUNDED_RECTANGLE: return 'intermediateEvent';
+    case ShapeType.RECTANGLE: return 'task';
+    default: return null;
   }
 }
 
@@ -73,6 +103,30 @@ const BPMN_SIZE: Record<string, { width: number; height: number }> = {
   dataObject: { width: 120, height: 80 }, dataStore: { width: 100, height: 100 },
 };
 
+/** Settle shape-inferred generic events into startEvent/endEvent from edge
+ *  topology: no incoming = start, no outgoing = end. `(…)` is one shape for
+ *  both ends of a process, so this is the only signal available — and it's the
+ *  same cue a reader takes from the diagram. Nodes that got their kind from an
+ *  explicit type keyword are left alone; only the inferred ones are revisited,
+ *  which is why this reads `shapeInferredEvent` rather than bpmnKind. */
+function resolveEventOrientation(nodes: IRNode[], edges: IREdge[]): void {
+  for (const n of nodes) {
+    const data = n.data as any;
+    if (!data?.shapeInferredEvent) continue;
+    delete data.shapeInferredEvent;
+    const hasIn = edges.some((e) => e.targetId === n.id);
+    const hasOut = edges.some((e) => e.sourceId === n.id);
+    if (!hasIn && hasOut) data.bpmnKind = 'startEvent';
+    else if (hasIn && !hasOut) data.bpmnKind = 'endEvent';
+    else continue; // both (or neither) → genuinely intermediate; leave as-is
+    data.bpmnSubKind = data.bpmnKind === 'startEvent' ? 'messageStart' : 'messageEnd';
+    // The node was sized/shaped as a rounded-rect task before the shape told
+    // us it was an event, so bring geometry in line with the settled kind.
+    n.shape = ShapeType.CIRCLE;
+    n.size = { ...BPMN_SIZE[data.bpmnKind as 'startEvent' | 'endEvent'] };
+  }
+}
+
 export const bpmnPlugin: DiagramPlugin = {
   id: 'seldia-bpmn', name: 'BPMN Process', version: '1.0.0',
   diagramType: DiagramType.BPMN,
@@ -101,7 +155,14 @@ export const bpmnPlugin: DiagramPlugin = {
           id: nd.id, label: nd.label, shape,
           position: { x: 0, y: 0 }, size, style: { ...(nd.style || {}) },
           ports: [], classList: [], collapsed: false,
-          data: { ...(nd.data || {}), bpmnKind, bpmnSubKind: subKind },
+          data: {
+            ...(nd.data || {}), bpmnKind, bpmnSubKind: subKind,
+            // Marks an event whose kind came from the shape `(…)` rather than
+            // an explicit keyword, so resolveEventOrientation() knows it may
+            // still be re-settled into a start/end event from edge topology.
+            ...(!((nd.data as any)?.typeKeyword) && bpmnKind === 'intermediateEvent'
+              ? { shapeInferredEvent: true } : {}),
+          },
         });
       }
       if (stmt.kind === 'EdgeDecl') {
@@ -109,6 +170,7 @@ export const bpmnPlugin: DiagramPlugin = {
         edges.push({ id: `bpme-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: { ...(ed.style || {}), strokeStyle: StrokeStyle.SOLID }, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
+    resolveEventOrientation(nodes, edges);
     return { id: ast.metadata?.id || 'bpmn-1', type: DiagramType.BPMN, title: ast.title || 'BPMN Process', nodes, edges, groups: [], layers: [], metadata: {} };
   },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [100, 80], rankSpacing: 100 }; },

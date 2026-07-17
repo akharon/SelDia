@@ -259,6 +259,8 @@ export class SelDiAInteractiveProvider {
     .seldia-selected { outline: 2px solid #0e639c; outline-offset: 2px; }
     /* Edge draw mode */
     .edge-draw-line { stroke: #0e639c; stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
+    /* Marks the source node while drawing a new edge (Edit mode). */
+    .seldia-edge-source { outline: 2px dashed #0e639c; outline-offset: 3px; }
     .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
   </style>
 </head>
@@ -418,6 +420,24 @@ export class SelDiAInteractiveProvider {
       if (target) {
         const id = target.getAttribute('data-id');
         const type = target.getAttribute('data-type');
+        // In edge-draw mode, a plain click on a second node completes the
+        // edge instead of changing selection — this is the toolbar-button
+        // entry point into the same gesture the context menu's "Add Edge"
+        // item already supports.
+        if (editMode === 'drawing-edge' && type === 'node') {
+          if (!edgeDrawSourceId) {
+            edgeDrawSourceId = id;
+            markEdgeDrawSource(id);
+          } else if (edgeDrawSourceId !== id) {
+            vscode.postMessage({ type: 'edgeAdded', sourceId: edgeDrawSourceId, targetId: id });
+            clearEdgeDrawSource();
+            edgeDrawSourceId = null;
+            editMode = 'idle';
+            document.getElementById('btnAddEdge').classList.remove('active');
+            vscode.postMessage({ type: 'editModeChanged', mode: 'idle' });
+          }
+          return;
+        }
         clearSelection();
         if (type === 'node') {
           selectedNodeId = id;
@@ -620,8 +640,10 @@ export class SelDiAInteractiveProvider {
             if (!edgeDrawSourceId) {
               edgeDrawSourceId = id;
               document.getElementById('btnAddEdge').classList.add('active');
+              markEdgeDrawSource(id);
             } else if (edgeDrawSourceId !== id) {
               vscode.postMessage({ type: 'edgeAdded', sourceId: edgeDrawSourceId, targetId: id });
+              clearEdgeDrawSource();
               edgeDrawSourceId = null;
               document.getElementById('btnAddEdge').classList.remove('active');
             }
@@ -684,6 +706,8 @@ export class SelDiAInteractiveProvider {
         labelEditor.style.display = 'none';
         contextMenu.style.display = 'none';
         edgeDrawSourceId = null;
+        editMode = 'idle';
+        clearEdgeDrawSource();
         document.getElementById('btnAddEdge').classList.remove('active');
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -703,6 +727,15 @@ export class SelDiAInteractiveProvider {
         if (selectedEdgeId) vscode.postMessage({ type: 'edgeDeleted', edgeId: selectedEdgeId });
       }
     });
+
+    // ── Edge draw visual feedback ─────────────────────────────────────
+    function markEdgeDrawSource(id) {
+      const el = container.querySelector('[data-id="' + id + '"]');
+      if (el) el.classList.add('seldia-edge-source');
+    }
+    function clearEdgeDrawSource() {
+      container.querySelectorAll('.seldia-edge-source').forEach((el) => el.classList.remove('seldia-edge-source'));
+    }
 
     // ── Helper functions ───────────────────────────────────────────────
     function clearSelection() {
@@ -807,7 +840,7 @@ export class SelDiAInteractiveProvider {
         break;
 
       case 'edgeAdded':
-        // Handle edge addition
+        this._editHandler.handleEdgeAdd(msg.sourceId, msg.targetId);
         setTimeout(() => this.render(), 100);
         break;
 

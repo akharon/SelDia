@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { Command } from 'commander';
-import { createEngine, importMermaid, exportMermaid } from '@seldia/core';
+import { createEngine, importMermaid, exportMermaid, exportBpmn, exportSqlDdl, diffDiagrams, BUILTIN_PALETTES } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename, join, relative as pathRelative } from 'path';
 import { scanRepo } from './scan.js';
@@ -17,7 +17,11 @@ function printBanner(): void {
      │   Diagram-as-Code w/ Rough.js │
      └─────────────────────────────┘\x1b[0m
   `;
-  console.log(banner);
+  // stderr, not stdout: commands like `diff --format json` and `export --to
+  // mermaid` write machine-readable output to stdout, and a decorative banner
+  // there makes the result unparseable the moment anyone pipes it. The banner
+  // is still shown in a terminal either way.
+  console.error(banner);
 }
 
 const program = new Command();
@@ -40,7 +44,7 @@ program
   .option('--debug', 'Enable debug output')
   .option('--batch', 'Batch compile directory')
   .action(async (input, options) => {
-    const engine = createEngine({ config: { defaultTheme: options.theme } });
+    const engine = createEngine({ config: { defaultTheme: options.theme, render: { theme: options.theme } } });
 
     if (options.batch) {
       const { readdirSync } = await import('fs');
@@ -126,7 +130,7 @@ program
       process.exit(1);
     }
 
-    const engine = createEngine({ config: { defaultTheme: options.theme } });
+    const engine = createEngine({ config: { defaultTheme: options.theme, render: { theme: options.theme } } });
     const result = engine.compileIRSync(ir);
     if (!result.ok) {
       console.error('❌ Rendering failed:');
@@ -173,7 +177,7 @@ program
       return;
     }
 
-    const engine = createEngine({ config: { defaultTheme: options.theme } });
+    const engine = createEngine({ config: { defaultTheme: options.theme, render: { theme: options.theme } } });
     let okCount = 0;
     let failCount = 0;
 
@@ -211,15 +215,21 @@ program
   .command('export')
   .description('Export a .sld file to another diagram format')
   .argument('<file>', 'Path to .sld file')
-  .requiredOption('--to <format>', 'Target format (currently: mermaid)')
+  .requiredOption('--to <format>', 'Target format: mermaid, bpmn, sql-ddl')
   .option('-o, --output <path>', 'Output file path (defaults to stdout)')
   .action((file, options) => {
     const inPath = resolve(process.cwd(), file);
     if (!existsSync(inPath)) { console.error(`❌ File not found: ${inPath}`); process.exit(1); }
 
-    if (options.to !== 'mermaid') {
+    const EXPORTERS: Record<string, (ir: any) => string | null> = {
+      mermaid: exportMermaid,
+      bpmn: exportBpmn,
+      'sql-ddl': exportSqlDdl,
+    };
+    const exporter = EXPORTERS[options.to];
+    if (!exporter) {
       console.error(`❌ Unsupported export target: ${options.to}`);
-      console.error('   Supported targets: mermaid');
+      console.error('   Supported targets: mermaid, bpmn, sql-ddl');
       process.exit(1);
     }
 
@@ -245,20 +255,83 @@ program
       process.exit(1);
     }
 
-    const mermaid = exportMermaid(r3.value);
-    if (mermaid === null) {
-      console.error(`❌ Diagram type "${r3.value.type}" cannot be exported to Mermaid.`);
+    const output = exporter(r3.value);
+    if (output === null) {
+      console.error(`❌ Diagram type "${r3.value.type}" cannot be exported to ${options.to}.`);
       process.exit(1);
     }
 
     if (options.output) {
       const outPath = resolve(process.cwd(), options.output);
-      writeFileSync(outPath, mermaid);
-      console.log(`✅ Exported to Mermaid`);
+      writeFileSync(outPath, output);
+      console.log(`✅ Exported to ${options.to}`);
       console.log(`   Output: ${outPath}`);
     } else {
-      console.log(mermaid);
+      console.log(output);
     }
+  });
+
+// ── diff ──────────────────────────────────────────────────────────────────────
+// Structural diff between two .sld files for PR review: compiles both to IR
+// (parse → analyze → transform, same as `export`) and reports nodes/edges
+// added, removed, or changed — without eyeballing two rendered SVGs.
+program
+  .command('diff')
+  .description('Show a structural diff between two .sld diagram files')
+  .argument('<old>', 'Path to the "before" .sld file')
+  .argument('<new>', 'Path to the "after" .sld file')
+  .option('--format <format>', 'Output format: text, json', 'text')
+  .action((oldFile, newFile, options) => {
+    const oldPath = resolve(process.cwd(), oldFile);
+    const newPath = resolve(process.cwd(), newFile);
+    if (!existsSync(oldPath)) { console.error(`❌ File not found: ${oldPath}`); process.exit(1); }
+    if (!existsSync(newPath)) { console.error(`❌ File not found: ${newPath}`); process.exit(1); }
+
+    const engine = createEngine();
+    const compileToIr = (path: string) => {
+      const source = readFileSync(path, 'utf-8');
+      const r1 = engine.parse(source, path);
+      if (!r1.ok) { console.error(`❌ Parsing failed for ${path}:`); for (const err of r1.errors) console.error(`   ${err.message}`); process.exit(1); }
+      const r2 = engine.analyze(r1.value);
+      if (!r2.ok) { console.error(`❌ Analysis failed for ${path}:`); for (const err of r2.errors) console.error(`   ${err.message}`); process.exit(1); }
+      const r3 = engine.transform(r2.value);
+      if (!r3.ok) { console.error(`❌ Transform failed for ${path}:`); for (const err of r3.errors) console.error(`   ${err.message}`); process.exit(1); }
+      return r3.value;
+    };
+
+    const before = compileToIr(oldPath);
+    const after = compileToIr(newPath);
+    const diff = diffDiagrams(before, after);
+
+    if (options.format === 'json') {
+      console.log(JSON.stringify(diff, null, 2));
+      // Same exit convention as the text path below: non-zero on any diff, so
+      // a CI drift check behaves identically whichever format it asks for.
+      if (!diff.identical) process.exit(1);
+      return;
+    }
+
+    if (diff.identical) {
+      console.log('✅ No structural changes.');
+      return;
+    }
+    if (diff.typeChanged) console.log(`⚠️  Diagram type changed: ${diff.beforeType} → ${diff.afterType}`);
+    if (diff.titleChanged) console.log(`ℹ️  Title changed: "${diff.beforeTitle}" → "${diff.afterTitle}"`);
+
+    for (const n of diff.nodes) {
+      if (n.kind === 'added') console.log(`+ node ${n.id}: "${n.after!.label}" (${n.after!.shape})`);
+      else if (n.kind === 'removed') console.log(`- node ${n.id}: "${n.before!.label}" (${n.before!.shape})`);
+      else console.log(`~ node ${n.id}: ${n.changes!.join(', ')}`);
+    }
+    for (const e of diff.edges) {
+      if (e.kind === 'added') console.log(`+ edge ${e.id}: ${e.after!.sourceId} -> ${e.after!.targetId}${e.after!.label ? ` ("${e.after!.label}")` : ''}`);
+      else if (e.kind === 'removed') console.log(`- edge ${e.id}: ${e.before!.sourceId} -> ${e.before!.targetId}${e.before!.label ? ` ("${e.before!.label}")` : ''}`);
+      else console.log(`~ edge ${e.id}: ${e.changes!.join(', ')}`);
+    }
+
+    const s = diff.summary;
+    console.log(`\n📐 ${s.nodesAdded} node(s) added, ${s.nodesRemoved} removed, ${s.nodesChanged} changed | ${s.edgesAdded} edge(s) added, ${s.edgesRemoved} removed, ${s.edgesChanged} changed`);
+    process.exit(1); // non-zero on any diff — mirrors `diff`'s own exit convention, useful in CI
   });
 
 // ── validate ──────────────────────────────────────────────────────────────────

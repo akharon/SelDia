@@ -57,6 +57,27 @@ class Tokenizer {
   private pos = 0;
   private line = 1;
   private col = 1;
+  // Stack tracking, for each currently-open `{`, whether it is a
+  // diagram/group/section *body* brace or an *attribute-block* brace
+  // (`{ key: value, ... }`). Statements — including the legacy diamond-shape
+  // literal `key: {text}` — live directly inside a body brace; nested
+  // object values (`layout: { x: 300, y: 200 }`) live inside an already-open
+  // attribute-block brace. This lets `{` immediately after a COLON be
+  // resolved correctly: diamond-shape only when the *nearest enclosing*
+  // brace is a body (or we're at the top level), nested-object-value
+  // whenever the nearest enclosing brace is itself an attribute block.
+  //
+  // Each pushed brace is classified by what precedes it:
+  //  - preceded by STRING/IDENT-type-alias/KW_DIAGRAM/KW_GROUP/KW_SECTION
+  //    (i.e. NOT immediately preceded by SHAPE, another attribute brace, or
+  //    COLON) → 'body'
+  //  - preceded by SHAPE, RBRACE (closing a shape), COLON, or already inside
+  //    an 'attr' brace → 'attr'
+  private braceStack: Array<'body' | 'attr'> = [];
+
+  private inAttrContext(): boolean {
+    return this.braceStack.length > 0 && this.braceStack[this.braceStack.length - 1] === 'attr';
+  }
 
   constructor(source: string) {
     this.source = source;
@@ -253,12 +274,21 @@ class Tokenizer {
       }
 
       // LBRACE / RBRACE
-      if (ch === '}') { this.advance(); tokens.push(this.makeToken(TokenType.RBRACE, '}', start)); continue; }
+      if (ch === '}') {
+        this.advance();
+        tokens.push(this.makeToken(TokenType.RBRACE, '}', start));
+        this.braceStack.pop();
+        continue;
+      }
       if (ch === '{') {
-        // Diamond shape {text} only when preceded by colon (old syntax).
-        // In the new syntax, use keyword: d diamond "Label"
+        // Diamond shape {text} only when preceded by colon (old syntax) AND
+        // the nearest enclosing brace is a body brace (or we're at the top
+        // level) — inside an attribute block, a COLON-then-`{` is a nested
+        // object value instead (`layout: { x: 300, y: 200 }`). Without this
+        // context check, that inner `{` was misread as a diamond-shape
+        // literal, silently truncating the outer attribute block.
         const prevTok = tokens.length > 0 ? tokens[tokens.length - 1] : null;
-        if (prevTok && prevTok.type === TokenType.COLON) {
+        if (prevTok && prevTok.type === TokenType.COLON && !this.inAttrContext()) {
           this.advance(); // skip {
           let raw = '';
           while (this.pos < this.source.length && this.peek() !== '}') {
@@ -271,6 +301,60 @@ class Tokenizer {
         }
         this.advance();
         tokens.push(this.makeToken(TokenType.LBRACE, '{', start));
+        // Classify the brace we just opened: an attribute block if it's
+        // nested inside another attribute block, or immediately preceded by
+        // a COLON (nested value) or a SHAPE token (attribute block following
+        // a node/edge's bracket shape, e.g. `a (Start) { x: 1 }`). A body
+        // brace (diagram/group/section) is only ever opened right after the
+        // diagram-header sequence — KW_DIAGRAM's type IDENT, a type-alias
+        // IDENT, KW_GROUP's name, or KW_SECTION's label — optionally
+        // followed by a title STRING. We identify that specifically by
+        // scanning back past at most one STRING to find KW_DIAGRAM,
+        // KW_GROUP, KW_SECTION, or an IDENT/STRING acting as a header name
+        // — anything else preceding a STRING (e.g. a node id) means the
+        // STRING was a *label*, so the brace is an attribute block.
+        let isAttrOpen: boolean;
+        if (this.inAttrContext()) {
+          isAttrOpen = true;
+        } else if (prevTok && (prevTok.type === TokenType.COLON || prevTok.type === TokenType.SHAPE)) {
+          isAttrOpen = true;
+        } else if (prevTok && prevTok.type === TokenType.STRING) {
+          // Could be a diagram/group/section title STRING (body) or a node's
+          // label STRING (attr, e.g. `a "Label" { x: 1 }`). Distinguish by
+          // what precedes the STRING: KW_DIAGRAM/KW_GROUP/KW_SECTION or a
+          // bare header IDENT with nothing before it (or preceded only by
+          // KW_DIAGRAM) means body; a node/edge id followed directly by a
+          // label STRING means attr.
+          // NB: the LBRACE itself was already pushed above, so it sits at
+          // tokens[length-1] and the title STRING at [length-2] — the token
+          // *before* the STRING is therefore [length-3], not [length-2].
+          const beforeStr = tokens.length > 2 ? tokens[tokens.length - 3] : null;
+          // Diagram/group/section header keyword before the title STRING,
+          // OR this is the type-alias header form (`fl "Title" {`) where the
+          // STRING is the very first or second token of the whole file (an
+          // IDENT type-alias with no id before it, since a real node
+          // declaration is never the first statement of the source).
+          const isDiagramKeywordHeader = !!beforeStr && (
+            beforeStr.type === TokenType.KW_DIAGRAM ||
+            beforeStr.type === TokenType.KW_GROUP ||
+            beforeStr.type === TokenType.KW_SECTION);
+          // The canonical header `diagram <type> "Title" {` puts the *type*
+          // IDENT — not KW_DIAGRAM — directly before the title STRING, so
+          // isDiagramKeywordHeader misses it. Look one token further back for
+          // KW_DIAGRAM. Without this the diagram's own body brace is
+          // classified 'attr', which makes inAttrContext() true for every
+          // statement in the file and silently demotes the diamond-shape form
+          // `id: {Gateway?}` to a nested-object-value brace.
+          const beforeType = tokens.length > 3 ? tokens[tokens.length - 4] : null;
+          const isTypedDiagramHeader = !!beforeStr && beforeStr.type === TokenType.IDENT &&
+            !!beforeType && beforeType.type === TokenType.KW_DIAGRAM;
+          const isTypeAliasHeader = !!beforeStr && beforeStr.type === TokenType.IDENT &&
+            tokens.length === 3; // exactly [IDENT type-alias, STRING title, LBRACE]
+          isAttrOpen = !(isDiagramKeywordHeader || isTypedDiagramHeader || isTypeAliasHeader);
+        } else {
+          isAttrOpen = false;
+        }
+        this.braceStack.push(isAttrOpen ? 'attr' : 'body');
         continue;
       }
       if (ch === ':') { this.advance(); tokens.push(this.makeToken(TokenType.COLON, ':', start)); continue; }
@@ -769,6 +853,16 @@ class Parser {
       if (next.type === TokenType.STRING) {
         return this.parseNodeDecl();
       }
+      // id: (Label) / id: "Label" / id: shape "Label" — colon-separated node
+      // declaration form (e.g. `start: (Start)`), used throughout some
+      // example fixtures alongside the colon-less `start (Start)` form.
+      // Both are accepted; parseNodeDecl() itself consumes the optional
+      // colon right after the id.
+      if (next.type === TokenType.COLON &&
+          (next2.type === TokenType.SHAPE || next2.type === TokenType.STRING ||
+           (next2.type === TokenType.IDENT && isShapeKeyword(next2.value)))) {
+        return this.parseNodeDecl();
+      }
       // id -> target — edge
       if (next.type === TokenType.ARROW) {
         return this.parseEdgeDecl();
@@ -839,6 +933,13 @@ class Parser {
   // ── Node ─────────────────────────────────────────────────────────────────
   parseNodeDecl(): ASTNodeDecl {
     const idTok = this.consume(); // id
+
+    // Optional colon between id and shape/label: `start: (Start)`. Purely
+    // cosmetic — equivalent to the colon-less `start (Start)` form used
+    // elsewhere; consumed and discarded here so the rest of this method
+    // (which expects shape/label tokens to immediately follow) doesn't need
+    // to change.
+    if (this.peek().type === TokenType.COLON) this.consume();
 
     // Check if the next token is a shape keyword (id shape "Label")
     let shape: ShapeType = ShapeType.RECTANGLE;

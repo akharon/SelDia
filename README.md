@@ -51,7 +51,10 @@ The wedge is *drift*, not drawing. See [docs/market.md](docs/market.md) for the 
 | `@seldia/web` | Web components (`<seldia-viewer>`) |
 | `@seldia/vscode-ext` | VS Code extension with full IDE integration |
 
-> `@seldia/render`, `@seldia/layout`, and `@seldia/interaction` exist in the tree but are **not wired into the shipped product** — `@seldia/core`'s engine reimplements layout and rendering inline. They're slated to be wired through or deleted; see [next_steps.md §3](docs/next_steps.md#3-known-technical-debt-carried-from-prior-internal-review).
+> `@seldia/core`'s engine implements layout and Rough.js rendering inline; the
+> former `@seldia/render` and `@seldia/layout` packages were unused and have
+> been removed. `@seldia/interaction` is live — the VS Code extension's Edit
+> mode uses it for zoom/pan, selection, and undo/redo.
 
 ## Quick Start
 

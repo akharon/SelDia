@@ -27,8 +27,9 @@ import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
 import { routeBetween, centerOf, computeFans, type Fan } from './render/edge-routing.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
-import { DS, typeSwatch, roleSwatch, seriesColor, type Swatch, type SemanticRole } from './render/design-system.js';
+import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
+import { expandIncludes } from './macro/include.js';
 import {
   renderSequenceParticipant, renderSequenceMessage,
   renderStateNode,
@@ -139,8 +140,18 @@ function nodeSwatch(node: IRNode, type: DiagramType): Swatch {
   };
 }
 
+/** Deep-partial version of SelDiAConfig for engine construction: callers
+ *  routinely want to override just one theme/palette field without having to
+ *  restate every other RenderConfig/LayoutConfig property (see the
+ *  constructor's per-sub-config merge below, which relies on each of these
+ *  being genuinely optional rather than "Partial<SelDiAConfig>"'s shallow
+ *  optionality, which still demanded a complete nested object). */
+type DeepPartialConfig = {
+  [K in keyof SelDiAConfig]?: SelDiAConfig[K] extends object ? Partial<SelDiAConfig[K]> : SelDiAConfig[K];
+};
+
 export interface EngineOptions {
-  config?: Partial<SelDiAConfig>;
+  config?: DeepPartialConfig;
   plugins?: DiagramPlugin[];
   themes?: Theme[];
 }
@@ -155,7 +166,20 @@ class SelDiAEngine implements CoreEngine {
   private themes = new Map<string, Theme>();
 
   constructor(options?: EngineOptions) {
-    this.config = { ...DEFAULT_CONFIG, ...options?.config } as SelDiAConfig;
+    // A shallow spread here would let a caller's partial `render: { theme }`
+    // silently blow away the rest of DEFAULT_CONFIG.render (background,
+    // sketchy, padding, ...) — merge each known sub-config one level deep so
+    // "just set the theme" doesn't reset everything else back to defaults.
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...options?.config,
+      render: { ...DEFAULT_CONFIG.render, ...options?.config?.render },
+      layout: { ...DEFAULT_CONFIG.layout, ...options?.config?.layout },
+      parser: { ...DEFAULT_CONFIG.parser, ...options?.config?.parser },
+      plugins: { ...DEFAULT_CONFIG.plugins, ...options?.config?.plugins },
+      output: { ...DEFAULT_CONFIG.output, ...options?.config?.output },
+      debug: { ...DEFAULT_CONFIG.debug, ...options?.config?.debug },
+    } as SelDiAConfig;
     this.plugins = new DefaultPluginManager();
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
@@ -166,7 +190,27 @@ class SelDiAEngine implements CoreEngine {
   }
 
   parse(source: string, filePath?: string): Result<DiagramAST> {
-    return parseDSL(source, filePath);
+    // Expand `include "file.sld"` directives on the raw text before the DSL
+    // parser ever sees it — this is a pure preprocessor pass (see
+    // macro/include.ts), not a parser/tokenizer change, so it's safe to run
+    // unconditionally: a source with no include directives round-trips
+    // through expandIncludes() unchanged. A missing/circular include is a
+    // hard parse error (there's no `warnings` channel on a successful
+    // Result<DiagramAST> to attach a soft warning to), reported at the top
+    // of the source since the directive line itself was already stripped.
+    const { source: expanded, diagnostics } = expandIncludes(source, filePath);
+    if (diagnostics.length > 0) {
+      return {
+        ok: false,
+        errors: diagnostics.map((message) => ({
+          severity: DiagnosticSeverity.ERROR,
+          message,
+          source: { file: filePath ?? '', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1, offset: 0 },
+          code: 'E-INCLUDE',
+        })),
+      };
+    }
+    return parseDSL(expanded, filePath);
   }
 
   analyze(ast: DiagramAST): Result<DiagramAST> {
@@ -367,16 +411,27 @@ class SelDiAEngine implements CoreEngine {
     // around obstacles, and the initial dagre/elk waypoints may also extend
     // beyond node boundaries).
     const finalBounds = this.computeBounds(nodes, edges, groups);
-    const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type, groups);
-    return {
-      ok: true,
-      value: {
-        svg,
-        width: finalBounds.width,
-        height: finalBounds.height,
-        stats: { nodeCount: nodes.length, edgeCount: edges.length, groupCount: layoutResult.diagram.groups.length, renderTimeMs: 0 },
-      },
-    };
+    // A theme/palette override (config.render.theme / config.render.palette)
+    // is applied only around this one render call and cleared in `finally`,
+    // so it can never leak into a concurrent/later compile of a different
+    // diagram — see render/design-system.ts for why this is a module-level
+    // slot rather than a threaded parameter.
+    const override = resolvePalette(this.config.render.palette ?? this.config.render.theme);
+    setPaletteOverride(override);
+    try {
+      const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type, groups);
+      return {
+        ok: true,
+        value: {
+          svg,
+          width: finalBounds.width,
+          height: finalBounds.height,
+          stats: { nodeCount: nodes.length, edgeCount: edges.length, groupCount: layoutResult.diagram.groups.length, renderTimeMs: 0 },
+        },
+      };
+    } finally {
+      clearPaletteOverride();
+    }
   }
 
   private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = []): string {
@@ -404,7 +459,14 @@ class SelDiAEngine implements CoreEngine {
     const bw = Math.max(bounds.width + pad * 2, chartLegendMinWidth(chartSeriesNames));
     const legendH = chartLegendHeight(chartSeriesNames, bw);
     const bh = bounds.height + pad * 2 + legendH;
-    const bg = this.config.render.background || '#ffffff';
+    // An explicit config.render.background always wins; otherwise fall back
+    // to the active palette's background (if any), then plain white. The
+    // DEFAULT_CONFIG value is 'transparent', which we don't want to treat as
+    // "explicitly set" — it's the un-set default, so an active theme's
+    // background should still apply on top of it.
+    const paletteBg = resolvePalette(this.config.render.palette ?? this.config.render.theme)?.background;
+    const explicitBg = this.config.render.background;
+    const bg = (explicitBg && explicitBg !== 'transparent') ? explicitBg : (paletteBg || explicitBg || '#ffffff');
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="100%" style="max-width:${bw}px">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);

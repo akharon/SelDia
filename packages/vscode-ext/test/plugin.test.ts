@@ -115,8 +115,11 @@ describe('renderMermaidBlock', () => {
   });
 
   it('declines unsupported diagram types so the default fence can have them', () => {
-    expect(renderMermaidBlock(engine, 'pie title Pets\n  "Dogs" : 386')).toBeNull();
-    expect(renderMermaidBlock(engine, 'gantt\n  title A\n  section S\n  t :a1, 2024-01-01, 30d')).toBeNull();
+    // `journey` is deliberately unsupported (no DiagramType.JOURNEY, no
+    // renderer) — see next_steps.md. pie/gantt used to sit here too, but both
+    // importers shipped in the second wave and now render for real.
+    expect(renderMermaidBlock(engine, 'journey\n  title My day\n  section Go to work\n    Make tea: 5: Me')).toBeNull();
+    expect(renderMermaidBlock(engine, 'quadrantChart\n  title Reach\n  A: [0.3, 0.6]')).toBeNull();
   });
 
   it('declines garbage rather than showing an error box in a Mermaid document', () => {
@@ -125,7 +128,12 @@ describe('renderMermaidBlock', () => {
   });
 
   it('attaches importer notes without turning the block into an error', () => {
-    const html = renderMermaidBlock(engine, 'flowchart TD\n subgraph one\n  a --> b\n end')!;
+    // A junk line inside an otherwise-valid sequence diagram: the importer
+    // notes what it skipped but still returns a diagram, so the block renders
+    // with notes attached rather than falling back. (The old fixture used a
+    // flowchart subgraph, which imports cleanly now that subgraphs are
+    // supported and so no longer produces any note.)
+    const html = renderMermaidBlock(engine, 'sequenceDiagram\n  A->>B: hi\n  %%!! junk line !!\n  ???garbage???')!;
     expect(html).toContain('data-seldia-notes=');
     expect(html).not.toContain('seldia-error');
   });
@@ -189,7 +197,9 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     const fallback = vi.fn(() => '<pre><code>original</code></pre>');
     md.renderer.rules.fence = fallback;
     createSelDiAMarkdownItPlugin(engine)(md);
-    const tokens = [{ info: 'mermaid', content: 'pie title Pets\n  "Dogs" : 386' }];
+    // `journey` has no importer/renderer by design (see next_steps.md), so it
+    // exercises the fallback. pie imports for real now.
+    const tokens = [{ info: 'mermaid', content: 'journey\n  title My day\n  section Go to work\n    Make tea: 5: Me' }];
     const out = md.renderer.rules.fence(tokens, 0, {}, {}, {});
     expect(fallback).toHaveBeenCalled();
     expect(out).toBe('<pre><code>original</code></pre>');

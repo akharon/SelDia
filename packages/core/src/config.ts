@@ -67,6 +67,14 @@ export interface RenderConfig {
 
   /** Padding around the diagram (pixels) */
   padding: number;
+
+  /** Named built-in palette to apply ("default" | "dark" | "high-contrast"),
+   *  or a custom color map. Swaps node/edge/text/background colors without
+   *  forking any renderer code — see render/design-system.ts PaletteOverride.
+   *  `palette` (a literal color map) takes precedence over `theme` (a name)
+   *  when both are set. */
+  theme?: string;
+  palette?: import('./render/design-system.js').PaletteOverride;
 }
 
 export interface LayoutConfig {

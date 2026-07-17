@@ -3,7 +3,7 @@
 // =============================================================================
 
 import * as vscode from 'vscode';
-import { createEngine } from '@seldia/core';
+import { createEngine, exportMermaid, isMermaidExportable } from '@seldia/core';
 import type { CoreEngine } from '@seldia/core';
 import { readFileSync, existsSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -150,6 +150,50 @@ export function activate(context: vscode.ExtensionContext) {
     const uri = await vscode.window.showSaveDialog({ filters: { 'SVG': ['svg'], 'PNG': ['png'], 'PDF': ['pdf'] } });
     if (uri) {
       writeFileSync(uri.fsPath, result.value.svg);
+      vscode.window.showInformationMessage(`$(check) Exported to ${uri.fsPath}`);
+    }
+  });
+
+  // Parse → analyze → transform mirrors engine.compile's own pipeline, just
+  // stopping before layout/render since exportMermaid works on IR, not SVG.
+  // Mirrors packages/cli/src/index.ts's `export --to mermaid` command.
+  const exportToMermaid = vscode.commands.registerCommand('seldia.exportToMermaid', async (sourceArg?: string) => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor && !sourceArg) {
+      vscode.window.showWarningMessage('No active editor');
+      return;
+    }
+    const source = sourceArg || editor!.document.getText();
+
+    const r1 = engine.parse(source, editor?.document.fileName);
+    if (!r1.ok) {
+      vscode.window.showErrorMessage('Parsing failed: ' + r1.errors.map(e => e.message).join(', '));
+      return;
+    }
+    const r2 = engine.analyze(r1.value);
+    if (!r2.ok) {
+      vscode.window.showErrorMessage('Analysis failed: ' + r2.errors.map(e => e.message).join(', '));
+      return;
+    }
+    const r3 = engine.transform(r2.value);
+    if (!r3.ok) {
+      vscode.window.showErrorMessage('Transform failed: ' + r3.errors.map(e => e.message).join(', '));
+      return;
+    }
+
+    if (!isMermaidExportable(r3.value.type)) {
+      vscode.window.showErrorMessage(`Diagram type "${r3.value.type}" cannot be exported to Mermaid.`);
+      return;
+    }
+    const mermaid = exportMermaid(r3.value);
+    if (mermaid === null) {
+      vscode.window.showErrorMessage(`Diagram type "${r3.value.type}" cannot be exported to Mermaid.`);
+      return;
+    }
+
+    const uri = await vscode.window.showSaveDialog({ filters: { 'Mermaid': ['mmd'] } });
+    if (uri) {
+      writeFileSync(uri.fsPath, mermaid);
       vscode.window.showInformationMessage(`$(check) Exported to ${uri.fsPath}`);
     }
   });
@@ -368,7 +412,7 @@ export function activate(context: vscode.ExtensionContext) {
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, insertDiagram, exportDiagram,
-    exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
+    exportToMermaid, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
     revealSource
   );
 

@@ -54,6 +54,14 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
         arguments: [block.source],
         tooltip: 'Export this diagram as SVG',
       }));
+
+      // "Export to Mermaid" lens
+      lenses.push(new vscode.CodeLens(startRange, {
+        title: '$(arrow-swap) Export to Mermaid',
+        command: 'seldia.exportToMermaid',
+        arguments: [block.source],
+        tooltip: 'Export this diagram to Mermaid (.mmd) syntax',
+      }));
     }
 
     return lenses;

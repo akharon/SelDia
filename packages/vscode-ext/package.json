@@ -125,6 +125,10 @@
         "title": "SelDiA: Export Diagram"
       },
       {
+        "command": "seldia.exportToMermaid",
+        "title": "SelDiA: Export Diagram to Mermaid"
+      },
+      {
         "command": "seldia.exportMarkdownToPdf",
         "title": "SelDiA: Export Markdown to PDF"
       },
@@ -171,6 +175,11 @@
           "command": "seldia.exportDiagram",
           "when": "editorLangId == seldia",
           "group": "seldia@3"
+        },
+        {
+          "command": "seldia.exportToMermaid",
+          "when": "editorLangId == seldia",
+          "group": "seldia@4"
         }
       ],
       "editor/title": [
@@ -195,6 +204,10 @@
         },
         {
           "command": "seldia.exportDiagram",
+          "when": "editorLangId == seldia"
+        },
+        {
+          "command": "seldia.exportToMermaid",
           "when": "editorLangId == seldia"
         },
         {

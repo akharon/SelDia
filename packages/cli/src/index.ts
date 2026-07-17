@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { Command } from 'commander';
-import { createEngine, importMermaid } from '@seldia/core';
+import { createEngine, importMermaid, exportMermaid } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename } from 'path';
 
@@ -140,6 +140,64 @@ program
     console.log(`✅ Rendered ${ir.type} from Mermaid`);
     console.log(`   Output: ${outPath}`);
     console.log(`   Nodes: ${result.value.stats.nodeCount}, Edges: ${result.value.stats.edgeCount}`);
+  });
+
+// ── export ────────────────────────────────────────────────────────────────────
+// Convert a .sld file to Mermaid text. Parse → analyze → transform mirrors
+// engine.compileSync's own pipeline, just stopping before layout/render since
+// exportMermaid works on IR, not SVG.
+program
+  .command('export')
+  .description('Export a .sld file to another diagram format')
+  .argument('<file>', 'Path to .sld file')
+  .requiredOption('--to <format>', 'Target format (currently: mermaid)')
+  .option('-o, --output <path>', 'Output file path (defaults to stdout)')
+  .action((file, options) => {
+    const inPath = resolve(process.cwd(), file);
+    if (!existsSync(inPath)) { console.error(`❌ File not found: ${inPath}`); process.exit(1); }
+
+    if (options.to !== 'mermaid') {
+      console.error(`❌ Unsupported export target: ${options.to}`);
+      console.error('   Supported targets: mermaid');
+      process.exit(1);
+    }
+
+    const source = readFileSync(inPath, 'utf-8');
+    const engine = createEngine();
+
+    const r1 = engine.parse(source, inPath);
+    if (!r1.ok) {
+      console.error('❌ Parsing failed:');
+      for (const err of r1.errors) console.error(`   [${err.severity}] Line ${err.source.startLine}: ${err.message}`);
+      process.exit(1);
+    }
+    const r2 = engine.analyze(r1.value);
+    if (!r2.ok) {
+      console.error('❌ Analysis failed:');
+      for (const err of r2.errors) console.error(`   [${err.severity}] Line ${err.source.startLine}: ${err.message}`);
+      process.exit(1);
+    }
+    const r3 = engine.transform(r2.value);
+    if (!r3.ok) {
+      console.error('❌ Transform failed:');
+      for (const err of r3.errors) console.error(`   [${err.severity}] Line ${err.source.startLine}: ${err.message}`);
+      process.exit(1);
+    }
+
+    const mermaid = exportMermaid(r3.value);
+    if (mermaid === null) {
+      console.error(`❌ Diagram type "${r3.value.type}" cannot be exported to Mermaid.`);
+      process.exit(1);
+    }
+
+    if (options.output) {
+      const outPath = resolve(process.cwd(), options.output);
+      writeFileSync(outPath, mermaid);
+      console.log(`✅ Exported to Mermaid`);
+      console.log(`   Output: ${outPath}`);
+    } else {
+      console.log(mermaid);
+    }
   });
 
 // ── validate ──────────────────────────────────────────────────────────────────

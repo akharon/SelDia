@@ -2364,8 +2364,24 @@ seldia mermaid architecture.mmd -o architecture.svg
 Mermaid source for the same set of types the importer covers, so a diagram
 edited in SelDiA can still be committed as `.mmd`/a fenced block that renders
 natively on GitHub. It's best-effort — anything with no Mermaid equivalent is
-dropped rather than guessed at — and is currently a library function only,
-not yet exposed as a CLI command or preview action.
+dropped rather than guessed at.
+
+From the CLI:
+
+```bash
+# Print Mermaid source to stdout
+seldia export diagram.sld --to mermaid
+
+# Write it to a file instead
+seldia export diagram.sld --to mermaid -o diagram.mmd
+```
+
+`--to mermaid` is currently the only supported export target. If the input
+diagram's type isn't one of the ones `exportMermaid()` covers (e.g. C4,
+BPMN), the command prints an error to stderr and exits non-zero rather than
+emitting empty or misleading output. This is a CLI-only integration so far —
+there is no equivalent "export to Mermaid" action in the VS Code preview pane
+yet.
 
 ### 11.4 Visual Editing
 

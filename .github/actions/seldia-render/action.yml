@@ -1,0 +1,107 @@
+name: 'SelDiA Render'
+description: >
+  Render .sld diagram files and ```seldia fenced Markdown blocks in this repo
+  to SVG using the SelDiA engine, and (optionally) commit the results back.
+author: 'SelDiA'
+branding:
+  icon: 'git-branch'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'Directory to scan for .sld files and ```seldia fenced Markdown blocks'
+    required: false
+    default: '.'
+  output:
+    description: 'Directory to write rendered SVGs into'
+    required: false
+    default: 'diagrams'
+  theme:
+    description: 'SelDiA theme to render with'
+    required: false
+    default: 'sketchy-light'
+  extra-extensions:
+    description: >
+      Space-separated list of additional file extensions to treat as
+      standalone diagram sources, e.g. ".seldia" for repos using that
+      extension instead of .sld.
+    required: false
+    default: ''
+  commit:
+    description: 'Whether to commit the rendered SVGs back to the repo'
+    required: false
+    default: 'true'
+  commit-message:
+    description: 'Commit message to use when committing rendered SVGs'
+    required: false
+    default: 'chore: render SelDiA diagrams to SVG [skip ci]'
+
+outputs:
+  rendered-count:
+    description: 'Number of diagrams successfully rendered'
+    value: ${{ steps.render.outputs.rendered-count }}
+  committed:
+    description: 'Whether a commit was made (true/false)'
+    value: ${{ steps.commit.outputs.committed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Install SelDiA CLI
+      shell: bash
+      run: npm install --no-save @seldia/cli@latest
+
+    - name: Render diagrams
+      id: render
+      shell: bash
+      run: |
+        set -eo pipefail
+        EXT_ARGS=()
+        if [ -n "${{ inputs.extra-extensions }}" ]; then
+          for ext in ${{ inputs.extra-extensions }}; do
+            EXT_ARGS+=(--ext "$ext")
+          done
+        fi
+
+        set +e
+        OUTPUT=$(npx seldia render "${{ inputs.path }}" \
+          -o "${{ inputs.output }}" \
+          --theme "${{ inputs.theme }}" \
+          "${EXT_ARGS[@]}" 2>&1)
+        STATUS=$?
+        set -e
+
+        echo "$OUTPUT"
+
+        COUNT=$(echo "$OUTPUT" | grep -oP 'Rendered \K[0-9]+(?=/[0-9]+ diagram)' | tail -1 || echo "0")
+        echo "rendered-count=${COUNT:-0}" >> "$GITHUB_OUTPUT"
+
+        # A diagram-source syntax error should fail the workflow (bad content
+        # shouldn't render silently), but "no diagrams found" is not an error —
+        # most repos won't have SelDiA content in every push.
+        if [ "$STATUS" -ne 0 ] && ! echo "$OUTPUT" | grep -q "No .sld files"; then
+          exit "$STATUS"
+        fi
+
+    - name: Commit rendered SVGs
+      id: commit
+      if: inputs.commit == 'true'
+      shell: bash
+      run: |
+        set -eo pipefail
+        git config user.name 'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git add "${{ inputs.output }}"
+        if git diff --cached --quiet; then
+          echo "No changes to commit."
+          echo "committed=false" >> "$GITHUB_OUTPUT"
+        else
+          git commit -m "${{ inputs.commit-message }}"
+          git push
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+        fi

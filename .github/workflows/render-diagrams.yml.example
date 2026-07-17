@@ -1,0 +1,35 @@
+# Example workflow — copy this file to .github/workflows/render-diagrams.yml
+# in your own repo (drop the .example suffix) to render SelDiA diagrams to
+# SVG on every push and commit the results back.
+#
+# It's shipped here as a `.example` file rather than a live workflow because
+# this repo is the SelDiA project itself — turning it on unconditionally
+# would try to render every .sld fixture and doc sample in CI on every push,
+# most of which are intentionally minimal/invalid test fixtures, not real
+# diagrams meant for distribution.
+
+name: Render SelDiA Diagrams
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.sld'
+      - '**/*.md'
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render SelDiA diagrams
+        uses: seldia/seldia/.github/actions/seldia-render@main
+        with:
+          path: '.'
+          output: 'diagrams'
+          theme: 'sketchy-light'
+          commit: 'true'

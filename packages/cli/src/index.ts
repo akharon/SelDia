@@ -6,7 +6,8 @@
 import { Command } from 'commander';
 import { createEngine, importMermaid, exportMermaid } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { resolve, extname, dirname, basename } from 'path';
+import { resolve, extname, dirname, basename, join, relative as pathRelative } from 'path';
+import { scanRepo } from './scan.js';
 
 // ── Banner ────────────────────────────────────────────────────────────────────
 function printBanner(): void {
@@ -141,6 +142,66 @@ program
     console.log(`   Output: ${outPath}`);
     console.log(`   Nodes: ${result.value.stats.nodeCount}, Edges: ${result.value.stats.edgeCount}`);
   });
+
+// ── render ────────────────────────────────────────────────────────────────────
+// Repository-wide batch render: finds every standalone .sld file and every
+// ```seldia fenced block inside .md files under <dir>, compiles each to SVG,
+// and writes them to an output directory. This is the shared engine behind
+// the GitHub Action (.github/actions/seldia-render) — the Action shells out
+// to this exact command rather than reimplementing the fence-scan or the
+// parse→analyze→transform→layout→render pipeline.
+program
+  .command('render')
+  .description('Render all .sld files and ```seldia fenced Markdown blocks under a directory to SVG')
+  .argument('[dir]', 'Directory to scan', '.')
+  .option('-o, --output <path>', 'Output directory for rendered SVGs', 'diagrams')
+  .option('--theme <name>', 'Theme name', 'sketchy-light')
+  .option('--ext <ext...>', 'Additional file extensions to treat as standalone diagram sources (e.g. .seldia)', [])
+  .action(async (dir, options) => {
+    const root = resolve(process.cwd(), dir);
+    if (!existsSync(root)) {
+      console.error(`❌ Directory not found: ${root}`);
+      process.exit(1);
+    }
+
+    const outDir = resolve(process.cwd(), options.output);
+    if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+
+    const found = scanRepo(root, options.ext);
+    if (found.length === 0) {
+      console.log('ℹ️  No .sld files or ```seldia fenced blocks found.');
+      return;
+    }
+
+    const engine = createEngine({ config: { defaultTheme: options.theme } });
+    let okCount = 0;
+    let failCount = 0;
+
+    for (const item of found) {
+      const outFile = join(outDir, `${item.slug}.svg`);
+      const outSubdir = dirname(outFile);
+      if (!existsSync(outSubdir)) mkdirSync(outSubdir, { recursive: true });
+
+      const result = await engine.compile(item.source, item.file);
+      const relFile = relativeLabel(root, item.file);
+      if (result.ok) {
+        writeFileSync(outFile, result.value.svg);
+        console.log(`✅ ${relFile}${item.kind === 'md-fence' ? `:${item.line}` : ''} → ${relativeLabel(process.cwd(), outFile)}`);
+        okCount++;
+      } else {
+        console.error(`❌ ${relFile}${item.kind === 'md-fence' ? `:${item.line}` : ''}: ${result.errors.map(e => e.message).join(', ')}`);
+        failCount++;
+      }
+    }
+
+    console.log(`\n📐 Rendered ${okCount}/${found.length} diagram(s) to ${relativeLabel(process.cwd(), outDir)}`);
+    if (failCount > 0) process.exit(1);
+  });
+
+function relativeLabel(from: string, to: string): string {
+  const rel = pathRelative(from, to);
+  return rel.startsWith('..') ? to : rel;
+}
 
 // ── export ────────────────────────────────────────────────────────────────────
 // Convert a .sld file to Mermaid text. Parse → analyze → transform mirrors

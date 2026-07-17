@@ -66,6 +66,39 @@ seldia compile diagram.sld
 seldia serve diagram.sld --port 8080
 ```
 
+## Getting diagrams out of the editor
+
+A diagram that only renders inside one editor's preview pane doesn't solve the
+maintenance problem for a team — everyone touching the repo needs to see it,
+not just people with the SelDiA extension installed. Two ways out:
+
+**1. Render to SVG in CI.** The [`seldia-render`](.github/actions/seldia-render)
+GitHub Action finds every `.sld` file and every ` ```seldia ` fenced block in
+your Markdown, renders them through the same engine the CLI uses, and commits
+the SVGs back — so diagrams show up as real images anywhere GitHub (or
+anything else) renders an `<img>`, no viewer required. See
+[`.github/workflows/render-diagrams.yml.example`](.github/workflows/render-diagrams.yml.example)
+for a copy-paste workflow, or run it yourself:
+
+```bash
+npx @seldia/cli render . -o diagrams
+```
+
+**2. Embed live with `<seldia-viewer>`.** For pages that aren't rendered by
+GitHub at all — internal docs sites, wikis, a runbook served from your own
+app — `@seldia/web`'s `<seldia-viewer>` custom element compiles and renders
+SelDiA DSL (or an already-committed `.sld` file, or Mermaid) directly in the
+browser, no build step:
+
+```html
+<script type="module" src="https://unpkg.com/@seldia/web"></script>
+<seldia-viewer src="/diagrams/architecture.sld" theme="sketchy-light"></seldia-viewer>
+```
+
+See [`packages/web/README.md`](packages/web/README.md) for the full API,
+including loading from inline DSL vs. a URL and the live two-pane editor
+component.
+
 ## Documentation
 
 Full documentation at [seldia.dev](https://seldia.dev) (coming soon) or in the `docs/` directory.

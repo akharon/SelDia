@@ -31,7 +31,7 @@ import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPalet
 import { customLayoutFor } from './render/custom-layout.js';
 import { expandIncludes } from './macro/include.js';
 import {
-  renderSequenceParticipant, renderSequenceMessage,
+  renderSequenceParticipant, renderSequenceMessage, renderSequenceFragment,
   renderStateNode,
   renderErEntity, renderErRelationship,
   renderGanttRow, renderGanttDependency,
@@ -291,8 +291,11 @@ class SelDiAEngine implements CoreEngine {
     // function. Everything else (flowchart-shaped types) still uses dagre.
     const custom = customLayoutFor(ir.type);
     if (custom) {
-      const { nodes, edges, bounds } = custom(ir);
-      const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
+      const { nodes, edges, bounds, metadataPatch } = custom(ir);
+      const positioned: DiagramIR = {
+        ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes),
+        metadata: metadataPatch ? { ...ir.metadata, ...metadataPatch } : ir.metadata,
+      };
       return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
     }
     // Synchronous path only has dagre available; an "elk" request is honored
@@ -306,8 +309,11 @@ class SelDiAEngine implements CoreEngine {
     if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
     const custom = customLayoutFor(ir.type);
     if (custom) {
-      const { nodes, edges, bounds } = custom(ir);
-      const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
+      const { nodes, edges, bounds, metadataPatch } = custom(ir);
+      const positioned: DiagramIR = {
+        ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes),
+        metadata: metadataPatch ? { ...ir.metadata, ...metadataPatch } : ir.metadata,
+      };
       return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
     }
     const requested = (ir.metadata?.layoutEngine as string | undefined) || this.config.defaultLayoutEngine;
@@ -419,7 +425,8 @@ class SelDiAEngine implements CoreEngine {
     const override = resolvePalette(this.config.render.palette ?? this.config.render.theme);
     setPaletteOverride(override);
     try {
-      const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type, groups);
+      const fragmentBoxes = (layoutResult.diagram.metadata?.sequenceFragmentBoxes as any[]) ?? [];
+      const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type, groups, fragmentBoxes);
       return {
         ok: true,
         value: {
@@ -434,7 +441,7 @@ class SelDiAEngine implements CoreEngine {
     }
   }
 
-  private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = []): string {
+  private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = [], fragmentBoxes: any[] = []): string {
     // Padding must cover both the configured breathing room AND the extra
     // pixels Rough.js's roughness/multi-stroke wobble can push geometry
     // outward, plus the thickest stroke width in use, so nothing gets
@@ -550,6 +557,14 @@ class SelDiAEngine implements CoreEngine {
     for (const g of groups) {
       const content = renderGroup(g, pad, sketchy);
       if (content) svg += `  <g class="seldia-group" data-seldia-group-id="${this.esc(g.id)}">\n${content}  </g>\n`;
+    }
+
+    // Sequence control fragments: labelled boxes bracketing a range of
+    // messages, drawn behind the message arrows (after lifelines, before
+    // edges) so the arrows sit on top of the frame. Outer fragments first so
+    // nested ones layer over them.
+    for (const fb of fragmentBoxes) {
+      svg += `  <g class="seldia-fragment" data-seldia-fragment-id="${this.esc(fb.id)}">\n${renderSequenceFragment(fb, pad, sketchy)}  </g>\n`;
     }
 
     // Wireframe edges are layout-only (they stack controls in reading order);

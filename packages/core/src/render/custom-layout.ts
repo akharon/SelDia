@@ -23,6 +23,9 @@ export interface CustomLayoutResult {
   nodes: IRNode[];
   edges: IREdge[];
   bounds: Rect;
+  /** Merged into the positioned IR's metadata — used by sequence to hand
+   *  resolved fragment-box geometry to the renderer. */
+  metadataPatch?: Record<string, unknown>;
 }
 
 function computeBounds(nodes: IRNode[], minWidth = 0, minHeight = 0): Rect {
@@ -77,11 +80,50 @@ export function layoutSequence(ir: DiagramIR): CustomLayoutResult {
     return { ...e, waypoints: wps, data: { ...e.data, sequenceOrder: true } };
   });
 
+  // Resolve control-fragment ranges (from sequence.ts) into pixel boxes now
+  // that every message has a Y. A fragment's [firstEdge, lastEdge) is a span of
+  // message indices; the box wraps the Ys of the messages in that span, padded,
+  // with a title tab. Nesting depth insets each box so inner ones sit inside
+  // outer ones. `else`/`critical` section splits become horizontal divider Ys.
+  const rawFrags = (ir.metadata?.sequenceFragments as any[]) ?? [];
+  const yOfEdge = (idx: number): number | undefined => {
+    const e = edges.find((ee) => (ee.data as any)?.messageOrder === idx);
+    return e ? e.waypoints?.[0]?.y : undefined;
+  };
+  // Depth = how many other fragments strictly contain this one's span.
+  const depthOf = (f: any): number =>
+    rawFrags.filter((o) => o !== f && o.firstEdge <= f.firstEdge && o.lastEdge >= f.lastEdge &&
+      (o.firstEdge < f.firstEdge || o.lastEdge > f.lastEdge)).length;
+  const inset = 26;
+  const minX = startX - 70;
+  const maxX = startX + Math.max(0, participants.length - 1) * laneWidth + 70;
+  const fragmentBoxes = rawFrags.map((f) => {
+    const ys: number[] = [];
+    for (let i = f.firstEdge; i < f.lastEdge; i++) { const yy = yOfEdge(i); if (yy != null) ys.push(yy); }
+    if (!ys.length) return null;
+    const d = depthOf(f);
+    const top = Math.min(...ys) - 28 - d * 4;
+    const bot = Math.max(...ys) + 24 + d * 4;
+    const sections = (f.sections ?? []).map((s: any) => ({ label: s.label, y: yOfEdge(s.firstEdge) })).filter((s: any) => s.y != null);
+    return {
+      id: f.id, keyword: f.keyword, label: f.label,
+      x: minX + d * inset, y: top,
+      width: (maxX - minX) - d * inset * 2, height: bot - top,
+      // Divider Ys for every section after the first (else/critical).
+      dividers: sections.slice(1).map((s: any) => ({ label: s.label, y: s.y - 20 })),
+      sections,
+    };
+  }).filter(Boolean);
+
   // Lifelines extend from just under each header down to the last message Y.
   const bottomY = y + 20;
   const nodes = positioned.map((n) => ({ ...n, data: { ...n.data, lifelineBottom: bottomY } }));
   const width = startX + Math.max(0, participants.length - 1) * laneWidth + 140 + 60;
-  return { nodes, edges, bounds: { x: 0, y: 0, width, height: bottomY + 40 } };
+  return {
+    nodes, edges,
+    bounds: { x: 0, y: 0, width, height: bottomY + 40 },
+    metadataPatch: fragmentBoxes.length ? { sequenceFragmentBoxes: fragmentBoxes } : undefined,
+  };
 }
 
 // ── Gantt ────────────────────────────────────────────────────────────────

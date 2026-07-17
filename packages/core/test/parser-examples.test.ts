@@ -119,6 +119,67 @@ describe('sequence control fragments', () => {
   it('does not treat a fragment keyword as a fragment when it declares a node', () => {
     expect(ir('diagram flowchart "T" {\n  alt: (Alternative)\n  alt --> b\n}').nodes[0].id).toBe('alt');
   });
+
+  it('records the fragment span and section splits on the IR', () => {
+    const frags = (ir(SRC).metadata as any).sequenceFragments;
+    expect(frags).toHaveLength(1);
+    expect(frags[0].keyword).toBe('alt');
+    // start message ("start", idx 0) is outside; the two inside are 1 and 2.
+    expect(frags[0].firstEdge).toBe(1);
+    expect(frags[0].lastEdge).toBe(3);
+    expect(frags[0].sections.map((s: any) => s.label)).toEqual(['valid credentials', 'invalid']);
+  });
+
+  it('nests fragments by containment span', () => {
+    const nested = ir([
+      'diagram sequence "N" {',
+      '  a -> b: o',
+      '  loop retry',
+      '    a -> b: i',
+      '    opt maybe',
+      '      b --> a: d',
+      '    end',
+      '  end',
+      '}',
+    ].join('\n'));
+    const frags = (nested.metadata as any).sequenceFragments;
+    const loop = frags.find((f: any) => f.keyword === 'loop');
+    const opt = frags.find((f: any) => f.keyword === 'opt');
+    // opt's span sits strictly inside loop's.
+    expect(loop.firstEdge).toBeLessThan(opt.firstEdge);
+    expect(loop.lastEdge).toBeGreaterThanOrEqual(opt.lastEdge);
+  });
+});
+
+describe('sequence fragment rendering', () => {
+  it('draws a fragment box with a title tab and section divider', async () => {
+    const src = [
+      'diagram sequence "T" {',
+      '  a -> b: start',
+      '  alt valid',
+      '    b --> a: ok',
+      '  else invalid',
+      '    b --> a: denied',
+      '  end',
+      '}',
+    ].join('\n');
+    const r = await createEngine().compile(src);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const svg = r.value.svg;
+    // One fragment box, with the operator tab and both guards.
+    expect((svg.match(/data-seldia-fragment-id/g) || []).length).toBe(1);
+    expect(svg).toContain('>ALT<');
+    expect(svg).toContain('[valid]');
+    expect(svg).toContain('[invalid]'); // else divider label
+  });
+
+  it('emits no fragment box for a plain sequence diagram', async () => {
+    const r = await createEngine().compile('diagram sequence "T" {\n  a -> b: hi\n}');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.svg).not.toContain('seldia-fragment');
+  });
 });
 
 describe('shipped examples compile', () => {

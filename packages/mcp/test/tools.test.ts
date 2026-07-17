@@ -21,6 +21,7 @@ import {
   mutateNodeTool,
   writeDiagramTool,
 } from '../src/tools.js';
+import { loadDiagram } from '../src/diagram-store.js';
 
 const FIXTURE = join(__dirname, 'fixtures', 'flowchart.sld');
 
@@ -139,11 +140,55 @@ describe('mutate_node', () => {
 });
 
 describe('write_diagram', () => {
-  it('reports the unimplemented-serializer scope limit rather than corrupting the file', () => {
+  it('serializes a structurally-mutated IR back to .sld and re-parses to the same structure', () => {
+    const ir = loadDiagram(workPath).ir!;
+    const beforeNodes = ir.nodes.length;
+    // Add a new node + edge — the kind of structural change mutate_node can't do.
+    const newNode = { ...ir.nodes[0], id: 'audit', label: 'Audit Log' };
+    const mutated = {
+      ...ir,
+      nodes: [...ir.nodes, newNode],
+      edges: [...ir.edges, { ...ir.edges[0], id: 'e-audit', sourceId: ir.nodes[0].id, targetId: 'audit' }],
+    };
+    const result = writeDiagramTool({ path: workPath, ir: mutated as any });
+    expect(result.ok).toBe(true);
+
+    // Re-load from disk: the new node/edge survived the round trip.
+    const reloaded = loadDiagram(workPath).ir!;
+    expect(reloaded.nodes.length).toBe(beforeNodes + 1);
+    expect(reloaded.nodes.some((n) => n.id === 'audit')).toBe(true);
+    expect(reloaded.edges.some((e) => e.targetId === 'audit')).toBe(true);
+  });
+
+  it('preserves node shapes across the round trip', () => {
+    const ir = loadDiagram(workPath).ir!;
+    writeDiagramTool({ path: workPath, ir: ir as any });
+    const reloaded = loadDiagram(workPath).ir!;
+    const shapesBefore = new Map(ir.nodes.map((n) => [n.id, n.shape]));
+    for (const n of reloaded.nodes) {
+      expect(n.shape).toBe(shapesBefore.get(n.id));
+    }
+  });
+
+  it('never leaves an unparseable file on disk', () => {
+    const ir = loadDiagram(workPath).ir!;
+    writeDiagramTool({ path: workPath, ir: ir as any });
+    // A clean re-load with no error diagnostics proves the written file parses.
+    expect(validateDiagramTool(workPath).ok).toBe(true);
+  });
+
+  it('declines a non-round-trippable diagram type instead of corrupting the file', () => {
+    const ir = loadDiagram(workPath).ir!;
     const before = readFileSync(workPath, 'utf-8');
-    const loaded = loadDiagramTool(workPath);
-    const result = writeDiagramTool({ path: workPath, ir: { nodes: [], edges: [] } as any });
+    const result = writeDiagramTool({ path: workPath, ir: { ...ir, type: 'gantt' } as any });
     expect(result.ok).toBe(false);
     expect(readFileSync(workPath, 'utf-8')).toBe(before);
+  });
+
+  it('keeps Mermaid files read-only', () => {
+    const mmdPath = join(dir, 'x.mmd');
+    writeFileSync(mmdPath, 'flowchart TD\n  a --> b');
+    const result = writeDiagramTool({ path: mmdPath, ir: { nodes: [], edges: [], type: 'flowchart' } as any });
+    expect(result.ok).toBe(false);
   });
 });

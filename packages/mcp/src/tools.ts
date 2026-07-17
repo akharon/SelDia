@@ -10,6 +10,7 @@ import { DiagnosticSeverity, type DiagramIR, type Diagnostic } from '@seldia/cor
 import { loadDiagram, validateDiagram, isMermaidFile, getEngine } from './diagram-store.js';
 import { summarize, queryNode, listNodes, listEdges } from './query.js';
 import { applyNodePatch, SldWriteError, type NodePatch } from './sld-writer.js';
+import { serializeIR, isSerializable } from './sld-serialize.js';
 
 function diagnosticToPlain(d: Diagnostic) {
   return {
@@ -125,26 +126,42 @@ export interface WriteDiagramArgs {
   ir: DiagramIR;
 }
 
-/** General-case "persist a full IR" entry point. Scope note: there is no IR
- *  -> DSL serializer in the codebase (see module doc in sld-writer.ts), so
- *  this only supports the case that's actually implementable today —
- *  writing the diagram out as JSON IR alongside/instead of DSL when the
- *  caller wants the structural result persisted, OR delegating to
- *  applyNodePatch-style per-node patches. For .sld specifically, full-IR
- *  writeback (arbitrary new nodes/edges, not just edits to existing ones)
- *  is out of scope until a real serializer exists; this returns a clear
- *  error rather than emitting DSL text likely to be wrong. */
+/** Persist a full IR back to .sld source, supporting arbitrary structural
+ *  mutation (new nodes/edges/groups), not just edits to existing lines.
+ *
+ *  Uses the general serializer (sld-serialize.ts), then verifies the result
+ *  before writing: the emitted DSL is re-parsed through the engine and refused
+ *  if it doesn't parse, so write_diagram can never leave a corrupt file on
+ *  disk. Diagram types whose grammar a generic dump can't round-trip
+ *  (gantt/charts/mindmap/…) are declined with a clear error rather than
+ *  written wrong. Mermaid inputs stay read-only. */
 export function writeDiagramTool({ path, ir }: WriteDiagramArgs) {
   if (isMermaidFile(path)) {
     return { ok: false, error: 'write_diagram only supports .sld files.' };
   }
-  return {
-    ok: false,
-    error:
-      'Full IR -> DSL serialization is not implemented (no general serializer exists in the codebase yet; ' +
-      'see docs/next_steps.md tech debt on the attribute-block tokenizer). Use mutate_node for label/style edits ' +
-      'to existing nodes, which is fully supported.',
-    nodeCount: ir.nodes.length,
-    edgeCount: ir.edges.length,
-  };
+  if (!isSerializable(ir)) {
+    return {
+      ok: false,
+      error:
+        `Diagram type "${ir.type}" is not round-trip serializable to .sld: its visual grammar is ` +
+        'carried in a label vocabulary a generic node/edge serializer cannot reproduce. ' +
+        'Use mutate_node for in-place label/style edits instead.',
+    };
+  }
+  const dsl = serializeIR(ir);
+  if (dsl == null) {
+    return { ok: false, error: `Could not serialize diagram type "${ir.type}" to .sld.` };
+  }
+  // Verify the emitted source actually parses before touching disk — a failed
+  // round-trip is a serializer bug, and we must not persist it.
+  const check = getEngine().parse(dsl, path);
+  if (!check.ok) {
+    return {
+      ok: false,
+      error: 'Serialized DSL failed to re-parse — refusing to write a file the engine cannot read.',
+      diagnostics: check.errors.map(diagnosticToPlain),
+    };
+  }
+  writeFileSync(path, dsl, 'utf8');
+  return { ok: true, path, bytes: dsl.length, nodeCount: ir.nodes.length, edgeCount: ir.edges.length };
 }

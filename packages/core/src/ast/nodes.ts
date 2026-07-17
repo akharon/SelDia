@@ -52,6 +52,7 @@ export type ASTStatement =
   | ASTEdgeDecl
   | ASTGroupDecl
   | ASTSectionDecl
+  | ASTFragmentMarker
   | ASTComment;
 
 // -----------------------------------------------------------------------------
@@ -153,6 +154,21 @@ export interface ASTSectionDecl extends ASTNode {
 export interface ASTComment extends ASTNode {
   kind: 'Comment';
   text: string;
+}
+
+// -----------------------------------------------------------------------------
+// Sequence control-fragment marker (alt/else/opt/loop/par/critical/break/end)
+// -----------------------------------------------------------------------------
+// A fragment brackets a range of messages rather than declaring a node, so it
+// can't be an IRNode or an IRGroup (both bound *nodes*). It's carried as a
+// statement marker; the sequence plugin pairs opens with their `end` and the
+// layout/renderer draws the box from the messages nested between them.
+export interface ASTFragmentMarker extends ASTNode {
+  kind: 'FragmentMarker';
+  /** Normalized keyword: alt | else | opt | loop | par | critical | break | end */
+  keyword: string;
+  /** The condition/label text after the keyword, if any (`alt valid` → "valid"). */
+  label?: string;
 }
 
 // -----------------------------------------------------------------------------

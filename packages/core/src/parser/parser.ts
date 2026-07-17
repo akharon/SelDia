@@ -880,7 +880,7 @@ class Parser {
       // `end` closes a fragment — a bare marker with nothing after it.
       if (tokLower === 'end' && next.line !== tok.line) {
         const t = this.consume();
-        return { kind: 'Comment', text: 'end', loc: this.loc(t) } as ASTStatement;
+        return { kind: 'FragmentMarker', keyword: 'end', loc: this.loc(t) } as ASTStatement;
       }
       // `alt valid credentials` / `loop retry` / bare `par`. Only when the
       // keyword isn't being used as an ordinary node or edge id — `alt (Box)`,
@@ -889,11 +889,12 @@ class Parser {
           next.type !== TokenType.SHAPE && next.type !== TokenType.ARROW &&
           next.type !== TokenType.COLON && next.type !== TokenType.STRING) {
         const kw = this.consume();
-        let text = kw.value;
+        const labelToks: Token[] = [];
         while (this.peek().type !== TokenType.EOF && this.peek().line === kw.line) {
-          text += ' ' + this.consume().value;
+          labelToks.push(this.consume());
         }
-        return { kind: 'Comment', text: text.trim(), loc: this.loc(kw) } as ASTStatement;
+        const label = joinTokenText(labelToks);
+        return { kind: 'FragmentMarker', keyword: tokLower, label: label || undefined, loc: this.loc(kw) } as ASTStatement;
       }
 
       // Bare theme name: sketchy [light|dark], smooth [light|dark], mono

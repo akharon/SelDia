@@ -6,21 +6,45 @@
    ============================================================================= */
 
 /* ── Diagram Container ─────────────────────────────────────────────────── */
-/* Chrome kept deliberately light — a thin border and minimal radius, no
-   "card" treatment — so the block reads as native Markdown content (like a
-   table or fenced code block) rather than a bolted-on third-party widget
-   (docs/improvement_request.md item 5). */
+/* An idle diagram reads as pure content — no border, no toolbar band, like an
+   image or a rendered table sitting in the flow of the document. The controls
+   are affordances, not chrome, so they stay hidden until the reader hovers or
+   focuses the block (the same pattern as GitHub's on-hover code-copy button
+   and VS Code's own hover actions), at which point a faint frame fades in to
+   scope them. This replaces the previous always-on border+toolbar, which
+   still read as a bolted-on widget next to native Markdown elements
+   (docs/next_steps.md §3 container-chrome item). */
 .seldia-diagram {
   margin: 16px 0;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #454545));
+  border: 1px solid transparent;
   border-radius: 4px;
-  background: var(--vscode-editor-background, #1e1e1e);
+  background: transparent;
   /* Do NOT use overflow:hidden here — the toolbar is a sibling of the
      scrollable .seldia-diagram-svg, and clipping at this level combined
      with a zoomed SVG (which intentionally grows past 100%) slices node
      shapes at the container edge. Only the toolbar's own corners need
      rounding, handled per-element below. */
   overflow: visible;
+  position: relative;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+/* Frame fades in only while the reader is interacting with the block. */
+.seldia-diagram:hover,
+.seldia-diagram:focus-within {
+  border-color: var(--vscode-widget-border, var(--vscode-panel-border, #454545));
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+/* Code mode is an editing surface, not idle content — keep it framed so the
+   source panel doesn't float borderless in the document. */
+.seldia-diagram[data-seldia-mode="code"] {
+  border-color: var(--vscode-widget-border, var(--vscode-panel-border, #454545));
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+/* An error box must always be visible as a distinct block — never hide its
+   frame behind a hover. */
+.seldia-diagram:has(.seldia-error) {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  background: var(--vscode-editor-background, #1e1e1e);
 }
 
 /* ── Toolbar ──────────────────────────────────────────────────────────── */
@@ -31,12 +55,43 @@
   padding: 4px 8px;
   /* No distinct banded background — matches a code-fence's plain header
      weight rather than a card's colored title bar. */
-  background: transparent;
+  font-size: 11px;
+  user-select: none;
+  /* Floated as an overlay in the top-right rather than a band that reserves a
+     row — so an idle diagram is pure content with no gap where a toolbar would
+     be, and revealing it never reflows the SVG (which would make hover feel
+     jumpy). A subtle backdrop keeps the controls legible over diagram strokes. */
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  gap: 2px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background, #252526));
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #454545));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+}
+/* Code mode reserves the toolbar inline again — the source header reads as a
+   framed panel, so a floating overlay there would collide with the text. */
+.seldia-diagram[data-seldia-mode="code"] .seldia-diagram-toolbar {
+  position: static;
+  box-shadow: none;
+  border: none;
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #454545));
   border-radius: 3px 3px 0 0;
-  font-size: 11px;
+  background: transparent;
   flex-wrap: wrap;
-  user-select: none;
+}
+.seldia-diagram:hover .seldia-diagram-toolbar,
+.seldia-diagram:focus-within .seldia-diagram-toolbar,
+.seldia-diagram[data-seldia-mode="code"] .seldia-diagram-toolbar,
+.seldia-diagram:has(.seldia-error) .seldia-diagram-toolbar {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* ── Icons ────────────────────────────────────────────────────────────── */
@@ -160,6 +215,11 @@
   font-weight: 600;
 }
 .seldia-toolbar-spacer { flex: 1 1 auto; }
+/* In the floating preview overlay the toolbar is compact and right-aligned,
+   so the flex spacer that separates mode-switch from zoom controls in the
+   inline (code-mode) bar would just blow the overlay to full width. Collapse
+   it there; a small fixed gap keeps the two groups visually distinct. */
+.seldia-diagram[data-seldia-mode="preview"] .seldia-toolbar-spacer { flex: 0 0 6px; }
 
 /* ── Mode-driven visibility ───────────────────────────────────────────── */
 .seldia-diagram-source { display: none; }

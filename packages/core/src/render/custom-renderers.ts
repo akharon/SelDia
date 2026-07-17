@@ -94,6 +94,45 @@ export function renderSequenceMessage(edge: IREdge, pad: number, sketchy: boolea
   return el;
 }
 
+// A UML combined-fragment box: an outlined rectangle with a notched title tab
+// in the top-left carrying the operator (alt/opt/loop/…), the guard condition
+// beside it, and dashed dividers for each else/critical section. Drawn behind
+// the messages (see engine renderToSvg) so arrows sit on top of the frame.
+export function renderSequenceFragment(
+  box: { keyword: string; label?: string; x: number; y: number; width: number; height: number;
+         dividers?: { label?: string; y: number }[] },
+  pad: number, sketchy: boolean
+): string {
+  const x = box.x + pad, y = box.y + pad, w = box.width, h = box.height;
+  const stroke = DS.neutral.edge;
+  const seed = seedFor(box.keyword + box.x + box.y);
+  let el = '';
+  // Frame — a faint fill keeps nested fragments legible against each other.
+  if (sketchy) {
+    el += roughRect(x, y, w, h, { stroke, strokeWidth: 1.25, fill: DS.neutral.surface, fillStyle: 'solid', roughness: DS.roughness * 0.6, seed });
+  } else {
+    el += `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${DS.neutral.surface}" fill-opacity="0.35" stroke="${stroke}" stroke-width="1.25"/>\n`;
+  }
+  // Title tab: operator keyword in a notched box, guard beside it.
+  const kw = box.keyword.toUpperCase();
+  const tabW = Math.max(40, kw.length * 8 + 16);
+  const tabH = 20;
+  el += `    <path d="M ${x} ${y} h ${tabW} l -8 ${tabH} h ${-(tabW - 8)} Z" fill="${DS.neutral.surface}" stroke="${stroke}" stroke-width="1.25"/>\n`;
+  el += `    <text x="${x + 8}" y="${y + 14}" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="700">${esc(kw)}</text>\n`;
+  if (box.label) {
+    el += `    <text x="${x + tabW + 6}" y="${y + 14}" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">[${esc(box.label)}]</text>\n`;
+  }
+  // else/critical section dividers: a dashed line across the box + the guard.
+  for (const d of box.dividers ?? []) {
+    const dy = d.y + pad;
+    el += `    <line x1="${x}" y1="${dy}" x2="${x + w}" y2="${dy}" stroke="${stroke}" stroke-width="1" stroke-dasharray="5,4"/>\n`;
+    if (d.label) {
+      el += `    <text x="${x + 8}" y="${dy + 13}" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">[${esc(d.label)}]</text>\n`;
+    }
+  }
+  return el;
+}
+
 // -----------------------------------------------------------------------------
 // State — rounded pills, filled start dot, ringed stop/final dot
 // -----------------------------------------------------------------------------

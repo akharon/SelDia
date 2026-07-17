@@ -165,3 +165,54 @@ describe('dmn diagram type', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('group bodies reach the IR', () => {
+  function irOf(src: string): any {
+    const p = engine.parse(src);
+    if (!p.ok) throw new Error(p.errors.map((e) => e.message).join('; '));
+    const a = engine.analyze(p.value);
+    const t = engine.transform((a as any).value);
+    return (t as any).value;
+  }
+
+  const src = `diagram flowchart "T" {
+  group "Entry Points" {
+    rectangle a: "Alpha"
+    rectangle b: "Beta"
+    a --> b
+  }
+  rectangle c: "Gamma"
+  b --> c
+}`;
+
+  it('emits nodes declared inside a group body (previously dropped)', () => {
+    const ir = irOf(src);
+    expect(ir.nodes.map((n: any) => n.id).sort()).toEqual(['a', 'b', 'c']);
+    expect(ir.edges).toHaveLength(2);
+  });
+
+  it('records group membership as an IRGroup', () => {
+    const g = irOf(src).groups.find((x: any) => x.id === 'entry-points');
+    expect(g).toBeTruthy();
+    expect(g.childNodeIds.sort()).toEqual(['a', 'b']);
+    expect(g.label).toBe('Entry Points');
+  });
+
+  it('nests groups via childGroupIds', () => {
+    const nested = `diagram flowchart "T" {
+  group "Outer" {
+    rectangle a: "A"
+    group "Inner" {
+      rectangle b: "B"
+    }
+  }
+}`;
+    const ir = irOf(nested);
+    expect(ir.nodes.map((n: any) => n.id).sort()).toEqual(['a', 'b']);
+    const outer = ir.groups.find((x: any) => x.id === 'outer');
+    const inner = ir.groups.find((x: any) => x.id === 'inner');
+    expect(outer.childGroupIds).toEqual(['inner']);
+    expect(outer.childNodeIds).toEqual(['a']);
+    expect(inner.childNodeIds).toEqual(['b']);
+  });
+});

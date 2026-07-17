@@ -78,8 +78,8 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     nodesep: opts.nodeSpacing,
     ranksep: opts.rankSpacing,
     edgesep: opts.edgeSpacing,
-    marginx: 40,
-    marginy: 40,
+    marginx: 20,
+    marginy: 20,
   });
   g.setDefaultEdgeLabel(() => ({}));
 

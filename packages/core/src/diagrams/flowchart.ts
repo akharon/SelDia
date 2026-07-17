@@ -3,8 +3,8 @@
 // =============================================================================
 
 import type { DiagramPlugin } from '../plugin/types.js';
-import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl } from '../ast/nodes.js';
-import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
+import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTGroupDecl, ASTStatement } from '../ast/nodes.js';
+import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import type { ShapeType } from '../types/shapes.js';
 import { DiagramType } from '../ir/types.js';
@@ -20,40 +20,74 @@ export const flowchartPlugin: DiagramPlugin = {
   transform(ast: DiagramAST, config: SelDiAConfig): DiagramIR {
     const nodes: IRNode[] = [];
     const edges: IREdge[] = [];
+    const groups: IRGroup[] = [];
 
-    for (const stmt of ast.body) {
-      if (stmt.kind === 'NodeDecl') {
-        const nd = stmt as ASTNodeDecl;
-        nodes.push({
-          id: nd.id,
-          label: nd.label,
-          description: nd.description || undefined,
-          shape: nd.shape as ShapeType,
-          position: { x: 0, y: 0 },
-          size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 100, 50),
-          style: nd.style ? { ...nd.style } : {},
-          ports: [],
-          classList: nd.classList || [],
-          collapsed: false,
-          data: nd.data || {},
-        });
-      }
+    const pushNode = (nd: ASTNodeDecl) => {
+      nodes.push({
+        id: nd.id,
+        label: nd.label,
+        description: nd.description || undefined,
+        shape: nd.shape as ShapeType,
+        position: { x: 0, y: 0 },
+        size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 100, 50),
+        style: nd.style ? { ...nd.style } : {},
+        ports: [],
+        classList: nd.classList || [],
+        collapsed: false,
+        data: nd.data || {},
+      });
+    };
 
-      if (stmt.kind === 'EdgeDecl') {
-        const ed = stmt as ASTEdgeDecl;
-        edges.push({
-          id: `edge-${ed.sourceId}-${ed.targetId}`,
-          sourceId: ed.sourceId,
-          targetId: ed.targetId,
-          label: ed.label || undefined,
-          style: ed.style ? { ...ed.style } : {},
-          routing: (ed.routing as any) || 'orthogonal',
-          bidirectional: ed.direction === 'both',
-          classList: ed.classList || [],
-          data: ed.data || {},
-        });
+    const pushEdge = (ed: ASTEdgeDecl) => {
+      edges.push({
+        id: `edge-${ed.sourceId}-${ed.targetId}`,
+        sourceId: ed.sourceId,
+        targetId: ed.targetId,
+        label: ed.label || undefined,
+        style: ed.style ? { ...ed.style } : {},
+        routing: (ed.routing as any) || 'orthogonal',
+        bidirectional: ed.direction === 'both',
+        classList: ed.classList || [],
+        data: ed.data || {},
+      });
+    };
+
+    // Walk a statement list, descending into `group { … }` bodies so the nodes
+    // and edges declared inside a group reach the IR (they were silently
+    // dropped before). Each group also contributes an IRGroup recording which
+    // nodes it contains, and nested groups nest via childGroupIds — the same
+    // shape the Mermaid subgraph importer produces, so group layout/render
+    // consumes DSL groups identically. `parentId`, when set, is the group whose
+    // body we're walking, so a nested group registers itself as its child.
+    const walk = (body: ASTStatement[], parentId?: string) => {
+      for (const stmt of body) {
+        if (stmt.kind === 'NodeDecl') {
+          pushNode(stmt as ASTNodeDecl);
+          if (parentId) groups.find((g) => g.id === parentId)!.childNodeIds.push((stmt as ASTNodeDecl).id);
+        } else if (stmt.kind === 'EdgeDecl') {
+          pushEdge(stmt as ASTEdgeDecl);
+        } else if (stmt.kind === 'GroupDecl') {
+          const gd = stmt as ASTGroupDecl;
+          const group: IRGroup = {
+            id: gd.id,
+            label: gd.label,
+            position: { x: 0, y: 0 },
+            size: { width: 0, height: 0 },
+            style: {},
+            childNodeIds: [],
+            childGroupIds: [],
+            collapsible: gd.collapsible ?? false,
+            collapsed: false,
+            classList: [],
+            data: {},
+          };
+          groups.push(group);
+          if (parentId) groups.find((g) => g.id === parentId)!.childGroupIds.push(group.id);
+          walk(gd.body, gd.id);
+        }
       }
-    }
+    };
+    walk(ast.body);
 
     return {
       id: ast.metadata?.id || 'diagram-1',
@@ -61,7 +95,7 @@ export const flowchartPlugin: DiagramPlugin = {
       title: ast.title || 'Flowchart',
       nodes,
       edges,
-      groups: [],
+      groups,
       layers: [],
       metadata: {},
     };

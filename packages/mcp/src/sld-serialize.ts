@@ -104,15 +104,41 @@ export function serializeIR(ir: DiagramIR): string | null {
   const title = ir.title || 'Diagram';
   const lines: string[] = [`diagram ${header} ${q(title)} {`];
 
-  // Every node is emitted at top level. Group membership is intentionally NOT
-  // re-emitted as `group { … }` blocks: the DSL parser currently discards the
-  // nodes declared inside a group body (a pre-existing engine limitation, same
-  // in both directions — verified by round-trip), so writing them into a group
-  // block would silently drop them on the next load. Preserving every node is
-  // the write-back guarantee that matters; group boxes are a lossy extra we
-  // decline rather than lose data over. (When the parser learns to keep group
-  // bodies, this can emit real `group` blocks again.)
-  for (const n of ir.nodes) lines.push(nodeDecl(n, '  '));
+  // Nodes that belong to a group are emitted inside a `group "Label" { … }`
+  // block so the group box round-trips; the rest stay at top level. The flow
+  // plugin now parses group bodies back into real nodes + an IRGroup (matching
+  // the Mermaid subgraph importer), so this no longer risks dropping members on
+  // reload — the limitation that forced flattening before is fixed. Nested
+  // groups nest via childGroupIds. Any node not claimed by a group is a
+  // top-level node. Edges always render flat (the grammar allows an edge to
+  // reference nodes across group boundaries, and layout resolves membership
+  // from the group's childNodeIds, not from where the edge line sits).
+  const groupById = new Map(ir.groups.map((g) => [g.id, g]));
+  const nodeById = new Map(ir.nodes.map((n) => [n.id, n]));
+  const claimed = new Set<string>();
+  const nestedGroupIds = new Set(ir.groups.flatMap((g) => g.childGroupIds));
+
+  const emitGroup = (g: (typeof ir.groups)[number], indent: string): void => {
+    lines.push(`${indent}group ${q(g.label || g.id)} {`);
+    for (const id of g.childNodeIds) {
+      const n = nodeById.get(id);
+      if (n) { lines.push(nodeDecl(n, indent + '  ')); claimed.add(id); }
+    }
+    for (const cid of g.childGroupIds) {
+      const cg = groupById.get(cid);
+      if (cg) emitGroup(cg, indent + '  ');
+    }
+    lines.push(`${indent}}`);
+  };
+
+  // Top-level groups (not nested inside another) first, in IR order.
+  for (const g of ir.groups) {
+    if (!nestedGroupIds.has(g.id)) emitGroup(g, '  ');
+  }
+  // Then any node no group claimed.
+  for (const n of ir.nodes) {
+    if (!claimed.has(n.id)) lines.push(nodeDecl(n, '  '));
+  }
 
   if (ir.edges.length) lines.push('');
   for (const e of ir.edges) lines.push(edgeDecl(e, '  '));

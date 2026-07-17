@@ -405,7 +405,7 @@ class SelDiAEngine implements CoreEngine {
         maxX = Math.max(maxX, g.position.x + g.size.width); maxY = Math.max(maxY, g.position.y + g.size.height);
       }
     }
-    return { x: minX, y: minY, width: maxX - minX + 40, height: maxY - minY + 40 };
+    return { x: minX, y: minY, width: maxX - minX + 20, height: maxY - minY + 20 };
   }
 
   render(layoutResult: LayoutResult): Result<RenderResult> {
@@ -474,7 +474,7 @@ class SelDiAEngine implements CoreEngine {
     const paletteBg = resolvePalette(this.config.render.palette ?? this.config.render.theme)?.background;
     const explicitBg = this.config.render.background;
     const bg = (explicitBg && explicitBg !== 'transparent') ? explicitBg : (paletteBg || explicitBg || '#ffffff');
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="100%" style="max-width:${bw}px">\n`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" style="max-width:100%;height:auto">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);
 

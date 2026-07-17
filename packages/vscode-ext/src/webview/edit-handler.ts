@@ -17,6 +17,12 @@ import type {
 export interface EditHandlerCallbacks {
   /** Called when an edit generates a DSL patch that needs to be applied to the editor */
   onDslPatch: (edit: string, oldPosition: number, deleteLength: number) => void;
+  /** Called when a node has been dragged to a new position. The handler owns
+   *  locating the node's declaration and merging x/y into its attribute
+   *  block — see edit/position-patch.ts — because that needs the *current*
+   *  document text at apply time, not the stale text captured when the drag
+   *  started. */
+  onNodeMoved: (nodeId: string, x: number, y: number) => void;
   /** Called when the diagram should be re-rendered after undo/redo */
   onRequestReRender: () => void;
   /** Notify of undo/redo state changes */
@@ -90,9 +96,9 @@ export class VisualEditHandler {
 
     this.undoManager.push(txn);
 
-    // Generate a layout hint DSL patch
-    const patch = `layout: { x: ${Math.round(newX)}, y: ${Math.round(newY)} }`;
-    this.callbacks.onDslPatch(patch, 0, 0);
+    // Write the new position back into the node's declaration so it survives
+    // the next re-render (see edit/position-patch.ts for the merge logic).
+    this.callbacks.onNodeMoved(nodeId, newX, newY);
     this.notifyUndoRedoState();
   }
 

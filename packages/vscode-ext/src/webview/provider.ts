@@ -11,6 +11,7 @@ import { WebviewMessenger } from './messenger.js';
 import type { WebviewToExtMessage } from '../types.js';
 import { VisualEditHandler, type EditHandlerCallbacks } from './edit-handler.js';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
+import { computePositionEdit } from '../edit/position-patch.js';
 
 export class SelDiAInteractiveProvider {
   public static currentPanel: SelDiAInteractiveProvider | undefined;
@@ -45,7 +46,8 @@ export class SelDiAInteractiveProvider {
     this._messenger.connect(panel.webview);
 
     const editCallbacks: EditHandlerCallbacks = {
-      onDslPatch: (edit, offset, deleteLen) => this.applyDslPatch(edit, offset, deleteLen),
+      onDslPatch: (edit, offset, deleteLen) => { void this.applyDslPatch(edit, offset, deleteLen); },
+      onNodeMoved: (nodeId, x, y) => { void this.applyNodePosition(nodeId, x, y); },
       onRequestReRender: () => this.render(),
       onUndoRedoStateChange: (canUndo, canRedo) => {
         this._messenger.sendSyncUndoRedo(canUndo, canRedo);
@@ -856,29 +858,61 @@ export class SelDiAInteractiveProvider {
 
   // ── DSL Patch Application ─────────────────────────────────────────────
 
-  private applyDslPatch(edit: string, offset: number, deleteLength: number): void {
+  /** Apply a `(text, offset, deleteLength)` patch — as produced by label
+   *  edits, node/edge add/delete, reroute, and resize in edit-handler.ts —
+   *  to the real document via a WorkspaceEdit at the correct offset.
+   *
+   *  Previously this either replaced the *entire* document with '' and
+   *  inserted the patch text at position 0 (the `deleteLength > 0` branch,
+   *  which discarded everything outside the intended range), or, for a pure
+   *  insert (`deleteLength === 0`, e.g. add-node), silently reassigned
+   *  `this._currentSource` without ever calling `applyEdit` — so nothing
+   *  reached the document at all. Both paths are replaced with a single
+   *  offset-accurate edit against `document.positionAt`, mirroring how
+   *  `SelDiAEditorProvider`'s `codeEdit` handler already talks to the
+   *  document elsewhere in this codebase. */
+  private async applyDslPatch(edit: string, offset: number, deleteLength: number): Promise<void> {
     if (!this._sourceUri) return;
+    const document = await vscode.workspace.openTextDocument(this._sourceUri);
 
-    // Apply the edit as a WorkspaceEdit
     const workspaceEdit = new vscode.WorkspaceEdit();
-
+    const startPos = document.positionAt(offset);
     if (deleteLength > 0) {
-      // Replace range
-      const startPos = this._panel.active ? this._panel.active : this._panel;
-      const range = new vscode.Range(
-        this._panel.title.length > 0 ? 0 : 0,
-        offset,
-        this._panel.title.length > 0 ? 0 : 0,
-        offset + deleteLength
-      );
-      // Use full document range approach
-      workspaceEdit.replace(this._sourceUri, new vscode.Range(0, 0, 0, 0), '');
-      workspaceEdit.insert(this._sourceUri, new vscode.Position(0, 0), edit);
+      const endPos = document.positionAt(offset + deleteLength);
+      workspaceEdit.replace(this._sourceUri, new vscode.Range(startPos, endPos), edit);
     } else {
-      // Simple insert - add as comment for now; the real implementation
-      // would find the correct position in the source
-      this._currentSource = edit;
+      workspaceEdit.insert(this._sourceUri, startPos, edit);
     }
+    await vscode.workspace.applyEdit(workspaceEdit);
+    this._currentSource = document.getText();
+  }
+
+  /** Write a dragged node's new position back into its declaration.
+   *
+   *  Reads the *current* document text (not the potentially-stale
+   *  `_currentSource` captured when the drag started) so the merge in
+   *  `computePositionEdit` operates on ground truth, then applies a single
+   *  WorkspaceEdit that only touches that node's attribute block — every
+   *  other node, and any hand edits made elsewhere in the file since the
+   *  drag started, are left alone. This is the fix for "drag-to-edit loses
+   *  hand-placed positions on re-render": the position was never written to
+   *  the .sld source at all before this, so the very next compile (which
+   *  always reads from the document) regenerated the auto layout and threw
+   *  the drag away. */
+  private async applyNodePosition(nodeId: string, x: number, y: number): Promise<void> {
+    if (!this._sourceUri) return;
+    const document = await vscode.workspace.openTextDocument(this._sourceUri);
+    const source = document.getText();
+
+    const edit = computePositionEdit(source, nodeId, x, y);
+    if (!edit) return; // Node declaration not found by the line heuristic — leave the source untouched.
+
+    const workspaceEdit = new vscode.WorkspaceEdit();
+    const startPos = document.positionAt(edit.start);
+    const endPos = document.positionAt(edit.end);
+    workspaceEdit.replace(this._sourceUri, new vscode.Range(startPos, endPos), edit.text);
+    await vscode.workspace.applyEdit(workspaceEdit);
+    this._currentSource = document.getText();
   }
 
   dispose(): void {

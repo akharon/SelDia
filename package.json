@@ -7,6 +7,7 @@
     "packages/core",
     "packages/interaction",
     "packages/cli",
+    "packages/mcp",
     "packages/web",
     "packages/vscode-ext"
   ],

@@ -1478,7 +1478,11 @@ export function renderChartLegend(seriesNames: string[], svgWidth: number, top: 
 export function renderChartPie(nodes: IRNode[], pad: number, sketchy: boolean, bounds: { width: number; height: number }): string {
   const values = nodes.map((n) => parseChartCategory(n.label));
   const total = values.reduce((sum, v) => sum + (v.series[0]?.value ?? 0), 0) || 1;
-  const cx = bounds.width / 2 + pad - 40, cy = bounds.height / 2 + pad, r = Math.min(bounds.width, bounds.height) / 2 - 60;
+  // Use the actual rendering area (bounds with padding) to compute the pie
+  // radius, not the raw layout bounds which may be tiny for label-only nodes.
+  const areaW = Math.max(bounds.width, 400) + pad * 2;
+  const areaH = Math.max(bounds.height, 300) + pad * 2;
+  const cx = areaW / 2 - 40, cy = areaH / 2, r = Math.max(80, Math.min(areaW, areaH) / 2 - 60);
   let angle = -Math.PI / 2;
   let el = '';
   values.forEach((v, i) => {

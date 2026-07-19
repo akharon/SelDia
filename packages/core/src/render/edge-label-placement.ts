@@ -4,13 +4,15 @@
 // After layout and routing have placed every edge's waypoints, this pass
 // assigns each edge label a position along its polyline that avoids:
 //   1. Overlapping other edge labels
-//   2. Overlapping node boxes (including the edge's own endpoints)
-//   3. Sitting on a segment that is too short to hold the chip
 //
-// Candidates are sampled from every segment of the polyline, not just the
-// midpoint, so the label can shift to a quieter stretch of the route when
-// two edges converge near the same spot.
-// =============================================================================
+// The chip has fill-opacity:0.95 so node geometry underneath is legibly
+// covered — penalising node overlap forced labels off their edges in dense
+// flowcharts.  The only mandatory constraint is two labels on one spot.
+//
+// Candidates are sampled from every segment of the polyline at three
+// fractional positions per segment.  The midpoint segment wins by a large
+// margin; only when it overlaps another label does the algorithm shift to an
+// adjacent segment (same edge, different spot).
 
 import type { IREdge, IRNode } from '../ir/types.js';
 import type { Point, Rect } from '../types/common.js';
@@ -54,30 +56,6 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
     a.y < b.y + b.height &&
     a.y + a.height > b.y
   );
-}
-
-function nodeRect(n: IRNode, pad: number): Rect {
-  return {
-    x: n.position.x + pad,
-    y: n.position.y + pad,
-    width: n.size.width,
-    height: n.size.height,
-  };
-}
-
-/** True when the chip at (cx, cy) overlaps any node's bounding box. */
-function overlapsAnyNode(
-  cx: number,
-  cy: number,
-  label: string,
-  nodes: IRNode[],
-  pad: number
-): boolean {
-  const cr = chipRect(cx, cy, label);
-  for (const n of nodes) {
-    if (rectsOverlap(cr, nodeRect(n, pad))) return true;
-  }
-  return false;
 }
 
 /** True when the chip at (cx, cy) overlaps any already-placed label. */
@@ -131,36 +109,34 @@ function sampleCandidates(wps: Point[], pad: number): Candidate[] {
 
 // ── Scoring ─────────────────────────────────────────────────────────────────
 
+/** Score a candidate label position. Returns -Infinity if the position
+ *  overlaps an already-placed label at any t-offset (avoidance is mandatory).
+ *  Node overlap is NOT penalised — the chip has `fill-opacity:0.95` so it
+ *  legibly covers whatever geometry sits underneath, and penalising node
+ *  overlap forced labels off their edges in dense flowcharts.
+ *  When no candidate on the identity segment is clean, the algorithm tries
+ *  the adjacent segments (which are still on the same edge polyline). */
 function scoreCandidate(
   c: Candidate,
   edgeMidSeg: number,
   placed: Array<{ cx: number; cy: number; label: string }>,
-  nodes: IRNode[],
-  pad: number,
-  label: string,
-  ownSrcId: string,
-  ownTgtId: string
+  label: string
 ): number {
+  // Overlap with an already-placed label is unconditional — two labels
+  // piled on one spot is always unreadable.
+  if (overlapsAnyPlaced(c.x, c.y, label, placed)) return -Infinity;
+
   let s = 0;
 
-  // Strong preference for the midpoint segment — labels should only shift
-  // when there is a genuine collision, not because a nearby node's box
-  // brushes the chip.  Segment-distance penalty grows quickly so the
-  // algorithm tries t-offsets on the mid segment before wandering away.
+  // Strong preference for the midpoint segment.
   const segDist = Math.abs(c.seg - edgeMidSeg);
-  s -= segDist * 80;
+  s -= segDist * 100;
   // Within a segment, prefer the centre.
   s -= Math.abs(c.t - 0.5) * 10;
-
-  // Penalty for overlapping already-placed labels — significant but not
-  // overwhelming, so a label can shift one segment to avoid a neighbour
-  // rather than fleeing to the far end of the polyline.
-  if (overlapsAnyPlaced(c.x, c.y, label, placed)) s -= 500;
-
-  // Overlap with the edge's own source / target is expected (the label
-  // sits between them).  Only penalise overlap with *other* nodes.
-  const otherNodes = nodes.filter((n) => n.id !== ownSrcId && n.id !== ownTgtId);
-  if (otherNodes.length > 0 && overlapsAnyNode(c.x, c.y, label, otherNodes, pad)) s -= 300;
+  // Prefer longer segments (more room for the chip to sit inside the edge
+  // line without visually wandering off the path).  The candidate's x,y
+  // are already computed; we approximate "segment length" via t range.
+  s += (1 - Math.abs(c.t - 0.5)) * 5;
 
   return s;
 }
@@ -184,7 +160,6 @@ export function computeEdgeLabelPositions(
 ): Map<string, LabelPlacement> {
   const placements = new Map<string, LabelPlacement>();
   const placed: Array<{ cx: number; cy: number; label: string }> = [];
-  const allNodes = [...nodeById.values()];
 
   // Process edges with labels, sorted so shorter labels (less intrusive)
   // get first pick — they are more likely to fit in tight spots.
@@ -216,7 +191,7 @@ export function computeEdgeLabelPositions(
     let bestScore = -Infinity;
 
     for (const c of candidates) {
-      const sc = scoreCandidate(c, midSeg, placed, allNodes, pad, edge.label!, edge.sourceId, edge.targetId);
+      const sc = scoreCandidate(c, midSeg, placed, edge.label!);
       if (sc > bestScore) {
         bestScore = sc;
         best = c;

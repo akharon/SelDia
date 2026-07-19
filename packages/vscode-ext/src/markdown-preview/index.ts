@@ -141,6 +141,72 @@
     { passive: false }
   );
 
+  // ── Grab-to-pan (delegated) ──────────────────────────────────────────────
+  // When zoomed in, click-and-drag on the diagram scrolls it in any direction —
+  // the same muscle memory as panning a map or a large image.
+  let panState: { el: HTMLElement; startX: number; startY: number; scrollX: number; scrollY: number } | null = null;
+
+  function svgContainerOf(el: Element | null): HTMLElement | null {
+    if (!el) return null;
+    return el.closest('.seldia-diagram-svg') as HTMLElement | null;
+  }
+
+  // Show the grab cursor on any zoomed-in diagram so the user knows pan is
+  // available.  Runs whenever zoom changes and on preview content updates.
+  function refreshPanCursors() {
+    document.querySelectorAll<HTMLElement>('.seldia-diagram-svg').forEach((svgBox) => {
+      const container = svgBox.closest('.seldia-diagram') as HTMLElement | null;
+      if (!container) return;
+      const blockId = container.dataset.seldiaBlock || container.id;
+      const zoomed = scaleOf(blockId) !== 1;
+      // Also show grab when the diagram overflows at natural size (no zoom).
+      const overflows =
+        svgBox.scrollWidth > svgBox.clientWidth + 2 ||
+        svgBox.scrollHeight > svgBox.clientHeight + 2;
+      svgBox.classList.toggle('seldia-can-pan', zoomed || overflows);
+    });
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    // Only respond to the primary (left) button.
+    if (e.button !== 0) return;
+    const svgBox = svgContainerOf(e.target as Element | null);
+    if (!svgBox) return;
+    // Only start a pan when the cursor says grab — i.e. the diagram is
+    // scrollable (zoomed or naturally overflowing).
+    if (!svgBox.classList.contains('seldia-can-pan')) return;
+    e.preventDefault();
+    svgBox.classList.add('seldia-panning');
+    panState = {
+      el: svgBox,
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollX: svgBox.scrollLeft,
+      scrollY: svgBox.scrollTop,
+    };
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!panState) return;
+    const dx = e.clientX - panState.startX;
+    const dy = e.clientY - panState.startY;
+    panState.el.scrollLeft = panState.scrollX - dx;
+    panState.el.scrollTop = panState.scrollY - dy;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!panState) return;
+    panState.el.classList.remove('seldia-panning');
+    panState = null;
+  });
+
+  // Refresh grab cursors after zoom changes and after preview re-renders.
+  const origApplyZoom = applyZoom;
+  (applyZoom as any) = function (container: HTMLElement, blockId: string, scale: number) {
+    origApplyZoom(container, blockId, scale);
+    setTimeout(refreshPanCursors, 0);
+  };
+
   // ── Export the rendered SVG as a downloadable file ───────────────────────
   function exportSvg(container: HTMLElement) {
     const svg = svgOf(container);

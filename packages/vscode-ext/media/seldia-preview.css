@@ -182,28 +182,40 @@
 .seldia-diagram-svg {
   padding: 16px;
   min-height: 40px;
-  /* Horizontal scrollbar only when the diagram is wider than the preview
-     column (wide diagram, or zoom-in). Vertical overflow stays visible —
-     clipping it would amputate legends, axis labels, and long Sankey flows
-     that extend below the default viewport. */
-  overflow-x: auto;
-  overflow-y: visible;
+  /* Scrollbars appear when the diagram outgrows the preview column — either
+     because it is naturally wide (Gantt, Sankey) or because the user zoomed
+     in.  Both axes scroll so grab-to-pan works in every direction. */
+  overflow: auto;
   border-radius: 0 0 3px 3px;
   text-align: center;
+  /* When zoomed in the cursor changes to grab so the user knows they can
+     drag to pan.  The preview script toggles .seldia-panning during an
+     active drag. */
+  cursor: default;
+}
+
+.seldia-diagram-svg.seldia-can-pan {
+  cursor: grab;
+}
+.seldia-diagram-svg.seldia-panning {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .seldia-diagram-svg svg {
   display: block;
   margin: 0 auto;
   /* At default zoom the SVG fits the container: max-width caps it at the
-     preview-column width, and the viewBox aspect ratio drives the height
-     automatically (no height:auto needed — the browser recalculates height
-     from viewBox when max-width constrains the width).
+     preview-column width, and the viewBox aspect ratio drives the height.
      Smaller diagrams keep their natural intrinsic width because max-width
      only sets an upper bound, not a floor.
-     Zoom-in sets an explicit px width + max-width:none via inline style,
-     which overrides this rule and triggers overflow-x scroll. */
+     When zoomed in, the script sets max-width:none inline (which overrides
+     this rule) and the SVG outgrows the container — overflow:auto on the
+     parent then shows scrollbars and grab-to-pan becomes available. */
   max-width: 100%;
+  /* Prevent the SVG itself from capturing pointer events during a pan drag —
+     the mousemove goes to the .seldia-diagram-svg container instead. */
+  pointer-events: none;
 }
 
 /* ── Mode switch (Preview / Code / Edit) ──────────────────────────────── */

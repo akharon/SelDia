@@ -26,6 +26,7 @@ import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPl
 import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
 import { routeBetween, centerOf, computeFans, type Fan } from './render/edge-routing.js';
+import { computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
 import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
@@ -478,7 +479,7 @@ class SelDiAEngine implements CoreEngine {
     // left edge — task labels, y-axis); everything else looks better centered.
     const par = (diagramType === DiagramType.GANTT || diagramType === DiagramType.CHART_BAR || diagramType === DiagramType.CHART_LINE || diagramType === DiagramType.CHART_PIE || diagramType === DiagramType.CHART_RADAR || diagramType === DiagramType.CHART_SCATTER)
       ? 'xMinYMin meet' : 'xMidYMid meet';
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}" style="max-width:100%;height:auto">\n`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);
 
@@ -579,7 +580,11 @@ class SelDiAEngine implements CoreEngine {
       // about the other edges meeting there (see routedWaypoints).
       const nodeById = new Map(nodes.map((n) => [n.id, n]));
       const fans = computeFans(edges, nodeById);
-      for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id))}  </g>\n`;
+      // Compute edge label positions *after* routing so every edge has its
+      // waypoints, and *before* rendering so labels can avoid each other and
+      // every node box — no more two "Yes" labels piled on the same pixel.
+      const labelPos = computeEdgeLabelPositions(edges, nodeById, pad);
+      for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id))}  </g>\n`;
     }
     for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
     svg += '</svg>';
@@ -795,7 +800,7 @@ class SelDiAEngine implements CoreEngine {
     return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes);
   }
 
-  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan): string {
+  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement): string {
     if (diagramType === DiagramType.SEQUENCE) return renderSequenceMessage(edge, pad, sketchy, typeAccent);
     if (diagramType === DiagramType.ER) {
       const raw = edge.waypoints || [];
@@ -854,18 +859,25 @@ class SelDiAEngine implements CoreEngine {
       el += this.renderArrowhead(arrowType, prev, last, pad, stroke);
     }
     if (edge.label) {
-      const mid = wps[Math.floor((wps.length - 1) / 2)];
-      const next = wps[Math.floor((wps.length - 1) / 2) + 1] || mid;
-      if (mid) {
-        const lx = (mid.x + next.x) / 2 + pad, ly = (mid.y + next.y) / 2 + pad;
-        const labelText = edge.label;
-        const chipW = Math.max(24, labelText.length * 6.5 + 12);
-        // Small neutral background chip so the label stays readable where it
-        // crosses the edge line. Chip border uses the diagram accent so the
-        // label belongs to the same colour family as its nodes.
-        el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="4" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${typeAccent.stroke}" stroke-opacity="0.35" stroke-width="1"/>\n`;
-        el += `    <text x="${lx}" y="${ly - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${this.esc(labelText)}</text>\n`;
+      // Use the anti-overlap placement when available; otherwise fall back
+      // to the midpoint of the middle segment (the original behaviour).
+      let lx: number, ly: number;
+      if (labelPos) {
+        lx = labelPos.x;
+        ly = labelPos.y;
+      } else {
+        const mid = wps[Math.floor((wps.length - 1) / 2)];
+        const next = wps[Math.floor((wps.length - 1) / 2) + 1] || mid;
+        lx = (mid.x + next.x) / 2 + pad;
+        ly = (mid.y + next.y) / 2 + pad;
       }
+      const labelText = edge.label;
+      const chipW = Math.max(24, labelText.length * 6.5 + 12);
+      // Small neutral background chip so the label stays readable where it
+      // crosses the edge line. Chip border uses the diagram accent so the
+      // label belongs to the same colour family as its nodes.
+      el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="4" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${typeAccent.stroke}" stroke-opacity="0.35" stroke-width="1"/>\n`;
+      el += `    <text x="${lx}" y="${ly - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${this.esc(labelText)}</text>\n`;
     }
     return el;
   }

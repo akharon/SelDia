@@ -184,21 +184,28 @@
   display: flex;
   justify-content: safe center;
   align-items: flex-start;
-  min-height: 100px;
-  /* When the diagram outgrows the preview window (wide diagram, or zoom-in)
-     a horizontal scrollbar appears so the user can pan to see everything.
-     The height adapts to the diagram so a vertical scrollbar is rare. */
-  overflow: auto;
+  min-height: 40px;
+  /* Horizontal scrollbar only when the diagram outgrows the preview column
+     (wide diagram, or zoom-in). overflow-y is hidden — the SVG's height
+     follows its width via the viewBox aspect ratio, so a vertical scrollbar
+     would only appear from a container-height mismatch we never have. */
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: 0 0 3px 3px;
 }
 
 .seldia-diagram-svg svg {
-  /* At default zoom the SVG's width="100%" fits the container. Zoom-in
-     sets an explicit px width that may overflow — the parent's overflow:auto
-     adds a scrollbar instead of clipping. No max-width here so zoom-in can
-     grow past the container. */
   display: block;
   flex-shrink: 0;
+  /* At default zoom (scale 1) the SVG fits the container width — max-width
+     caps it at the preview column, and height:auto preserves the viewBox
+     aspect ratio so the diagram never stretches or squashes.
+     Smaller diagrams keep their natural intrinsic width (set by the engine's
+     width="<bw>" attribute) because max-width only constrains the upper bound.
+     Zoom-in sets an explicit px width + max-width:none via inline style,
+     which overrides this rule and triggers overflow-x scroll. */
+  max-width: 100%;
+  height: auto;
 }
 
 /* ── Mode switch (Preview / Code / Edit) ──────────────────────────────── */

@@ -137,20 +137,30 @@ function scoreCandidate(
   placed: Array<{ cx: number; cy: number; label: string }>,
   nodes: IRNode[],
   pad: number,
-  label: string
+  label: string,
+  ownSrcId: string,
+  ownTgtId: string
 ): number {
   let s = 0;
 
-  // Prefer positions close to the nominal midpoint segment.
-  s -= Math.abs(c.seg - edgeMidSeg) * 20;
-  // Prefer positions near the centre of their segment.
+  // Strong preference for the midpoint segment — labels should only shift
+  // when there is a genuine collision, not because a nearby node's box
+  // brushes the chip.  Segment-distance penalty grows quickly so the
+  // algorithm tries t-offsets on the mid segment before wandering away.
+  const segDist = Math.abs(c.seg - edgeMidSeg);
+  s -= segDist * 80;
+  // Within a segment, prefer the centre.
   s -= Math.abs(c.t - 0.5) * 10;
 
-  // Heavy penalty for overlapping already-placed labels.
-  if (overlapsAnyPlaced(c.x, c.y, label, placed)) s -= 10000;
+  // Penalty for overlapping already-placed labels — significant but not
+  // overwhelming, so a label can shift one segment to avoid a neighbour
+  // rather than fleeing to the far end of the polyline.
+  if (overlapsAnyPlaced(c.x, c.y, label, placed)) s -= 500;
 
-  // Heavy penalty for overlapping any node.
-  if (overlapsAnyNode(c.x, c.y, label, nodes, pad)) s -= 8000;
+  // Overlap with the edge's own source / target is expected (the label
+  // sits between them).  Only penalise overlap with *other* nodes.
+  const otherNodes = nodes.filter((n) => n.id !== ownSrcId && n.id !== ownTgtId);
+  if (otherNodes.length > 0 && overlapsAnyNode(c.x, c.y, label, otherNodes, pad)) s -= 300;
 
   return s;
 }
@@ -197,7 +207,6 @@ export function computeEdgeLabelPositions(
         x: (mid.x + next.x) / 2 + pad,
         y: (mid.y + next.y) / 2 + pad,
       });
-      // Don't add to `placed` — it overlaps, but there's no alternative.
       continue;
     }
 
@@ -207,7 +216,7 @@ export function computeEdgeLabelPositions(
     let bestScore = -Infinity;
 
     for (const c of candidates) {
-      const sc = scoreCandidate(c, midSeg, placed, allNodes, pad, edge.label!);
+      const sc = scoreCandidate(c, midSeg, placed, allNodes, pad, edge.label!, edge.sourceId, edge.targetId);
       if (sc > bestScore) {
         bestScore = sc;
         best = c;

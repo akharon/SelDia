@@ -181,31 +181,29 @@
 /* ── SVG Container ────────────────────────────────────────────────────── */
 .seldia-diagram-svg {
   padding: 16px;
-  display: flex;
-  justify-content: safe center;
-  align-items: flex-start;
   min-height: 40px;
-  /* Horizontal scrollbar only when the diagram outgrows the preview column
-     (wide diagram, or zoom-in). overflow-y is hidden — the SVG's height
-     follows its width via the viewBox aspect ratio, so a vertical scrollbar
-     would only appear from a container-height mismatch we never have. */
+  /* Horizontal scrollbar only when the diagram is wider than the preview
+     column (wide diagram, or zoom-in). Vertical overflow stays visible —
+     clipping it would amputate legends, axis labels, and long Sankey flows
+     that extend below the default viewport. */
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
   border-radius: 0 0 3px 3px;
+  text-align: center;
 }
 
 .seldia-diagram-svg svg {
   display: block;
-  flex-shrink: 0;
-  /* At default zoom (scale 1) the SVG fits the container width — max-width
-     caps it at the preview column, and height:auto preserves the viewBox
-     aspect ratio so the diagram never stretches or squashes.
-     Smaller diagrams keep their natural intrinsic width (set by the engine's
-     width="<bw>" attribute) because max-width only constrains the upper bound.
+  margin: 0 auto;
+  /* At default zoom the SVG fits the container: max-width caps it at the
+     preview-column width, and the viewBox aspect ratio drives the height
+     automatically (no height:auto needed — the browser recalculates height
+     from viewBox when max-width constrains the width).
+     Smaller diagrams keep their natural intrinsic width because max-width
+     only sets an upper bound, not a floor.
      Zoom-in sets an explicit px width + max-width:none via inline style,
      which overrides this rule and triggers overflow-x scroll. */
   max-width: 100%;
-  height: auto;
 }
 
 /* ── Mode switch (Preview / Code / Edit) ──────────────────────────────── */

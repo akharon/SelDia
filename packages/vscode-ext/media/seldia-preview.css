@@ -218,6 +218,14 @@
   pointer-events: none;
 }
 
+/* Gantt, Sankey and Timeline diagrams carry a time axis or flow ribbon that
+   needs its full pixel budget to be readable.  Lift the max-width cap so the
+   SVG renders at its natural width — wide enough to trigger overflow:auto
+   scrollbars and grab-to-pan on the parent. */
+.seldia-diagram-svg svg.seldia-wide {
+  max-width: none;
+}
+
 /* ── Mode switch (Preview / Code / Edit) ──────────────────────────────── */
 .seldia-mode-switch {
   display: inline-flex;

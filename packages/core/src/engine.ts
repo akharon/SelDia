@@ -479,7 +479,13 @@ class SelDiAEngine implements CoreEngine {
     // left edge — task labels, y-axis); everything else looks better centered.
     const par = (diagramType === DiagramType.GANTT || diagramType === DiagramType.CHART_BAR || diagramType === DiagramType.CHART_LINE || diagramType === DiagramType.CHART_PIE || diagramType === DiagramType.CHART_RADAR || diagramType === DiagramType.CHART_SCATTER)
       ? 'xMinYMin meet' : 'xMidYMid meet';
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}">\n`;
+    // Gantt, Sankey and Timeline diagrams are inherently wide — a time axis
+    // or flow ribbon needs its full pixel budget to be readable.  The
+    // seldia-wide class lifts the CSS max-width:100% so the SVG renders at
+    // its natural width, triggering overflow:auto scrollbars + grab-to-pan.
+    const wideTypes: DiagramType[] = [DiagramType.GANTT, DiagramType.SANKEY, DiagramType.TIMELINE];
+    const wideClass = wideTypes.includes(diagramType) ? ' seldia-wide' : '';
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" class="seldia-diagram-svg-el${wideClass}" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);
 

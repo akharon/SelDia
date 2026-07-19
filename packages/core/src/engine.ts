@@ -474,7 +474,7 @@ class SelDiAEngine implements CoreEngine {
     const paletteBg = resolvePalette(this.config.render.palette ?? this.config.render.theme)?.background;
     const explicitBg = this.config.render.background;
     const bg = (explicitBg && explicitBg !== 'transparent') ? explicitBg : (paletteBg || explicitBg || '#ffffff');
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" style="max-width:100%;height:auto">\n`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" style="max-width:100%;height:auto">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);
 

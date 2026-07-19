@@ -474,7 +474,11 @@ class SelDiAEngine implements CoreEngine {
     const paletteBg = resolvePalette(this.config.render.palette ?? this.config.render.theme)?.background;
     const explicitBg = this.config.render.background;
     const bg = (explicitBg && explicitBg !== 'transparent') ? explicitBg : (paletteBg || explicitBg || '#ffffff');
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" style="max-width:100%;height:auto">\n`;
+    // Gantt and chart diagrams are left-aligned (their content starts from the
+    // left edge — task labels, y-axis); everything else looks better centered.
+    const par = (diagramType === DiagramType.GANTT || diagramType === DiagramType.CHART_BAR || diagramType === DiagramType.CHART_LINE || diagramType === DiagramType.CHART_PIE || diagramType === DiagramType.CHART_RADAR || diagramType === DiagramType.CHART_SCATTER)
+      ? 'xMinYMin meet' : 'xMidYMid meet';
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}" style="max-width:100%;height:auto">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
     const typeAccent = typeSwatch(diagramType);
 

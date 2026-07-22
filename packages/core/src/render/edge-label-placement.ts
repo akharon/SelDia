@@ -72,6 +72,45 @@ function overlapsAnyPlaced(
   return false;
 }
 
+/** True when the segment a→b intersects the rect (crude but sufficient:
+ *  checks both endpoints-inside and edge crossings via the separating-axis
+ *  style slab test on a densely sampled set of points). */
+function segmentIntersectsRect(a: Point, b: Point, r: Rect): boolean {
+  // Quick reject: segment bbox vs rect.
+  if (
+    Math.max(a.x, b.x) < r.x ||
+    Math.min(a.x, b.x) > r.x + r.width ||
+    Math.max(a.y, b.y) < r.y ||
+    Math.min(a.y, b.y) > r.y + r.height
+  ) {
+    return false;
+  }
+  // Liang–Barsky clip of the segment against the rect.
+  const dx = b.x - a.x, dy = b.y - a.y;
+  let t0 = 0, t1 = 1;
+  const clips: Array<[number, number]> = [
+    [-dx, a.x - r.x],
+    [dx, r.x + r.width - a.x],
+    [-dy, a.y - r.y],
+    [dy, r.y + r.height - a.y],
+  ];
+  for (const [p, q] of clips) {
+    if (p === 0) {
+      if (q < 0) return false;
+    } else {
+      const t = q / p;
+      if (p < 0) {
+        if (t > t1) return false;
+        if (t > t0) t0 = t;
+      } else {
+        if (t < t0) return false;
+        if (t < t1) t1 = t;
+      }
+    }
+  }
+  return true;
+}
+
 // ── Candidate generation ────────────────────────────────────────────────────
 
 interface Candidate {
@@ -79,6 +118,8 @@ interface Candidate {
   y: number;
   seg: number; // which segment index (0-based)
   t: number; // where on the segment (0 = start, 1 = end)
+  /** Perpendicular shift in chip-heights (0 = on the line). */
+  offset: number;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -86,7 +127,9 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 /** Generate candidate positions along the edge's polyline. Samples every
- *  segment at 3 fractional positions so labels have freedom to shift. */
+ *  segment at 3 fractional positions, each additionally at small
+ *  perpendicular offsets — sliding a chip just off the line keeps it visually
+ *  attached to its edge, which beats jumping to a distant segment. */
 function sampleCandidates(wps: Point[], pad: number): Candidate[] {
   const out: Candidate[] = [];
   for (let i = 0; i < wps.length - 1; i++) {
@@ -95,13 +138,21 @@ function sampleCandidates(wps: Point[], pad: number): Candidate[] {
     // clipped or illegible.
     const segLen = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
     if (segLen < MIN_CHIP_W) continue;
+    // Unit perpendicular of the segment (for offset candidates).
+    const px = -(b.y - a.y) / segLen;
+    const py = (b.x - a.x) / segLen;
     for (const t of [0.3, 0.5, 0.7]) {
-      out.push({
-        x: lerp(a.x, b.x, t) + pad,
-        y: lerp(a.y, b.y, t) + pad,
-        seg: i,
-        t,
-      });
+      const x = lerp(a.x, b.x, t) + pad;
+      const y = lerp(a.y, b.y, t) + pad;
+      for (const offset of [0, 1, -1]) {
+        out.push({
+          x: x + px * offset * (CHIP_H + 2),
+          y: y + py * offset * (CHIP_H + 2),
+          seg: i,
+          t,
+          offset,
+        });
+      }
     }
   }
   return out;
@@ -119,8 +170,10 @@ function sampleCandidates(wps: Point[], pad: number): Candidate[] {
 function scoreCandidate(
   c: Candidate,
   edgeMidSeg: number,
+  mid: Point,
   placed: Array<{ cx: number; cy: number; label: string }>,
-  label: string
+  label: string,
+  foreignSegs: Array<[Point, Point]>
 ): number {
   // Overlap with an already-placed label is unconditional — two labels
   // piled on one spot is always unreadable.
@@ -128,15 +181,30 @@ function scoreCandidate(
 
   let s = 0;
 
+  // Penalise a chip that another edge's line cuts straight through — the
+  // strike-through makes the text unreadable. Soft (not -Infinity) so a
+  // crossing is still preferred over stranding the label far away.
+  const cr = chipRect(c.x, c.y, label);
+  for (const [sa, sb] of foreignSegs) {
+    if (segmentIntersectsRect(sa, sb, cr)) {
+      s -= 150;
+      break;
+    }
+  }
+
   // Strong preference for the midpoint segment.
   const segDist = Math.abs(c.seg - edgeMidSeg);
   s -= segDist * 100;
   // Within a segment, prefer the centre.
   s -= Math.abs(c.t - 0.5) * 10;
-  // Prefer longer segments (more room for the chip to sit inside the edge
-  // line without visually wandering off the path).  The candidate's x,y
-  // are already computed; we approximate "segment length" via t range.
-  s += (1 - Math.abs(c.t - 0.5)) * 5;
+  // A perpendicular nudge (one chip-height off the line) is far cheaper
+  // than moving segments — the label stays visibly attached to its edge.
+  s -= Math.abs(c.offset) * 20;
+  // Absolute-distance penalty from the polyline midpoint. Segment index is
+  // too coarse on long routes: an "adjacent" segment can be hundreds of px
+  // away, leaving the label impossible to relate back to its edge.
+  const d = Math.sqrt((c.x - mid.x) ** 2 + (c.y - mid.y) ** 2);
+  s -= d * 0.6;
 
   return s;
 }
@@ -172,7 +240,27 @@ export function computeEdgeLabelPositions(
     }))
     .sort((a, b) => a.chipW - b.chipW);
 
+  // Padded segments of every routed edge, keyed by edge id, so a candidate
+  // chip can be checked against the lines of OTHER edges crossing it.
+  const segsByEdge = new Map<string, Array<[Point, Point]>>();
+  for (const e of edges) {
+    if (!e.waypoints || e.waypoints.length < 2) continue;
+    const segs: Array<[Point, Point]> = [];
+    for (let i = 0; i < e.waypoints.length - 1; i++) {
+      const a = e.waypoints[i], b = e.waypoints[i + 1];
+      segs.push([
+        { x: a.x + pad, y: a.y + pad },
+        { x: b.x + pad, y: b.y + pad },
+      ]);
+    }
+    segsByEdge.set(e.id, segs);
+  }
+
   for (const { edge, wps } of labeled) {
+    const foreignSegs: Array<[Point, Point]> = [];
+    for (const [id, segs] of segsByEdge) {
+      if (id !== edge.id) foreignSegs.push(...segs);
+    }
     const candidates = sampleCandidates(wps, pad);
     if (candidates.length === 0) {
       // No usable segment — fall back to the old midpoint logic.
@@ -186,12 +274,16 @@ export function computeEdgeLabelPositions(
     }
 
     const midSeg = Math.floor((wps.length - 1) / 2);
+    // Geometric midpoint of the mid segment — the anchor labels should stay
+    // near, expressed in the same padded coordinates as the candidates.
+    const ma = wps[midSeg], mb = wps[Math.min(midSeg + 1, wps.length - 1)];
+    const mid: Point = { x: (ma.x + mb.x) / 2 + pad, y: (ma.y + mb.y) / 2 + pad };
 
     let best: Candidate | null = null;
     let bestScore = -Infinity;
 
     for (const c of candidates) {
-      const sc = scoreCandidate(c, midSeg, placed, edge.label!);
+      const sc = scoreCandidate(c, midSeg, mid, placed, edge.label!, foreignSegs);
       if (sc > bestScore) {
         bestScore = sc;
         best = c;
@@ -201,6 +293,12 @@ export function computeEdgeLabelPositions(
     if (best) {
       placements.set(edge.id, { x: best.x, y: best.y });
       placed.push({ cx: best.x, cy: best.y, label: edge.label! });
+    } else {
+      // Every candidate overlaps a placed label. A slightly-overlapping chip
+      // at the midpoint is still more readable than a label stranded far from
+      // its edge — place at the midpoint and accept the collision.
+      placements.set(edge.id, { x: mid.x, y: mid.y });
+      placed.push({ cx: mid.x, cy: mid.y, label: edge.label! });
     }
   }
 

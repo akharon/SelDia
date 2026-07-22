@@ -422,7 +422,9 @@ describe('gitGraph import', () => {
       'feature: add thing',
       'main: merge feature',
     ]);
-    expect(ir.edges).toHaveLength(2);
+    // Three parent links: init->add thing (branch), init->merge (main
+    // continuation), add thing->merge (the merged-in branch tip).
+    expect(ir.edges).toHaveLength(3);
   });
 });
 

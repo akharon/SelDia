@@ -423,7 +423,10 @@ export function layoutGitgraph(ir: DiagramIR): CustomLayoutResult {
 // Layout only needs to assign category slots — the renderer computes bar
 // geometry from the label text directly, so this just spaces things evenly.
 export function layoutChart(ir: DiagramIR): CustomLayoutResult {
-  const slotWidth = 140, topPad = 40, chartHeight = 320, leftPad = 80;
+  // Pie renders one circle centered in the canvas, not per-category columns —
+  // the bar/line chart height left a wide empty band under the circle.
+  const isPie = ir.type === 'chart-pie';
+  const slotWidth = 140, topPad = 40, chartHeight = isPie ? 260 : 320, leftPad = 80;
   const nodes: IRNode[] = ir.nodes.map((n, i) => ({
     ...n,
     position: { x: leftPad + i * slotWidth, y: topPad },

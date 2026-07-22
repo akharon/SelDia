@@ -416,8 +416,20 @@ class SelDiAEngine implements CoreEngine {
     // Recompute bounds to include edge waypoints (the manhattan router may
     // route waypoints beyond the initial node-only bounds when detouring
     // around obstacles, and the initial dagre/elk waypoints may also extend
-    // beyond node boundaries).
-    const finalBounds = this.computeBounds(nodes, edges, groups);
+    // beyond node boundaries). Then union with the layout stage's own bounds:
+    // custom layouts (gantt, sankey, gitgraph, sequence…) size their canvas
+    // to content the node list alone can't see — the gantt row-label column
+    // and time axis, sankey node captions, gitgraph lane labels — all placed
+    // in absolute coordinates from origin 0. The node-only recompute anchored
+    // at minX used to shrink the width by that left offset, clipping the
+    // right edge of exactly those diagram types.
+    const recomputed = this.computeBounds(nodes, edges, groups);
+    const lb = layoutResult.bounds;
+    const finalBounds: Rect = {
+      x: 0, y: 0,
+      width: Math.max(recomputed.x + recomputed.width, lb.x + lb.width),
+      height: Math.max(recomputed.y + recomputed.height, lb.y + lb.height),
+    };
     // A theme/palette override (config.render.theme / config.render.palette)
     // is applied only around this one render call and cleared in `finally`,
     // so it can never leak into a concurrent/later compile of a different
@@ -479,11 +491,13 @@ class SelDiAEngine implements CoreEngine {
     // left edge — task labels, y-axis); everything else looks better centered.
     const par = (diagramType === DiagramType.GANTT || diagramType === DiagramType.CHART_BAR || diagramType === DiagramType.CHART_LINE || diagramType === DiagramType.CHART_PIE || diagramType === DiagramType.CHART_RADAR || diagramType === DiagramType.CHART_SCATTER)
       ? 'xMinYMin meet' : 'xMidYMid meet';
-    // Gantt, Sankey and Timeline diagrams are inherently wide — a time axis
-    // or flow ribbon needs its full pixel budget to be readable.  The
-    // seldia-wide class lifts the CSS max-width:100% so the SVG renders at
-    // its natural width, triggering overflow:auto scrollbars + grab-to-pan.
-    const wideTypes: DiagramType[] = [DiagramType.GANTT, DiagramType.SANKEY, DiagramType.TIMELINE];
+    // Gantt and Sankey diagrams are inherently wide — a time axis or flow
+    // ribbon needs its full pixel budget to be readable.  The seldia-wide
+    // class lifts the CSS max-width:100% so the SVG renders at its natural
+    // width, triggering overflow:auto scrollbars + grab-to-pan. Timeline was
+    // in this list too, but a handful of event boxes doesn't need the full
+    // pixel budget — it just rendered oversized relative to its neighbours.
+    const wideTypes: DiagramType[] = [DiagramType.GANTT, DiagramType.SANKEY];
     const wideClass = wideTypes.includes(diagramType) ? ' seldia-wide' : '';
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" class="seldia-diagram-svg-el${wideClass}" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}">\n`;
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
@@ -589,7 +603,19 @@ class SelDiAEngine implements CoreEngine {
       // Compute edge label positions *after* routing so every edge has its
       // waypoints, and *before* rendering so labels can avoid each other and
       // every node box — no more two "Yes" labels piled on the same pixel.
-      const labelPos = computeEdgeLabelPositions(edges, nodeById, pad);
+      // Label placement must see the SAME polylines that get drawn.
+      // renderEdge re-routes each edge (clip-to-border, fanning, obstacle
+      // detours), so placing labels against the raw layout waypoints strands
+      // them far from the visible line. Route once here and reuse.
+      const allNodes = [...nodeById.values()];
+      const routedWps = new Map<string, Point[]>();
+      for (const e of edges) {
+        const raw = e.waypoints || [];
+        if (raw.length < 2) continue;
+        routedWps.set(e.id, this.routedWaypoints(e, raw, nodeById.get(e.sourceId), nodeById.get(e.targetId), fans.get(e.id), allNodes));
+      }
+      const routedEdges = edges.map((e) => routedWps.has(e.id) ? { ...e, waypoints: routedWps.get(e.id) } : e);
+      const labelPos = computeEdgeLabelPositions(routedEdges, nodeById, pad);
       for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id))}  </g>\n`;
     }
     for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;

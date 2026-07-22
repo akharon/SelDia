@@ -213,6 +213,11 @@
      this rule) and the SVG outgrows the container — overflow:auto on the
      parent then shows scrollbars and grab-to-pan becomes available. */
   max-width: 100%;
+  /* When max-width shrinks a wide SVG, the height attribute would otherwise
+     keep its full natural value and the (aspect-preserved) drawing letterboxes
+     vertically — big empty bands above and below tall diagrams like network.
+     height:auto keeps the box's height tracking the scaled-down width. */
+  height: auto;
   /* Prevent the SVG itself from capturing pointer events during a pan drag —
      the mousemove goes to the .seldia-diagram-svg container instead. */
   pointer-events: none;

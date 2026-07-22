@@ -1019,8 +1019,12 @@ function importGitgraph(lines: string[], diagnostics: MermaidImportDiagnostic[])
 
     const commit = line.match(/^commit(?:\s+id:\s*"([^"]*)")?(?:\s+tag:\s*"([^"]*)")?/i);
     if (commit) {
-      const message = commit[1] || `commit ${++commitCounter}`;
-      const id = `c${commitCounter}`;
+      // Always advance the counter — it is the node id. Only bumping it when
+      // the commit lacked an `id:` gave every named commit the same `c0` id,
+      // which collapsed them into duplicate nodes and left their edges
+      // dangling ("half the commits unconnected").
+      const id = `c${++commitCounter}`;
+      const message = commit[1] || `commit ${commitCounter}`;
       nodes.push(makeNode(id, `${branch}: ${message}`, ShapeType.CIRCLE));
       const parent = lastCommitOnBranch.get(branch);
       if (parent) {

@@ -3,9 +3,14 @@
 // =============================================================================
 
 import { LitElement, html, css } from 'lit';
+import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property } from 'lit/decorators.js';
 import { createEngine } from '@seldia/core';
 import type { CoreEngine } from '@seldia/core';
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // ── <seldia-viewer> ──────────────────────────────────────────────────────────
 @customElement('seldia-viewer')
@@ -38,7 +43,7 @@ export class SelDiAViewer extends LitElement {
         const resp = await fetch(this.src);
         source = await resp.text();
       } catch {
-        this.svgContent = `<div class="error">Failed to load: ${this.src}</div>`;
+        this.svgContent = `<div class="error">Failed to load: ${escapeHtml(this.src)}</div>`;
         this.requestUpdate();
         return;
       }
@@ -50,7 +55,7 @@ export class SelDiAViewer extends LitElement {
   }
 
   render() {
-    return html`<div class="container">${this.svgContent}</div>`;
+    return html`<div class="container">${unsafeHTML(this.svgContent)}</div>`;
   }
 }
 
@@ -83,7 +88,7 @@ export class SelDiAEditor extends LitElement {
         <span class="status">${this.outputSvg ? '✅ Rendered' : '⚪ Ready'}</span>
       </div>
       <textarea .value=${this.value} @input=${this.onInput} ?readonly=${this.readonly} placeholder="diagram ${this.diagram} &quot;Title&quot; { ... }"></textarea>
-      ${this.outputSvg ? html`<div style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;margin-top:8px">${this.outputSvg}</div>` : ''}
+      ${this.outputSvg ? html`<div style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;margin-top:8px">${unsafeHTML(this.outputSvg)}</div>` : ''}
     `;
   }
 
@@ -95,7 +100,7 @@ export class SelDiAEditor extends LitElement {
   private async compile() {
     if (!this.value) return;
     const result = await this.engine.compile(this.value);
-    this.outputSvg = result.ok ? result.value.svg : `<div style="color:#e53e3e;padding:12px;background:#fff5f5;border-radius:8px">❌ ${(result.errors || []).map((e: any) => e.message).join(', ')}</div>`;
+    this.outputSvg = result.ok ? result.value.svg : `<div style="color:#e53e3e;padding:12px;background:#fff5f5;border-radius:8px">❌ ${escapeHtml((result.errors || []).map((e: any) => e.message).join(', '))}</div>`;
     this.requestUpdate();
   }
 
@@ -128,11 +133,11 @@ export class SelDiALive extends LitElement {
     return html`
       <div class="panel">
         <div class="panel-header">📝 DSL Editor</div>
-        <textarea @input=${this.onInput} placeholder="diagram flowchart &quot;Title&quot; { ... }">${this.dsl}</textarea>
+        <textarea @input=${this.onInput} .value=${this.dsl} placeholder="diagram flowchart &quot;Title&quot; { ... }"></textarea>
       </div>
       <div class="panel">
         <div class="panel-header">🎨 Preview</div>
-        <div class="preview">${this.svgOut || html`<div style="color:#94a3b8;text-align:center;padding:40px">Edit the DSL to see the preview</div>`}</div>
+        <div class="preview">${this.svgOut ? unsafeHTML(this.svgOut) : html`<div style="color:#94a3b8;text-align:center;padding:40px">Edit the DSL to see the preview</div>`}</div>
       </div>
     `;
   }
@@ -141,7 +146,7 @@ export class SelDiALive extends LitElement {
     this.dsl = (e.target as HTMLTextAreaElement).value;
     if (!this.dsl) { this.svgOut = ''; this.requestUpdate(); return; }
     const result = await this.engine.compile(this.dsl);
-    this.svgOut = result.ok ? result.value.svg : `<div style="color:#e53e3e">${(result.errors || []).map((err: any) => err.message).join('; ')}</div>`;
+    this.svgOut = result.ok ? result.value.svg : `<div style="color:#e53e3e">${escapeHtml((result.errors || []).map((err: any) => err.message).join('; '))}</div>`;
     this.requestUpdate();
   }
 }

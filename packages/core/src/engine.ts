@@ -31,32 +31,22 @@ import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughSt
 import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
 import { expandIncludes } from './macro/include.js';
+// Per-type NODE rendering now dispatches through each plugin's renderNode
+// hook (see plugin/types.ts) — only whole-canvas grammars (charts, sankey,
+// gantt/timeline axes, sequence fragments/messages) and per-type EDGE
+// rendering remain imported here.
 import {
-  renderSequenceParticipant, renderSequenceMessage, renderSequenceFragment,
-  renderStateNode,
-  renderErEntity, renderErRelationship,
-  renderGanttRow, renderGanttDependency,
-  renderMindmapNode, renderMindmapBranch,
+  renderSequenceMessage, renderSequenceFragment,
+  renderErRelationship,
+  renderGanttDependency, renderGanttAxis,
+  renderMindmapBranch,
   renderSankeyNode, renderSankeyRibbon,
-  renderGitCommit, renderGitLane,
+  renderGitLane,
   renderChartBar, renderChartPie, renderChartLinePoint, renderChartLegend,
   renderChartAxes, chartScale, chartPlot, chartLegendHeight, chartLegendMinWidth,
   extractChartSeriesNames,
-  renderC4Node,
-  renderBpmnNode,
-  renderDmnNode,
-  renderGanttAxis,
-  renderUsecaseNode,
-  renderActivityNode,
-  renderDeploymentNode,
-  renderComponentNode,
-  renderNetworkNode,
-  renderFormNode,
-  renderBlockNode,
   renderTimelineAxis,
   renderTimelineNode,
-  renderWireframeNode,
-  renderCloudNode,
   renderGroup,
   computeGroupBounds,
 } from './render/custom-renderers.js';
@@ -633,36 +623,16 @@ class SelDiAEngine implements CoreEngine {
   }
 
   private renderNode(node: IRNode, pad: number, sketchy: boolean, diagramType: DiagramType, swatch: Swatch): string {
-    const kind = (node.data as any)?.kind as string | undefined;
-    if (diagramType === DiagramType.CLASS && kind === 'note') return this.renderNoteNode(node, pad, sketchy);
-    if (diagramType === DiagramType.CLASS && kind === 'class' && (node.data as any)?.compartments) {
-      return this.renderClassNode(node, pad, sketchy, swatch);
+    // Per-type node grammar lives in each plugin's renderNode hook — the
+    // engine no longer carries a `type === X` renderer ladder, so adding a
+    // diagram type's visuals only touches its plugin. A hook returning
+    // undefined (or a type with no hook) falls through to the generic
+    // shape renderer below.
+    const plugin = this.plugins.findHandler(diagramType);
+    if (plugin?.renderNode) {
+      const custom = plugin.renderNode(node, { pad, sketchy, swatch, diagramType });
+      if (custom !== undefined) return custom;
     }
-    if (diagramType === DiagramType.SEQUENCE) return renderSequenceParticipant(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.STATE) return renderStateNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.ER) return renderErEntity(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.GANTT) return renderGanttRow(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.MINDMAP) {
-      const isRoot = (node.data as any)?.mindmapRoot === true;
-      const branchIdx = ((node.data as any)?.mindmapBranch as number) ?? 0;
-      const branchColor = isRoot ? swatch.stroke : seriesColor(branchIdx);
-      return renderMindmapNode(node, pad, sketchy, swatch, isRoot, branchColor);
-    }
-    if (diagramType === DiagramType.GITGRAPH) return renderGitCommit(node, pad, sketchy);
-    if (diagramType === DiagramType.C4_CONTEXT || diagramType === DiagramType.C4_CONTAINER || diagramType === DiagramType.C4_COMPONENT) {
-      return renderC4Node(node, pad, sketchy, swatch);
-    }
-    if (diagramType === DiagramType.BPMN) return renderBpmnNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.DMN) return renderDmnNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.USECASE) return renderUsecaseNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.ACTIVITY) return renderActivityNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.DEPLOYMENT) return renderDeploymentNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.COMPONENT) return renderComponentNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.NETWORK) return renderNetworkNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.FORM) return renderFormNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.BLOCK) return renderBlockNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.WIREFRAME) return renderWireframeNode(node, pad, sketchy, swatch);
-    if (diagramType === DiagramType.CLOUD) return renderCloudNode(node, pad, sketchy, swatch);
 
     const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
     const cx = x + w / 2, cy = y + h / 2;
@@ -751,75 +721,6 @@ class SelDiAEngine implements CoreEngine {
     const lineCount = rawLabel.split('\n').length;
     const startY = cy - ((lineCount - 1) * lineHeight) / 2 + fs * 0.35;
     el += this.renderLabel(cx, startY, lineHeight, fs, ff, color, rawLabel);
-    return el;
-  }
-
-  /** Distinct yellow annotation box for UML notes (reference image B) —
-   *  no compartments, folded-corner styling, left-aligned text. */
-  private renderNoteNode(node: IRNode, pad: number, sketchy: boolean): string {
-    const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
-    const s = node.style || {};
-    const note = roleSwatch('note');
-    const fill = (s.fill as string) || note.fill, stroke = (s.stroke as string) || note.stroke;
-    const sw = (s.strokeWidth as number) || DS.stroke.divider, color = (s.textColor as string) || note.text;
-    const fs = (s.fontSize as number) || DS.fontSize.meta, ff = (s.fontFamily as string) || DS.fontFamily;
-    const fold = 12;
-    let el: string;
-    if (sketchy) {
-      const style: RoughStyle = { stroke, strokeWidth: sw, fill, roughness: DS.roughness, fillStyle: 'solid', seed: seedFor(node.id) };
-      el = roughPolygon([[x, y], [x + w - fold, y], [x + w, y + fold], [x + w, y + h], [x, y + h]], style);
-      el += roughLine(x + w - fold, y, x + w, y + fold, { stroke, strokeWidth: sw, seed: seedFor(node.id) });
-    } else {
-      el = `    <path d="M ${x} ${y} H ${x + w - fold} L ${x + w} ${y + fold} V ${y + h} H ${x} Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>\n`;
-      el += `    <path d="M ${x + w - fold} ${y} V ${y + fold} H ${x + w}" fill="none" stroke="${stroke}" stroke-width="${sw}"/>\n`;
-    }
-    const lineHeight = Math.round(fs * 1.3);
-    const lines = splitLabelLines(node.label);
-    const startY = y + 16;
-    el += `    <text text-anchor="start" fill="${color}" font-size="${fs}" font-family="${ff}" font-style="italic">${lines.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
-    return el;
-  }
-
-  /** UML class box: name compartment (bold, centered, tinted header),
-   *  divider, attributes compartment (left-aligned, visibility markers kept
-   *  verbatim), divider, operations compartment — reference image B. */
-  private renderClassNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch): string {
-    const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
-    const s = node.style || {};
-    const fill = swatch.fill, stroke = swatch.stroke, color = swatch.text;
-    const sw = (s.strokeWidth as number) || DS.stroke.node;
-    const fs = (s.fontSize as number) || DS.fontSize.label, ff = (s.fontFamily as string) || DS.fontFamily;
-    // Members are code-like — render them in the monospace family for legibility.
-    const memberFf = DS.monoFamily;
-    const { name, attributes, operations } = (node.data as any).compartments as { name: string; attributes: string[]; operations: string[] };
-
-    const lineHeight = Math.round((fs - 2) * 1.4);
-    const nameHeight = fs + 18;
-    const attrHeight = attributes.length > 0 ? attributes.length * lineHeight + 12 : 0;
-    const opHeight = operations.length > 0 ? operations.length * lineHeight + 12 : 0;
-
-    let el: string;
-    if (sketchy) {
-      el = roughRect(x, y, w, h, { stroke, strokeWidth: sw, fill: DS.neutral.surface, roughness: DS.roughness, fillStyle: 'solid', seed: seedFor(node.id) });
-    } else {
-      el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${DS.neutral.surface}" stroke="${stroke}" stroke-width="${sw}"/>\n`;
-    }
-    // Name compartment — tinted header (accent fill), bold, centered.
-    el += `    <path d="M ${x} ${y + DS.radius} Q ${x} ${y} ${x + DS.radius} ${y} H ${x + w - DS.radius} Q ${x + w} ${y} ${x + w} ${y + DS.radius} V ${y + nameHeight} H ${x} Z" fill="${fill}"/>\n`;
-    el += `    <text x="${x + w / 2}" y="${y + nameHeight / 2 + fs * 0.35}" text-anchor="middle" font-weight="700" fill="${color}" font-size="${fs}" font-family="${ff}">${this.esc(name)}</text>\n`;
-
-    let cursorY = y + nameHeight;
-    if (attrHeight > 0) {
-      el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="${DS.stroke.divider}"/>\n`;
-      const startY = cursorY + lineHeight;
-      el += `    <text text-anchor="start" fill="${DS.neutral.text}" font-size="${fs - 2}" font-family="${memberFf}">${attributes.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
-      cursorY += attrHeight;
-    }
-    if (opHeight > 0) {
-      el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="${DS.stroke.divider}"/>\n`;
-      const startY = cursorY + lineHeight;
-      el += `    <text text-anchor="start" fill="${DS.neutral.text}" font-size="${fs - 2}" font-family="${memberFf}">${operations.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${this.esc(l)}</tspan>`).join('')}</text>\n`;
-    }
     return el;
   }
 

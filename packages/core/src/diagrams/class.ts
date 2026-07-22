@@ -9,6 +9,7 @@ import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+import { renderClassNote, renderClassCompartments } from '../render/custom-renderers.js';
 
 /** Split a class node's `\n`-joined label into (name, attributes, operations)
  *  compartments. First line is the class name; subsequent lines are members,
@@ -119,6 +120,15 @@ export const classPlugin: DiagramPlugin = {
       layers: [],
       metadata: {},
     };
+  },
+
+  renderNode(node, ctx) {
+    const kind = (node.data as any)?.kind as string | undefined;
+    if (kind === 'note') return renderClassNote(node, ctx.pad, ctx.sketchy);
+    if (kind === 'class' && (node.data as any)?.compartments) {
+      return renderClassCompartments(node, ctx.pad, ctx.sketchy, ctx.swatch);
+    }
+    return undefined; // fall through to the generic shape renderer
   },
 
   getDefaultLayoutOptions() {

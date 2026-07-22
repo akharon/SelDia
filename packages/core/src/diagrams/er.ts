@@ -10,6 +10,7 @@ import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
 import { erEntitySize } from '../render/custom-renderers.js';
+import { renderErEntity } from '../render/custom-renderers.js';
 
 export const erPlugin: DiagramPlugin = {
   id: 'seldia-er', name: 'ER Diagram', version: '1.0.0',
@@ -32,5 +33,6 @@ export const erPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'er-1', type: DiagramType.ER, title: ast.title || 'ER Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderErEntity(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [120, 100], rankSpacing: 120 }; },
 };

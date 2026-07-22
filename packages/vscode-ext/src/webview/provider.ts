@@ -13,8 +13,61 @@ import { VisualEditHandler, type EditHandlerCallbacks } from './edit-handler.js'
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 import { computePositionEdit } from '../edit/position-patch.js';
 
+// -----------------------------------------------------------------------------
+// Custom text editor registration (.sld files)
+// -----------------------------------------------------------------------------
+// The interactive provider *is* the registered custom editor for .sld —
+// there is no separate split-pane editor implementation. VS Code hands us a
+// per-document WebviewPanel, so editor instances are naturally per-document
+// (fixing the old cross-wiring where one global panel was silently retargeted
+// between files). The command entry points (`seldia.openInteractive` etc.)
+// share the same per-uri instance via `createOrShow`.
+export class SelDiAEditorRegistration implements vscode.CustomTextEditorProvider {
+  public static readonly viewType = 'seldia.seldiaEditor';
+
+  public static register(context: vscode.ExtensionContext, engine: CoreEngine): vscode.Disposable {
+    return vscode.window.registerCustomEditorProvider(
+      SelDiAEditorRegistration.viewType,
+      new SelDiAEditorRegistration(context.extensionUri, engine),
+      {
+        webviewOptions: { retainContextWhenHidden: true },
+        supportsMultipleEditorsPerDocument: false,
+      }
+    );
+  }
+
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _engine: CoreEngine
+  ) {}
+
+  async resolveCustomTextEditor(
+    document: vscode.TextDocument,
+    webviewPanel: vscode.WebviewPanel,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    webviewPanel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'media')],
+    };
+    SelDiAInteractiveProvider.adopt(
+      webviewPanel, this._extensionUri, this._engine, document.getText(), document.uri
+    );
+  }
+}
+
 export class SelDiAInteractiveProvider {
-  public static currentPanel: SelDiAInteractiveProvider | undefined;
+  /** Per-document instances, keyed by source uri. One .sld file = one panel;
+   *  a second file gets its own panel with its own undo history and edit
+   *  state, never a retargeted shared one. */
+  private static panels = new Map<string, SelDiAInteractiveProvider>();
+
+  /** Back-compat accessor: the most recently created/used panel, if any. */
+  public static get currentPanel(): SelDiAInteractiveProvider | undefined {
+    let last: SelDiAInteractiveProvider | undefined;
+    for (const p of SelDiAInteractiveProvider.panels.values()) last = p;
+    return last;
+  }
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
@@ -24,6 +77,7 @@ export class SelDiAInteractiveProvider {
   private readonly _editHandler: VisualEditHandler;
 
   private _currentSource: string = '';
+  private _htmlInitialized = false;
   private _currentTheme: string = 'sketchy-light';
   private _viewMode: any = 'diagram';
   private _interactive: boolean = true;
@@ -73,8 +127,43 @@ export class SelDiAInteractiveProvider {
       })
     );
 
+    // Follow the source document: hand edits in the text editor (and our own
+    // WorkspaceEdits from drags/label edits) re-render the diagram. This is
+    // incremental — after the first render, updates go over postMessage and
+    // swap only the SVG, preserving zoom/pan/selection in the webview.
+    this._disposables.push(
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        if (!this._sourceUri || e.document.uri.toString() !== this._sourceUri.toString()) return;
+        const text = e.document.getText();
+        if (text === this._currentSource) return;
+        this._currentSource = text;
+        void this.render();
+      })
+    );
+
     // Initial render
     this.render();
+  }
+
+  private static keyFor(sourceUri?: vscode.Uri): string {
+    return sourceUri ? sourceUri.toString() : '<untitled>';
+  }
+
+  /** Wrap an externally created panel (the custom-editor path — VS Code owns
+   *  the panel's lifecycle and it is per-document by contract). */
+  static adopt(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    engine: CoreEngine,
+    source: string,
+    sourceUri: vscode.Uri
+  ): SelDiAInteractiveProvider {
+    const key = SelDiAInteractiveProvider.keyFor(sourceUri);
+    const existing = SelDiAInteractiveProvider.panels.get(key);
+    if (existing) existing.dispose();
+    const provider = new SelDiAInteractiveProvider(panel, extensionUri, engine, source, sourceUri);
+    SelDiAInteractiveProvider.panels.set(key, provider);
+    return provider;
   }
 
   static createOrShow(
@@ -87,15 +176,17 @@ export class SelDiAInteractiveProvider {
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
-    if (SelDiAInteractiveProvider.currentPanel) {
-      SelDiAInteractiveProvider.currentPanel._panel.reveal(column);
-      SelDiAInteractiveProvider.currentPanel.updateSource(source, sourceUri);
-      return SelDiAInteractiveProvider.currentPanel;
+    const key = SelDiAInteractiveProvider.keyFor(sourceUri);
+    const existing = SelDiAInteractiveProvider.panels.get(key);
+    if (existing) {
+      existing._panel.reveal(column);
+      existing.updateSource(source, sourceUri);
+      return existing;
     }
 
     const panel = vscode.window.createWebviewPanel(
       'seldiaInteractive',
-      'SelDiA Interactive Diagram',
+      sourceUri ? `SelDiA: ${sourceUri.path.split('/').pop()}` : 'SelDiA Interactive Diagram',
       column || vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -104,20 +195,25 @@ export class SelDiAInteractiveProvider {
       }
     );
 
-    SelDiAInteractiveProvider.currentPanel = new SelDiAInteractiveProvider(
-      panel, extensionUri, engine, source, sourceUri
-    );
-    return SelDiAInteractiveProvider.currentPanel;
+    const provider = new SelDiAInteractiveProvider(panel, extensionUri, engine, source, sourceUri);
+    SelDiAInteractiveProvider.panels.set(key, provider);
+    return provider;
   }
 
   static reveal(): void {
-    if (SelDiAInteractiveProvider.currentPanel) {
-      SelDiAInteractiveProvider.currentPanel._panel.reveal();
-    }
+    SelDiAInteractiveProvider.currentPanel?._panel.reveal();
   }
 
   updateSource(source: string, sourceUri?: vscode.Uri): void {
-    if (sourceUri) this._sourceUri = sourceUri;
+    if (sourceUri && sourceUri.toString() !== this._sourceUri?.toString()) {
+      // Re-key the panel registry if the target document changes.
+      const oldKey = SelDiAInteractiveProvider.keyFor(this._sourceUri ?? undefined);
+      if (SelDiAInteractiveProvider.panels.get(oldKey) === this) {
+        SelDiAInteractiveProvider.panels.delete(oldKey);
+      }
+      this._sourceUri = sourceUri;
+      SelDiAInteractiveProvider.panels.set(SelDiAInteractiveProvider.keyFor(sourceUri), this);
+    }
     if (source !== this._currentSource) {
       this._currentSource = source;
       this.render();
@@ -134,22 +230,41 @@ export class SelDiAInteractiveProvider {
       renderResult = result.value;
       svgContent = result.value.svg;
     } else {
-      errorMsg = (result.errors || []).map((e: any) => e.message).join('<br>');
+      // Escape each message before joining with <br> — compiler errors can
+      // quote source fragments containing '<', which must not become markup.
+      const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      errorMsg = (result.errors || []).map((e: any) => esc(String(e.message))).join('<br>');
     }
 
     const stats = result.ok
       ? `Nodes: ${renderResult.stats?.nodeCount || 0} | Edges: ${renderResult.stats?.edgeCount || 0}`
       : 'Compilation failed';
 
-    // Send render data to webview
+    if (!this._htmlInitialized) {
+      // First render: install the full page (styles, toolbar, script).
+      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, renderResult);
+      this._htmlInitialized = true;
+    } else {
+      // Subsequent renders: swap only the diagram content over postMessage so
+      // the webview keeps its zoom/pan/selection/undo UI state. Replacing the
+      // whole HTML here was the old behavior and it reset all of that on
+      // every document change.
+      this._panel.webview.postMessage({
+        type: 'updateContent',
+        svg: svgContent,
+        error: errorMsg,
+        stats,
+        ir: renderResult,
+      });
+    }
+
+    // Keep the typed render channel for listeners that track IR state.
     this._messenger.sendRender(
       renderResult,
       this._currentTheme,
       this._interactive,
       this._viewMode
     );
-
-    this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, renderResult);
   }
 
   private getHtmlContent(svgContent: string, stats: string, errorMsg: string, renderResult: any): string {
@@ -768,6 +883,37 @@ export class SelDiAInteractiveProvider {
             initFromIR();
           }
           break;
+        case 'updateContent': {
+          // Incremental re-render: swap the diagram, keep zoom/pan/selection.
+          if (msg.svg) {
+            container.innerHTML = msg.svg;
+          } else {
+            // msg.error is pre-escaped by the extension host.
+            const div = document.createElement('div');
+            div.className = 'error';
+            div.innerHTML = msg.error || 'No diagram to render';
+            container.innerHTML = '';
+            container.appendChild(div);
+          }
+          const statsEl = document.querySelector('.toolbar .stats');
+          if (statsEl && msg.stats) statsEl.textContent = msg.stats;
+          if (msg.ir) {
+            irData = msg.ir;
+            nodePositions = {};
+            initFromIR();
+          }
+          // Re-apply the current zoom/pan to the fresh SVG and restore selection.
+          applyTransform();
+          if (selectedNodeId) {
+            const sel = container.querySelector('[data-id="' + selectedNodeId + '"]');
+            if (sel) sel.setAttribute('data-selected', 'true'); else selectedNodeId = null;
+          }
+          if (selectedEdgeId) {
+            const sel = container.querySelector('[data-id="' + selectedEdgeId + '"]');
+            if (sel) sel.setAttribute('data-selected', 'true'); else selectedEdgeId = null;
+          }
+          break;
+        }
         case 'updateTheme':
           document.getElementById('themeSelect').value = msg.theme;
           break;
@@ -949,7 +1095,10 @@ export class SelDiAInteractiveProvider {
   }
 
   dispose(): void {
-    SelDiAInteractiveProvider.currentPanel = undefined;
+    const key = SelDiAInteractiveProvider.keyFor(this._sourceUri ?? undefined);
+    if (SelDiAInteractiveProvider.panels.get(key) === this) {
+      SelDiAInteractiveProvider.panels.delete(key);
+    }
     this._editHandler.reset();
     this._panel.dispose();
     while (this._disposables.length) {

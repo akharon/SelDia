@@ -11,8 +11,7 @@ import { BlockDetector, type SelDiABlock } from './markdown/detector.js';
 import { SelDiADecorator } from './markdown/decorator.js';
 import { SelDiACodeLensProvider } from './markdown/codelens.js';
 import { registerLanguageServer } from './language-server/index.js';
-import { SelDiAInteractiveProvider } from './webview/provider.js';
-import { SelDiAEditorProvider } from './editor/seldia-editor-provider.js';
+import { SelDiAInteractiveProvider, SelDiAEditorRegistration } from './webview/provider.js';
 import { createSelDiAMarkdownItPlugin } from './markdown-preview/plugin.js';
 import { registerEditCommands, findDocWithBlock } from './edit/commands.js';
 
@@ -38,9 +37,9 @@ export function activate(context: vscode.ExtensionContext) {
   // ── Language Server (LSP for .sld files) ─────────────────────────────────
   registerLanguageServer(context, engine);
 
-  // ── Interactive Webview Editor (Phase 9c) ─────────────────────────────────
+  // ── Custom editor for .sld files (interactive diagram editor) ─────────────
   context.subscriptions.push(
-    SelDiAEditorProvider.register(context, engine)
+    SelDiAEditorRegistration.register(context, engine)
   );
 
   // ── Markdown preview edit commands (drag / rename / attributes) ───────────

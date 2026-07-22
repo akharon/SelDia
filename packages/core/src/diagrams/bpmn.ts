@@ -10,6 +10,7 @@ import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+import { renderBpmnNode } from '../render/custom-renderers.js';
 
 /** BPMN element kind from the DSL's type keyword plus additional inference.
  *  Supports: startEvent, endEvent, intermediateEvent, gateway, task,
@@ -173,5 +174,6 @@ export const bpmnPlugin: DiagramPlugin = {
     resolveEventOrientation(nodes, edges);
     return { id: ast.metadata?.id || 'bpmn-1', type: DiagramType.BPMN, title: ast.title || 'BPMN Process', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderBpmnNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [100, 80], rankSpacing: 100 }; },
 };

@@ -9,13 +9,21 @@ import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+import type { NodeRenderContext } from '../plugin/types.js';
+import { seriesColor } from '../render/design-system.js';
+import {
+  renderGanttRow, renderMindmapNode, renderGitCommit, renderDmnNode,
+  renderUsecaseNode, renderActivityNode, renderDeploymentNode,
+  renderNetworkNode, renderFormNode, renderBlockNode, renderWireframeNode,
+  renderCloudNode,
+} from '../render/custom-renderers.js';
 
 // Note: color is intentionally NOT set here — the central design system
 // (packages/core/src/render/design-system.ts) supplies each diagram type's
 // signature accent and any semantic-role colors. Baking defaults in here would
 // shadow that system and collapse every type to one look. Only genuine
 // author-provided `nd.style` is passed through.
-function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, shape: ShapeType = ShapeType.RECTANGLE): DiagramPlugin {
+function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, shape: ShapeType = ShapeType.RECTANGLE, renderNode?: DiagramPlugin['renderNode']): DiagramPlugin {
   return {
     id, name, version: '1.0.0', diagramType: dt, description: desc,
     transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR {
@@ -33,17 +41,26 @@ function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, 
       return { id: ast.metadata?.id || `${dt}-1`, type: dt, title: ast.title || name, nodes, edges, groups: [], layers: [], metadata: {} };
     },
     getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [80, 60], rankSpacing: 80 }; },
+    renderNode,
   };
 }
 
-export const ganttPlugin = genericPlugin('seldia-gantt', 'Gantt Chart', DiagramType.GANTT, 'Gantt charts', ShapeType.RECTANGLE);
-export const mindmapPlugin = genericPlugin('seldia-mindmap', 'Mind Map', DiagramType.MINDMAP, 'Mind maps', ShapeType.ROUNDED_RECTANGLE);
+export const ganttPlugin = genericPlugin('seldia-gantt', 'Gantt Chart', DiagramType.GANTT, 'Gantt charts', ShapeType.RECTANGLE,
+  (node, ctx) => renderGanttRow(node, ctx.pad, ctx.sketchy, ctx.swatch));
+export const mindmapPlugin = genericPlugin('seldia-mindmap', 'Mind Map', DiagramType.MINDMAP, 'Mind maps', ShapeType.ROUNDED_RECTANGLE,
+  (node, ctx) => {
+    const isRoot = (node.data as any)?.mindmapRoot === true;
+    const branchIdx = ((node.data as any)?.mindmapBranch as number) ?? 0;
+    const branchColor = isRoot ? ctx.swatch.stroke : seriesColor(branchIdx);
+    return renderMindmapNode(node, ctx.pad, ctx.sketchy, ctx.swatch, isRoot, branchColor);
+  });
 export const chartPlugin = genericPlugin('seldia-chart', 'Charts', DiagramType.CHART_BAR, 'Charts (bar, line, pie, radar, scatter)', ShapeType.RECTANGLE);
 export const chartLinePlugin = genericPlugin('seldia-chart-line', 'Line Chart', DiagramType.CHART_LINE, 'Line charts', ShapeType.RECTANGLE);
 export const chartPiePlugin = genericPlugin('seldia-chart-pie', 'Pie Chart', DiagramType.CHART_PIE, 'Pie charts', ShapeType.RECTANGLE);
 export const chartRadarPlugin = genericPlugin('seldia-chart-radar', 'Radar Chart', DiagramType.CHART_RADAR, 'Radar charts', ShapeType.RECTANGLE);
 export const chartScatterPlugin = genericPlugin('seldia-chart-scatter', 'Scatter Chart', DiagramType.CHART_SCATTER, 'Scatter charts', ShapeType.RECTANGLE);
-export const gitgraphPlugin = genericPlugin('seldia-gitgraph', 'Git Graph', DiagramType.GITGRAPH, 'Git branch graphs', ShapeType.ROUNDED_RECTANGLE);
+export const gitgraphPlugin = genericPlugin('seldia-gitgraph', 'Git Graph', DiagramType.GITGRAPH, 'Git branch graphs', ShapeType.ROUNDED_RECTANGLE,
+  (node, ctx) => renderGitCommit(node, ctx.pad, ctx.sketchy));
 export const sankeyPlugin = genericPlugin('seldia-sankey', 'Sankey', DiagramType.SANKEY, 'Flow/sankey diagrams', ShapeType.RECTANGLE);
 
 // -----------------------------------------------------------------------------
@@ -85,6 +102,7 @@ export const usecasePlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'usecase-1', type: DiagramType.USECASE, title: ast.title || 'Use Case Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderUsecaseNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'LR', nodeSpacing: [90, 70], rankSpacing: 140 }; },
 };
 
@@ -126,6 +144,7 @@ export const activityPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'activity-1', type: DiagramType.ACTIVITY, title: ast.title || 'Activity Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderActivityNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [80, 60], rankSpacing: 90 }; },
 };
 
@@ -168,6 +187,7 @@ export const deploymentPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'deploy-1', type: DiagramType.DEPLOYMENT, title: ast.title || 'Deployment Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderDeploymentNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [100, 90], rankSpacing: 110 }; },
 };
 
@@ -221,6 +241,7 @@ export const networkPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'network-1', type: DiagramType.NETWORK, title: ast.title || 'Network Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderNetworkNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [90, 80], rankSpacing: 110 }; },
 };
 
@@ -269,6 +290,7 @@ export const formPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'form-1', type: DiagramType.FORM, title: ast.title || 'Form', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderFormNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [70, 24], rankSpacing: 40 }; },
 };
 
@@ -300,6 +322,7 @@ export const blockPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'block-1', type: DiagramType.BLOCK, title: ast.title || 'Block Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderBlockNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [70, 60], rankSpacing: 80 }; },
 };
 
@@ -358,6 +381,7 @@ export const dmnPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'dmn-1', type: DiagramType.DMN, title: ast.title || 'DMN Decision Table', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderDmnNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'LR', nodeSpacing: [90, 70], rankSpacing: 110 }; },
 };
 
@@ -453,6 +477,7 @@ export const wireframePlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'wireframe-1', type: DiagramType.WIREFRAME, title: ast.title || 'Wireframe', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderWireframeNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [28, 18], rankSpacing: 26 }; },
 };
 
@@ -535,5 +560,6 @@ export const cloudPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'cloud-1', type: DiagramType.CLOUD, title: ast.title || 'Cloud Architecture', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderCloudNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'LR', nodeSpacing: [80, 60], rankSpacing: 100 }; },
 };

@@ -9,6 +9,7 @@ import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
+import { renderC4Node } from '../render/custom-renderers.js';
 
 /** Classifies a C4 element from the DSL's type keyword (`person customer:
  *  "..."`, `system_Ext mainframe: "..."`, ...) — falls back to 'system' for
@@ -64,6 +65,7 @@ export const c4Plugin: DiagramPlugin = {
   diagramType: DiagramType.C4_CONTEXT,
   description: 'C4 model: Context, Container, Component, Code levels',
   transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR { return buildC4Ir(ast, ast.type); },
+  renderNode(node, ctx) { return renderC4Node(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'LR', nodeSpacing: [120, 100], rankSpacing: 120 }; },
 };
 

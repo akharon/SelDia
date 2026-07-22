@@ -8,6 +8,7 @@ import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
+import { renderComponentNode } from '../render/custom-renderers.js';
 
 export type ComponentKind = 'component' | 'datastore' | 'interface' | 'service';
 
@@ -56,5 +57,6 @@ export const componentPlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'comp-1', type: DiagramType.COMPONENT, title: ast.title || 'Component Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderComponentNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [100, 80], rankSpacing: 100 }; },
 };

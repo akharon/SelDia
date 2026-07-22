@@ -8,6 +8,8 @@ import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
+import type { NodeRenderContext } from '../plugin/types.js';
+import { renderSequenceParticipant } from '../render/custom-renderers.js';
 
 export const sequencePlugin: DiagramPlugin = {
   id: 'seldia-sequence',
@@ -117,6 +119,10 @@ export const sequencePlugin: DiagramPlugin = {
       layers: [],
       metadata: fragmentRecords.length ? { sequenceFragments: fragmentRecords } : {},
     };
+  },
+
+  renderNode(node: IRNode, ctx: NodeRenderContext): string {
+    return renderSequenceParticipant(node, ctx.pad, ctx.sketchy, ctx.swatch);
   },
 
   getDefaultLayoutOptions() {

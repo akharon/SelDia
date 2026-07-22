@@ -1826,3 +1826,79 @@ export function renderGroup(group: IRGroup, pad: number, sketchy: boolean): stri
   }
   return el;
 }
+
+// -----------------------------------------------------------------------------
+// Class Diagram — note boxes and compartment boxes
+// -----------------------------------------------------------------------------
+// Moved here from engine.ts private methods so classPlugin.renderNode can own
+// them: per-type node rendering dispatches through the plugin hook, not an
+// engine type ladder.
+
+/** Distinct yellow annotation box for UML notes (reference image B) —
+ *  no compartments, folded-corner styling, left-aligned text. */
+export function renderClassNote(node: IRNode, pad: number, sketchy: boolean): string {
+  const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
+  const s = node.style || {};
+  const note = roleSwatch('note');
+  const fill = (s.fill as string) || note.fill, stroke = (s.stroke as string) || note.stroke;
+  const sw = (s.strokeWidth as number) || DS.stroke.divider, color = (s.textColor as string) || note.text;
+  const fs = (s.fontSize as number) || DS.fontSize.meta, ff = (s.fontFamily as string) || DS.fontFamily;
+  const fold = 12;
+  let el: string;
+  if (sketchy) {
+    const style: RoughStyle = { stroke, strokeWidth: sw, fill, roughness: DS.roughness, fillStyle: 'solid', seed: seedFor(node.id) };
+    el = roughPolygon([[x, y], [x + w - fold, y], [x + w, y + fold], [x + w, y + h], [x, y + h]], style);
+    el += roughLine(x + w - fold, y, x + w, y + fold, { stroke, strokeWidth: sw, seed: seedFor(node.id) });
+  } else {
+    el = `    <path d="M ${x} ${y} H ${x + w - fold} L ${x + w} ${y + fold} V ${y + h} H ${x} Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>\n`;
+    el += `    <path d="M ${x + w - fold} ${y} V ${y + fold} H ${x + w}" fill="none" stroke="${stroke}" stroke-width="${sw}"/>\n`;
+  }
+  const lineHeight = Math.round(fs * 1.3);
+  const lines = splitLabelLines(node.label);
+  const startY = y + 16;
+  el += `    <text text-anchor="start" fill="${color}" font-size="${fs}" font-family="${ff}" font-style="italic">${lines.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${esc(l)}</tspan>`).join('')}</text>\n`;
+  return el;
+}
+
+/** UML class box: name compartment (bold, centered, tinted header),
+ *  divider, attributes compartment (left-aligned, visibility markers kept
+ *  verbatim), divider, operations compartment — reference image B. */
+export function renderClassCompartments(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch): string {
+  const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
+  const s = node.style || {};
+  const fill = swatch.fill, stroke = swatch.stroke, color = swatch.text;
+  const sw = (s.strokeWidth as number) || DS.stroke.node;
+  const fs = (s.fontSize as number) || DS.fontSize.label, ff = (s.fontFamily as string) || DS.fontFamily;
+  // Members are code-like — render them in the monospace family for legibility.
+  const memberFf = DS.monoFamily;
+  const { name, attributes, operations } = (node.data as any).compartments as { name: string; attributes: string[]; operations: string[] };
+
+  const lineHeight = Math.round((fs - 2) * 1.4);
+  const nameHeight = fs + 18;
+  const attrHeight = attributes.length > 0 ? attributes.length * lineHeight + 12 : 0;
+  const opHeight = operations.length > 0 ? operations.length * lineHeight + 12 : 0;
+
+  let el: string;
+  if (sketchy) {
+    el = roughRect(x, y, w, h, { stroke, strokeWidth: sw, fill: DS.neutral.surface, roughness: DS.roughness, fillStyle: 'solid', seed: seedFor(node.id) });
+  } else {
+    el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${DS.neutral.surface}" stroke="${stroke}" stroke-width="${sw}"/>\n`;
+  }
+  // Name compartment — tinted header (accent fill), bold, centered.
+  el += `    <path d="M ${x} ${y + DS.radius} Q ${x} ${y} ${x + DS.radius} ${y} H ${x + w - DS.radius} Q ${x + w} ${y} ${x + w} ${y + DS.radius} V ${y + nameHeight} H ${x} Z" fill="${fill}"/>\n`;
+  el += `    <text x="${x + w / 2}" y="${y + nameHeight / 2 + fs * 0.35}" text-anchor="middle" font-weight="700" fill="${color}" font-size="${fs}" font-family="${ff}">${esc(name)}</text>\n`;
+
+  let cursorY = y + nameHeight;
+  if (attrHeight > 0) {
+    el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="${DS.stroke.divider}"/>\n`;
+    const startY = cursorY + lineHeight;
+    el += `    <text text-anchor="start" fill="${DS.neutral.text}" font-size="${fs - 2}" font-family="${memberFf}">${attributes.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${esc(l)}</tspan>`).join('')}</text>\n`;
+    cursorY += attrHeight;
+  }
+  if (opHeight > 0) {
+    el += `    <line x1="${x}" y1="${cursorY}" x2="${x + w}" y2="${cursorY}" stroke="${stroke}" stroke-width="${DS.stroke.divider}"/>\n`;
+    const startY = cursorY + lineHeight;
+    el += `    <text text-anchor="start" fill="${DS.neutral.text}" font-size="${fs - 2}" font-family="${memberFf}">${operations.map((l, i) => `<tspan x="${x + 10}" y="${startY + i * lineHeight}">${esc(l)}</tspan>`).join('')}</text>\n`;
+  }
+  return el;
+}

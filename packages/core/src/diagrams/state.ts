@@ -8,6 +8,7 @@ import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
+import { renderStateNode } from '../render/custom-renderers.js';
 
 export const statePlugin: DiagramPlugin = {
   id: 'seldia-state', name: 'State Diagram', version: '1.0.0',
@@ -33,5 +34,6 @@ export const statePlugin: DiagramPlugin = {
     }
     return { id: ast.metadata?.id || 'state-1', type: DiagramType.STATE, title: ast.title || 'State Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
   },
+  renderNode(node, ctx) { return renderStateNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [100, 80], rankSpacing: 80 }; },
 };

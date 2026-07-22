@@ -2,7 +2,7 @@
 // SelDiA — Plugin System Types
 // =============================================================================
 
-import type { DiagramType, DiagramIR } from '../ir/types.js';
+import type { DiagramType, DiagramIR, IRNode } from '../ir/types.js';
 import type { DiagramAST } from '../ast/nodes.js';
 import type { SelDiAConfig } from '../config.js';
 import type { Theme } from '../types/style.js';
@@ -92,6 +92,35 @@ export interface DiagramPlugin {
    * Return empty array if valid.
    */
   validate?(ast: DiagramAST): PluginDiagnostic[];
+
+  /**
+   * Render one node of this diagram type to an SVG fragment.
+   *
+   * This is the per-type visual grammar hook: the engine calls it for every
+   * node instead of hard-wiring a `type === X` renderer ladder, so adding or
+   * changing a diagram type's node rendering only touches its plugin. Return
+   * `undefined` to fall through to the engine's generic shape renderer
+   * (rect/diamond/circle/... derived from `node.shape`) — the right choice
+   * for nodes the type has no special treatment for.
+   *
+   * Whole-canvas grammars (pie/bar/line charts, sankey ribbons, gantt/
+   * timeline axes, sequence fragments) are NOT expressed through this hook —
+   * they render the diagram as one composition, not node-by-node, and stay
+   * in the engine's render pipeline.
+   */
+  renderNode?(node: IRNode, ctx: NodeRenderContext): string | undefined;
+}
+
+/** Context handed to `DiagramPlugin.renderNode`. */
+export interface NodeRenderContext {
+  /** Canvas padding already applied to layout coordinates. */
+  pad: number;
+  /** Whether the sketchy (Rough.js) rendering style is active. */
+  sketchy: boolean;
+  /** Resolved color swatch for this node (author style > role > type accent). */
+  swatch: { stroke: string; fill: string; text: string; accent: string };
+  /** The diagram type being rendered (relevant for multi-type plugins, e.g. C4 levels). */
+  diagramType: DiagramType;
 }
 
 // -----------------------------------------------------------------------------

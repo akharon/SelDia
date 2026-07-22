@@ -12,6 +12,7 @@ import type { WebviewToExtMessage } from '../types.js';
 import { VisualEditHandler, type EditHandlerCallbacks } from './edit-handler.js';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 import { computePositionEdit } from '../edit/position-patch.js';
+import { findBlockById, findSelDiABlocks, type SelDiABlockLoc } from '../edit/blocks.js';
 
 // -----------------------------------------------------------------------------
 // Custom text editor registration (.sld files)
@@ -82,19 +83,33 @@ export class SelDiAInteractiveProvider {
   private _viewMode: any = 'diagram';
   private _interactive: boolean = true;
   private _sourceUri: vscode.Uri | null = null;
+  /** When set, this panel edits ONE ```seldia fence inside a Markdown
+   *  document rather than a whole .sld file: `_currentSource` holds the fence
+   *  contents, and every write-back is translated into a WorkspaceEdit on the
+   *  fence's range in the .md. The id is re-derived after each edit because
+   *  it hashes the fence source (see blocks.ts). */
+  private _blockId: string | null = null;
+  /** Last-known 0-based line of the block's opening fence; used to re-find
+   *  the fence when a hand edit inside it changed the hash-derived id. */
+  private _blockFenceLine: number = -1;
+  /** Registry key this instance is stored under (block panels use
+   *  `uri#L<line>`, whole-file panels use the uri). */
+  private _registryKey: string | null = null;
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     engine: CoreEngine,
     source: string,
-    sourceUri?: vscode.Uri
+    sourceUri?: vscode.Uri,
+    blockId?: string
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._engine = engine;
     this._currentSource = source;
     this._sourceUri = sourceUri || null;
+    this._blockId = blockId || null;
 
     this._messenger = new WebviewMessenger();
     this._messenger.connect(panel.webview);
@@ -134,6 +149,19 @@ export class SelDiAInteractiveProvider {
     this._disposables.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (!this._sourceUri || e.document.uri.toString() !== this._sourceUri.toString()) return;
+        if (this._blockId) {
+          // Block mode: re-locate the fence in the changed Markdown and
+          // follow it (id first, fence-line proximity as fallback for hand
+          // edits inside the fence, which change the hash-derived id).
+          const block = this.locateBlock(e.document.getText());
+          if (!block) return; // fence removed — leave the last render standing
+          this._blockId = block.blockId;
+          this._blockFenceLine = block.fenceLine;
+          if (block.source === this._currentSource) return;
+          this._currentSource = block.source;
+          void this.render();
+          return;
+        }
         const text = e.document.getText();
         if (text === this._currentSource) return;
         this._currentSource = text;
@@ -204,8 +232,71 @@ export class SelDiAInteractiveProvider {
     SelDiAInteractiveProvider.currentPanel?._panel.reveal();
   }
 
+  /** Open (or reveal) a visual editor for ONE ```seldia fence inside a
+   *  Markdown document. The raw .md stays the source of truth: every visual
+   *  edit becomes a WorkspaceEdit on the fence's range, live-visible in the
+   *  text editor, undoable with the editor's own undo stack. */
+  static createOrShowForBlock(
+    extensionUri: vscode.Uri,
+    engine: CoreEngine,
+    docUri: vscode.Uri,
+    block: SelDiABlockLoc
+  ): SelDiAInteractiveProvider {
+    // Key by document + fence line: stable across the source-hash id changing
+    // with every edit, and distinct per fence so two fences in one file get
+    // two independent panels.
+    const key = `${docUri.toString()}#L${block.fenceLine}`;
+    const existing = SelDiAInteractiveProvider.panels.get(key);
+    if (existing) {
+      existing._panel.reveal(vscode.ViewColumn.Beside);
+      // Refresh identity/source in case the fence changed since the panel opened.
+      existing._blockId = block.blockId;
+      existing._blockFenceLine = block.fenceLine;
+      existing.updateSource(block.source);
+      return existing;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      'seldiaInteractive',
+      `SelDiA: ${docUri.path.split('/').pop()} · diagram @ line ${block.fenceLine + 1}`,
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
+      }
+    );
+    const provider = new SelDiAInteractiveProvider(
+      panel, extensionUri, engine, block.source, docUri, block.blockId
+    );
+    provider._blockFenceLine = block.fenceLine;
+    provider._registryKey = key;
+    SelDiAInteractiveProvider.panels.set(key, provider);
+    return provider;
+  }
+
+  /** Find this panel's fence in the given Markdown text: by tracked id first
+   *  (exact), then by opening-fence line proximity (survives hand edits inside
+   *  the fence, which change the hash-derived id). */
+  private locateBlock(markdown: string): SelDiABlockLoc | undefined {
+    if (!this._blockId) return undefined;
+    const byId = findBlockById(markdown, this._blockId);
+    if (byId) return byId;
+    const blocks = findSelDiABlocks(markdown);
+    if (!blocks.length) return undefined;
+    let best: SelDiABlockLoc | undefined;
+    let bestDist = Infinity;
+    for (const b of blocks) {
+      const d = Math.abs(b.fenceLine - this._blockFenceLine);
+      if (d < bestDist) { best = b; bestDist = d; }
+    }
+    // Only accept a proximity match that's plausibly the same fence — a
+    // wildly different line means our fence was deleted, not moved.
+    return bestDist <= 50 ? best : undefined;
+  }
+
   updateSource(source: string, sourceUri?: vscode.Uri): void {
-    if (sourceUri && sourceUri.toString() !== this._sourceUri?.toString()) {
+    if (!this._blockId && sourceUri && sourceUri.toString() !== this._sourceUri?.toString()) {
       // Re-key the panel registry if the target document changes.
       const oldKey = SelDiAInteractiveProvider.keyFor(this._sourceUri ?? undefined);
       if (SelDiAInteractiveProvider.panels.get(oldKey) === this) {
@@ -1050,20 +1141,61 @@ export class SelDiAInteractiveProvider {
    *  offset-accurate edit against `document.positionAt`, mirroring how
    *  `SelDiAEditorProvider`'s `codeEdit` handler already talks to the
    *  document elsewhere in this codebase. */
+  /** In block mode, translate an offset relative to the fence source into an
+   *  absolute offset in the Markdown document. Returns undefined if the fence
+   *  can no longer be located (edit is dropped rather than mis-applied). */
+  private blockBaseOffset(document: vscode.TextDocument): number | undefined {
+    const block = this.locateBlock(document.getText());
+    if (!block) return undefined;
+    // The fence source starts at the beginning of sourceStartLine.
+    return document.offsetAt(new vscode.Position(block.sourceStartLine, 0));
+  }
+
+  /** After a write-back into the fence, the block's hash-derived id changes;
+   *  re-derive it from the fresh document so the next lookup still finds it. */
+  private refreshBlockIdentity(document: vscode.TextDocument): void {
+    if (!this._blockId) return;
+    const blocks = findSelDiABlocks(document.getText());
+    let best: SelDiABlockLoc | undefined;
+    let bestDist = Infinity;
+    for (const b of blocks) {
+      const d = Math.abs(b.fenceLine - this._blockFenceLine);
+      if (d < bestDist) { best = b; bestDist = d; }
+    }
+    if (best && bestDist <= 50) {
+      this._blockId = best.blockId;
+      this._blockFenceLine = best.fenceLine;
+      this._currentSource = best.source;
+    }
+  }
+
   private async applyDslPatch(edit: string, offset: number, deleteLength: number): Promise<void> {
     if (!this._sourceUri) return;
     const document = await vscode.workspace.openTextDocument(this._sourceUri);
 
+    // Block mode: `offset` is relative to the fence contents — shift it to
+    // the fence's position inside the Markdown document.
+    let base = 0;
+    if (this._blockId) {
+      const b = this.blockBaseOffset(document);
+      if (b === undefined) return; // fence gone — drop the edit, never guess
+      base = b;
+    }
+
     const workspaceEdit = new vscode.WorkspaceEdit();
-    const startPos = document.positionAt(offset);
+    const startPos = document.positionAt(base + offset);
     if (deleteLength > 0) {
-      const endPos = document.positionAt(offset + deleteLength);
+      const endPos = document.positionAt(base + offset + deleteLength);
       workspaceEdit.replace(this._sourceUri, new vscode.Range(startPos, endPos), edit);
     } else {
       workspaceEdit.insert(this._sourceUri, startPos, edit);
     }
     await vscode.workspace.applyEdit(workspaceEdit);
-    this._currentSource = document.getText();
+    if (this._blockId) {
+      this.refreshBlockIdentity(document);
+    } else {
+      this._currentSource = document.getText();
+    }
   }
 
   /** Write a dragged node's new position back into its declaration.
@@ -1081,21 +1213,36 @@ export class SelDiAInteractiveProvider {
   private async applyNodePosition(nodeId: string, x: number, y: number): Promise<void> {
     if (!this._sourceUri) return;
     const document = await vscode.workspace.openTextDocument(this._sourceUri);
-    const source = document.getText();
+
+    // Block mode: compute the patch against the fence contents (that's the
+    // DSL the node declaration lives in), then shift the resulting range to
+    // the fence's position inside the Markdown document.
+    let base = 0;
+    let source = document.getText();
+    if (this._blockId) {
+      const block = this.locateBlock(source);
+      if (!block) return; // fence gone — drop the edit, never guess
+      base = document.offsetAt(new vscode.Position(block.sourceStartLine, 0));
+      source = block.source;
+    }
 
     const edit = computePositionEdit(source, nodeId, x, y);
     if (!edit) return; // Node declaration not found by the line heuristic — leave the source untouched.
 
     const workspaceEdit = new vscode.WorkspaceEdit();
-    const startPos = document.positionAt(edit.start);
-    const endPos = document.positionAt(edit.end);
+    const startPos = document.positionAt(base + edit.start);
+    const endPos = document.positionAt(base + edit.end);
     workspaceEdit.replace(this._sourceUri, new vscode.Range(startPos, endPos), edit.text);
     await vscode.workspace.applyEdit(workspaceEdit);
-    this._currentSource = document.getText();
+    if (this._blockId) {
+      this.refreshBlockIdentity(document);
+    } else {
+      this._currentSource = document.getText();
+    }
   }
 
   dispose(): void {
-    const key = SelDiAInteractiveProvider.keyFor(this._sourceUri ?? undefined);
+    const key = this._registryKey ?? SelDiAInteractiveProvider.keyFor(this._sourceUri ?? undefined);
     if (SelDiAInteractiveProvider.panels.get(key) === this) {
       SelDiAInteractiveProvider.panels.delete(key);
     }

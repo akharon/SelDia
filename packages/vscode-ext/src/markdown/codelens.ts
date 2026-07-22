@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import type { SelDiABlock } from './detector.js';
+import { blockIdForSource } from '../edit/blocks.js';
 
 export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
   private blocks: SelDiABlock[] = [];
@@ -41,10 +42,13 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
         tooltip: 'Open the Markdown preview to see this diagram rendered inline',
       }));
 
+      // "Edit Visually" lens — opens the interactive editor targeted at this
+      // fence; drags/edits write back into the fence via WorkspaceEdit.
       lenses.push(new vscode.CodeLens(startRange, {
-        title: '$(play) Render',
-        command: 'markdown.showPreview',
-        tooltip: 'Render this diagram in the Markdown preview',
+        title: '$(edit) Edit Visually',
+        command: 'seldia.editBlockVisually',
+        arguments: [{ doc: document.uri.toString(), blockId: blockIdForSource(block.source) }],
+        tooltip: 'Open a visual editor for this diagram — edits are written back into this code block',
       }));
 
       // "Export" lens

@@ -14,6 +14,7 @@ import { registerLanguageServer } from './language-server/index.js';
 import { SelDiAInteractiveProvider, SelDiAEditorRegistration } from './webview/provider.js';
 import { createSelDiAMarkdownItPlugin } from './markdown-preview/plugin.js';
 import { registerEditCommands, findDocWithBlock } from './edit/commands.js';
+import { findSelDiABlocks } from './edit/blocks.js';
 
 let engine: CoreEngine;
 let skillStatusBarItem: vscode.StatusBarItem | undefined;
@@ -373,6 +374,49 @@ export function activate(context: vscode.ExtensionContext) {
     refreshSkillStatusBar();
   });
 
+  // ── Edit a Markdown fence visually (Option B: CodeLens → block editor) ────
+  // Opens the interactive editor targeted at ONE ```seldia fence. The raw
+  // Markdown stays the source of truth: drags/label edits/adds/deletes become
+  // WorkspaceEdits on the fence's range, visible live in the text editor and
+  // undoable with its native undo. This never touches the read-only Markdown
+  // preview channel (see edit/commands.ts for why that stays navigation-only).
+  const editBlockVisually = vscode.commands.registerCommand(
+    'seldia.editBlockVisually',
+    async (args?: { doc?: string; blockId?: string }) => {
+      // Invoked from a CodeLens with {doc, blockId}; also usable from the
+      // palette on an active Markdown editor (first block at/after cursor).
+      let docUri: vscode.Uri | undefined;
+      let blockId: string | undefined = args?.blockId;
+      if (args?.doc) {
+        docUri = vscode.Uri.parse(args.doc);
+      } else {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || !/\.(md|mdx|rst)$/.test(editor.document.fileName)) {
+          vscode.window.showWarningMessage('Open a Markdown file with a ```seldia block first.');
+          return;
+        }
+        docUri = editor.document.uri;
+      }
+      const doc = await vscode.workspace.openTextDocument(docUri);
+      const blocks = findSelDiABlocks(doc.getText());
+      if (!blocks.length) {
+        vscode.window.showWarningMessage('No ```seldia blocks found in this document.');
+        return;
+      }
+      let block = blockId ? blocks.find((b) => b.blockId === blockId) : undefined;
+      if (!block && !blockId) {
+        // Palette path: nearest block at/after the cursor, else the first.
+        const line = vscode.window.activeTextEditor?.selection.active.line ?? 0;
+        block = blocks.find((b) => b.sourceEndLine >= line) ?? blocks[0];
+      }
+      if (!block) {
+        vscode.window.showWarningMessage('SelDiA: could not locate this diagram block (it may have changed).');
+        return;
+      }
+      SelDiAInteractiveProvider.createOrShowForBlock(context.extensionUri, engine, docUri, block);
+    }
+  );
+
   // ── Interactive Editor Command ────────────────────────────────────────────
   const openInteractive = vscode.commands.registerCommand('seldia.openInteractive', () => {
     const editor = vscode.window.activeTextEditor;
@@ -410,7 +454,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
-    toggleView, openPreview, openInteractive, insertDiagram, exportDiagram,
+    toggleView, openPreview, openInteractive, editBlockVisually, insertDiagram, exportDiagram,
     exportToMermaid, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
     revealSource
   );

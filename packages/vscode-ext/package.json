@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.36.0",
+  "version": "1.38.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -115,6 +115,10 @@
       {
         "command": "seldia.openInteractive",
         "title": "SelDiA: Open Interactive Diagram"
+      },
+      {
+        "command": "seldia.editBlockVisually",
+        "title": "SelDiA: Edit Diagram Block Visually"
       },
       {
         "command": "seldia.insertDiagram",

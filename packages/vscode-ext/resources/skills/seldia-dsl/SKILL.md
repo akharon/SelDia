@@ -1,306 +1,506 @@
 ---
 name: seldia-dsl
-description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 21 types: flowchart, sequence, class, er, state, usecase, activity, component, deployment, c4, bpmn, dmn, gantt, mindmap, network, chart, gitgraph, form, sankey, block, timeline. Rough.js hand-drawn rendering. Use for any text-to-diagram .sld files.'
-argument-hint: '[diagram description or .sld file path]'
+description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 23 types: flowchart, sequence, class, er, state, c4 (context/container/component), bpmn, dmn, component, usecase, activity, deployment, gantt, mindmap, network, chart (bar/line/pie/radar/scatter), gitgraph, form, sankey, block, timeline, wireframe, cloud. Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
+argument-hint: '[diagram description or .seldia file path]'
 user-invocable: true
 disable-model-invocation: false
 ---
 
 # SelDiA DSL — Diagram-as-Code
 
-## Usage
+When the user asks to create or modify a diagram, or to write `.seldia`/`.sld` files, output ` ```seldia ` fenced blocks (raw DSL for standalone files). Pick the type from the first column:
 
-When user asks to create/modify a diagram or write `.sld` files, output ` ```seldia ` fenced blocks (raw DSL for standalone files). Choose diagram type:
-
-| Need | Type |
-|------|------|
-| Process/workflow | `flowchart` |
-| Participant interactions | `sequence` |
-| OOP classes | `class` |
+| Need | Type keyword |
+|------|--------------|
+| Process/workflow | `fl` (or `flowchart`) |
+| Participant interactions | `seq` (`sequence`) |
+| OOP classes | `cls` (`class`) |
 | DB tables & relations | `er` |
-| States & transitions | `state` |
-| Actors & functions | `usecase` |
-| Activities | `activity` |
-| Components & deps | `component` |
-| Infrastructure | `deployment` |
-| Architecture | `c4 context/container/component/code` |
+| States & transitions | `st` (`state`) |
+| C4 architecture | `c4c` context / `c4con` container / `c4comp` component |
 | Business process | `bpmn` |
 | Decision logic | `dmn` |
+| Components & deps | `comp` (`component`) |
+| Actors & functions | `uc` (`usecase`) |
+| Activities | `act` (`activity`) |
+| Infrastructure | `deploy` (`deployment`) |
 | Schedule | `gantt` |
-| Brainstorming | `mindmap` |
-| Network topology | `network` |
-| Charts | `chart bar/line/pie/radar/scatter` |
-| Git history | `gitgraph` |
+| Brainstorming | `mind` (`mindmap`) |
+| Network topology | `net` (`network`) |
+| Charts | `chart bar` / `chart line` / `chart pie` / `chart radar` / `chart scatter` |
+| Git history | `git` (`gitgraph`) |
+| Form layouts | `form` |
 | Data flow | `sankey` |
 | System blocks | `block` |
-| Events | `timeline` |
-| Form layouts | `form` |
+| Events | `time` (`timeline`) |
+| UI mockups | `wireframe` |
+| Cloud/AWS topology | `cloud` |
 
 ## Grammar
 
 ```
-diagram <type> ["<title>"] [<metadata>] {
-    theme <name>                    // sketchy-light|sketchy-dark|smooth-light|smooth-dark|high-contrast
-    layout <dagre|grid|constraint> [<options>]
-    style { ... }
-    <body>
+<type> "Title" {
+    // statements: nodes, then edges
 }
 ```
 
-**Comments**: `//` line, `/* */` block. **IDs**: alphanumeric + `_` + `-`. Keywords case-insensitive, IDs case-sensitive.
+`diagram <long-type> "Title" { … }` is an accepted long form. Comments: `//` line, `/* */` block. IDs: alphanumeric + `_` + `-`, case-sensitive. One statement per line — **no semicolons**.
 
 ### Nodes
+
 ```
-id: "Label"           // default rounded rect
-id: (Label)           // rounded rect     [Label] = rect
-id: {Label}           // diamond          <Label> = hexagon
-id: ((Label))         // circle/ellipse   |Label| = cylinder (db)
-id: [/Label/]         // parallelogram    [\Label\] = reverse para
-id: >Label]           // delay/flag       {{Label}} = double diamond
-id shape: rectangle|diamond|cylinder|person|system|cloud|queue "Label"
-id: "Label" { style: { ... } layout: { x, y } }
+id [Label]              // rectangle
+id (Label)              // rounded rect / start-stop
+id ((Label))            // circle
+id: {Label}             // diamond (decision) — needs the id: colon form
+id [[Label]]            // subroutine rect
+id [/Label/]            // parallelogram (I/O)
+id "Label"              // default shape, quoted label (use \n for multi-line rows)
+keyword id "Label" ["Description"]   // typed form: person / system / system_Ext /
+                                     // component / container / database / gateway /
+                                     // actor / queue / cloud / db / hex / stadium
+id [Label] { x: 100, y: 50, fill: "#22aa66", stroke: "blue", textColor: "red" }
 ```
+
+The colon form `id: [Label]` is also accepted for every shape. The diamond `{Label}` requires it (`check: {Valid?}`) so the brace isn't read as an attribute block.
 
 ### Edges
+
 ```
-a --> b               // directed
-a --> b: "Label"      // with label
-a --- b               // undirected
-a <--> b              // bidirectional
-a --> b { style: { ... } routing: { waypoints: [{x,y}] } cardinality: { source, target } }
+a -> b                  // directed ( --> also works)
+a -> b: "Label"
+a --> |"Label"| b
+a -- b                  // undirected
+a <-> b                 // bidirectional
+a --> b --> c           // chain
+a -> b: "L" { stroke: "steelblue", textColor: "red", x: 258, y: 124 }  // x/y = label position
 ```
 
-### Groups & Containers
+### Groups & directives
+
 ```
-group "Label" { style: { fill, borderRadius } nodes... }
+group "Backend" {
+    api [API]
+    db [Database]
+}
+theme sketchy-dark      // sketchy-light | sketchy-dark | clean-light | clean-dark | monochrome
+style { defaultNode: { fill: "#eee" } }
 ```
 
-### Styling
-```
-style: { fill, stroke, strokeWidth, strokeStyle: solid|dashed|dotted, roughness: 0-1, fontSize, fontFamily, fontColor, cornerRadius, opacity }
-```
-Global: `style { defaultNode: { ... } defaultEdge: { ... } group: { ... } }`
+### Structure lives in the label
 
-### Layout Directives
-```
-layout dagre { direction: TB|LR|RL|BT, nodeSpacing, rankSpacing }
-layout grid { columns: N, gap }
-layout constraint { constraints: [{ type: align|sameRow|minDistance, nodes, axis, distance }] }
-id: "Label" { layout: { x, y, width, height } }
-a --> b { layout: { sameRow: true } }
-```
+Many types read their structure from the **label text**, not special syntax: class members and ER attributes are `\n`-separated rows inside one quoted/bracketed label; gantt dates, chart series values, sankey magnitudes, gitgraph branch names and wireframe control types are all written as words inside the label (see examples).
 
-## Diagram Type Examples
+## Examples (all verified to compile)
 
 ### Flowchart
-```
-diagram flowchart "Login" {
-    start: (Start); input: [/Credentials/]; check: {Valid?}
-    success: [Dashboard]; fail: [Error Page]; end: (End)
-    start --> input; input --> check; check --> success: "Yes"
-    check --> fail: "No"; fail --> input: "Retry"; success --> end
+
+```seldia
+fl "User Login" {
+    start (Start)
+    login [Enter Credentials]
+    validate diamond "Valid?"
+    dashboard [Show Dashboard]
+    error [Show Error]
+
+    start -> login
+    login -> validate
+    validate -> dashboard: "yes"
+    validate -> error: "no"
+    error -> login
 }
 ```
 
 ### Sequence
-```
-diagram sequence "Checkout" {
-    participant c: "Customer" participant api: "API" participant db: "Database"
-    c -> api: "Place Order"; api -> db: "INSERT"; db --> api: "order_id"
-    api --> c: "Confirmed"; note right of api: "Transaction starts"
+
+Participants first, then messages in order. Self-messages (`a -> a`) draw a loop.
+
+```seldia
+seq "OAuth Flow" {
+    browser "Browser"
+    server "Auth Server"
+    db "Database"
+
+    browser -> server: "POST /login"
+    server -> db: "SELECT user"
+    db -> server: "user record"
+    server -> server: "validate password"
+    server -> browser: "200 + JWT"
 }
 ```
 
-### Class (UML)
-```
-diagram class "Domain" {
-    class User { +id:string +name:string +email:string +createOrder():Order }
-    class Order { +id:string +total:number +status:OrderStatus }
-    enum OrderStatus { PENDING CONFIRMED SHIPPED }
-    User "1" --> "0..*" Order: "places"
+### Class
+
+Members are `\n`-rows in the label; the first row is the class name.
+
+```seldia
+cls "Core Classes" {
+    Engine "Engine\n+compile(src: string): Result\n+getTheme(name: string): Theme"
+    Parser "Parser\n+parse(tokens: Token[]): AST"
+    Renderer "Renderer\n+render(ir: IR): string"
+
+    Engine -> Parser: "uses"
+    Engine -> Renderer: "uses"
 }
 ```
 
-### ER
-```
-diagram er "E-Commerce DB" {
-    entity Customer { id:int PK name:varchar email:varchar UK }
-    entity Order { id:int PK customer_id:int FK total:decimal }
-    Customer ||--o{ Order: "places"
+### State Machine
+
+`[*]` is the start/end marker; states may appear only in transitions.
+
+```seldia
+st "Order Lifecycle" {
+    [*] -> Pending
+    Pending -> Confirmed: "paid"
+    Pending -> Cancelled: "timeout"
+    Confirmed -> Shipped
+    Shipped -> Delivered
 }
 ```
 
-### State
-```
-diagram state "Order Lifecycle" {
-    [*] --> Pending; Pending --> Confirmed: "paid"; Pending --> Cancelled
-    Confirmed --> Shipped; Shipped --> Delivered; Delivered --> [*]; Cancelled --> [*]
-    state Confirmed { [*] --> AwaitingStock; AwaitingStock --> ReadyToShip; ReadyToShip --> [*] }
+### Entity–Relationship
+
+Rows after the entity name become attribute rows; cardinality follows the arrow (`A -> B` = one A, many B).
+
+```seldia
+er "Shop" {
+    Customer [Customer\nid PK\nemail string\nname string]
+    Order [Order\nid PK\ncustomer_id FK\nplaced_at date]
+    Product [Product\nid PK\nsku string\nprice decimal]
+
+    Customer -> Order: "places"
+    Order -> Product: "contains"
 }
 ```
 
-### Use Case
-```
-diagram usecase "Library" {
-    person m: "Member" person l: "Librarian"
-    system Lib { usecase b:"Borrow" usecase r:"Return" usecase s:"Search" }
-    m --> b; m --> r; m --> s; l --> b: "<<extend>>"
+### C4 (context / container / component)
+
+Typed declarations: `person | system | system_Ext | component | container | database` then id, label, optional description.
+
+```seldia
+c4c "Internet Banking" {
+    person customer "Customer" "A bank customer"
+    system banking "Internet Banking" "Manage accounts and payments"
+    system_Ext mainframe "Mainframe Banking" "Core banking system"
+
+    customer -> banking: "Views accounts, makes payments"
+    banking -> mainframe: "Uses"
 }
 ```
 
-### Activity
-```
-diagram activity "Process" {
-    start; :Receive Order; if (Valid?) then (yes) :Ship; else (no) :Cancel; endif; stop
-}
-```
+```seldia
+c4comp "API Application" {
+    person user "Customer" "Uses the web app"
+    component signin "Sign In Controller" "Handles authentication"
+    component security "Security Component" "Checks credentials"
+    database db "Database" "Stores user credentials"
 
-### Component
-```
-diagram component "Microservices" {
-    component web:"Web" component api:"API Gateway" component svc:"Service"
-    component db:"DB" shape:cylinder
-    web --> api: "REST"; api --> svc; svc --> db
+    user -> signin: "Submits credentials"
+    signin -> security: "Validates"
+    security -> db: "Reads from"
 }
-```
-
-### Deployment
-```
-diagram deployment "Production" {
-    node aws:"AWS Cloud" shape:cloud { node lb:"LB" node rds:"RDS" shape:cylinder }
-    node users:"Users" shape:person
-    users --> aws; lb --> rds
-}
-```
-
-### C4 Architecture
-```
-diagram c4 context "Banking" {
-    person c: "Customer"; system app: "Internet Banking"
-    system_Ext main: "Mainframe"; c --> app; app --> main
-}
-// Level 2: diagram c4 container, Level 3: diagram c4 component, Level 4: diagram c4 code
 ```
 
 ### BPMN
-```
-diagram bpmn "Vacation Request" {
-    start:(Start); request:[Submit]; gate:{Available?}; approve:[Approve]; end:(End)
-    start-->request; request-->gate; gate-->approve:"Yes"; gate-->delegate:"No"
-    delegate-->approve; approve-->notify; notify-->end
+
+`start`, `gateway`, and plain task ids; the gateway keyword draws the decision diamond.
+
+```seldia
+bpmn "Order Fulfillment" {
+    start "Order Received"
+    validate "Validate Order"
+    gateway payment "Payment OK?"
+    ship "Ship Order"
+    refund "Process Refund"
+    done "Order Complete"
+
+    start -> validate
+    validate -> payment
+    payment -> ship: "yes"
+    payment -> refund: "no"
+    ship -> done
 }
 ```
 
 ### DMN
+
+Inputs are plain nodes; rules carry their condition and output as label rows.
+
+```seldia
+dmn "Loan Approval" {
+    age "Input: Applicant Age"
+    income "Input: Annual Income"
+
+    approve "Rule: Approve\nage >= 18 AND income > 30000\n-> APPROVE"
+    denyAge "Rule: Deny (Age)\nage < 18\n-> DENY"
+
+    age -> approve
+    income -> approve
+    age -> denyAge
+}
 ```
-diagram dmn "Credit Score" {
-    input age:number "Age" input income:number "Income"
-    rule "Approve" { when: age>=25 AND income>=50000 output: "APPROVE" }
-    rule "Decline" { when: income<20000 output: "DECLINE" }
+
+### Component
+
+```seldia
+comp "App" {
+    ui [Web UI]
+    api [API Service]
+    iface ((Payment Interface))
+    store [Database]
+
+    ui -> api
+    api -> iface
+    api -> store
+}
+```
+
+### Use Case
+
+```seldia
+uc "ATM" {
+    customer (Customer)
+    withdraw [Withdraw Cash]
+    balance [Check Balance]
+
+    customer -> withdraw
+    customer -> balance
+}
+```
+
+### Activity
+
+```seldia
+act "Checkout" {
+    start (Start)
+    cart [Review Cart]
+    pay [Pay]
+    done (Done)
+
+    start -> cart
+    cart -> pay
+    pay -> done
+}
+```
+
+### Deployment
+
+```seldia
+deploy "Production" {
+    phone [Mobile Device]
+    lb [Load Balancer]
+    web1 [Web Server 1]
+    db [Database]
+
+    phone -> lb
+    lb -> web1
+    web1 -> db
 }
 ```
 
 ### Gantt
-```
-diagram gantt "Sprint" {
-    section "Backend" { task t1:"API" { start:"2025-01-06" duration:"3d" } }
-    section "Frontend" { task t2:"UI" { start:"2025-01-06" duration:"4d" dependsOn:[t1] } }
+
+Dates live in the label: `[Task name: <start> - <end>]` or a single date for a milestone. The time axis granularity is chosen automatically.
+
+```seldia
+gantt "Project Alpha" {
+    t1 [Requirements: Jan 6-17]
+    t2 [Architecture: Jan 13-24]
+    t3 [Sprint 1: Jan 27 - Feb 14]
+    m1 [MVP Release: Mar 10]
+
+    t1 -> t2
+    t2 -> t3
+    t3 -> m1
 }
 ```
 
 ### Mind Map
-```
-diagram mindmap "Plan" {
-    root "Feature"
-        branch "Design" { leaf "Wireframes" leaf "Mockups" }
-        branch "Dev" { branch "API" { leaf "Endpoints" } leaf "DB" }
+
+Radial layout from the root. Children can be declared implicitly via edge labels.
+
+```seldia
+mind "System Features" {
+    root "MyApp"
+    frontend "Frontend"
+    backend "Backend"
+
+    root -> frontend
+    frontend -> dashboard: "Dashboard"
+    root -> backend
+    backend -> auth: "Auth Service"
 }
 ```
 
 ### Network
-```
-diagram network "Office" {
-    node internet:"Internet" shape:cloud; node fw:"Firewall"
-    group "DMZ" { node web:"Web Server" }
-    internet --> fw; fw --> web
+
+```seldia
+net "Office" {
+    internet [Internet]
+    firewall [Firewall]
+    router [Router]
+    switch [Switch]
+    server [App Server]
+
+    internet -> firewall
+    firewall -> router
+    router -> switch
+    switch -> server
 }
 ```
 
 ### Charts
-```
-diagram chart bar "Revenue" { data { categories:["Q1","Q2","Q3","Q4"]
-    series "2024" { values:[120,145,160,190] color:"#4ecdc4" } } }
-diagram chart pie "Share" { data { labels:["A","B","C"] values:[45,30,25] } }
-diagram chart line "Growth" { data { x:["Jan","Feb","Mar"]
-    series "Users" { values:[100,250,400] } } }
-// Also: radar, scatter
+
+Values live in the labels. Multi-series (`Name: value` pairs) gets an automatic legend.
+
+```seldia
+chart bar "Monthly Sales" {
+    jan "Jan\nRevenue: 120  Costs: 80"
+    feb "Feb\nRevenue: 200  Costs: 100"
+    mar "Mar\nRevenue: 150  Costs: 90"
+}
 ```
 
-### Git Graph
+```seldia
+chart pie "Market Share" {
+    alpha "Alpha\n40"
+    beta "Beta\n35"
+    gamma "Gamma\n25"
+}
 ```
-diagram gitgraph "Releases" {
-    branch main { commit "v1.0.0" tag:"release" commit "Fix bug" }
-    branch develop { commit "Feature A" commit "Feature B" }
-    branch "feature/pay" from:develop { commit "Payment" merge develop:"Sync" }
-    merge "feature/pay" --> develop; merge develop --> main
+
+```seldia
+chart line "Weekly Active Users" {
+    w1 "Wk1\nDesktop: 120  Mobile: 90"
+    w2 "Wk2\nDesktop: 140  Mobile: 130"
+    w3 "Wk3\nDesktop: 130  Mobile: 160"
+}
+```
+
+Also `chart radar` and `chart scatter`, same label vocabulary.
+
+### Git Graph
+
+Branch name and message in the label: `[branch: message]`.
+
+```seldia
+git "Feature Flow" {
+    main1 [main: init]
+    main2 [main: release]
+    feat1 [feature: work]
+
+    main1 -> feat1
+    feat1 -> main2
 }
 ```
 
 ### Form
-```
-diagram form "Register" {
-    field fn:text "First Name" { required:true placeholder:"John" }
-    field email:email "Email" { required:true validation:"email" }
-    field role:select "Role" { options:["Dev","Designer","Admin"] }
-    field bio:textarea "Bio" { maxLength:500 }
-    field agree:checkbox "I agree" { required:true }
-    field submit:submit "Create"
-    group "Personal" { fn, email }
+
+Field type and modifiers after the colon in the label.
+
+```seldia
+form "User Registration" {
+    name [Name: text, required]
+    email [Email: email, required]
+    theme [Theme: Light / Dark / System]
+    submit [Submit: Register]
+
+    name -> email
+    email -> theme
+    theme -> submit
 }
 ```
 
 ### Sankey
-```
-diagram sankey "Energy" {
-    source "Solar":500; source "Wind":300
-    flow "Solar" --> "Residential":300; flow "Wind" --> "Industrial":150
-    sink "Residential":550; sink "Losses":50
-    flow "Battery" --> "Residential":150
+
+Source magnitudes in labels, flow magnitudes on edge labels; ribbon widths are proportional.
+
+```seldia
+sankey "Energy Flow" {
+    solar "Solar (120)"
+    wind "Wind (80)"
+    grid "Electricity Grid"
+    loss "Transmission Loss"
+
+    solar -> grid: "110"
+    wind -> grid: "75"
+    solar -> loss: "10"
 }
 ```
 
 ### Block
-```
-diagram block "Embedded" {
-    block sensor:"Temp Sensor"; block mcu:"STM32"; block cloud:"Cloud" shape:cloud
-    sensor --> mcu:"I2C"; mcu --> cloud:"MQTT"
+
+```seldia
+block "Architecture" {
+    cli [CLI]
+    web [Web App]
+    engine [Core Engine]
+    render [Renderer]
+
+    cli -> engine
+    web -> engine
+    engine -> render
 }
 ```
 
 ### Timeline
-```
-diagram timeline "History" {
-    section "2018" { color:"#4ecdc4" }
-    event: "Founded" date:"March 2018"
-    event: "Launch" date:"Sept 2018"
-    section "2019" { color:"#ff6b6b" }
-    event: "Series A" date:"Jan 2019"
+
+```seldia
+time "Roadmap" {
+    q1 [Q1: MVP]
+    q2 [Q2: Beta]
+    q3 [Q3: GA]
+
+    q1 -> q2
+    q2 -> q3
 }
 ```
 
-## Advanced Features
+### Wireframe
 
-**Interactivity** (web/vscode): `id: "Label" { interactivity: { tooltip, href, expandable:true, children } }`
+Hand-drawn UI mockups. The control type is inferred from words in the label (`button`, `field`/`input`, `textarea`, `checkbox`, `radio`, `dropdown`/`select`, `slider`, `toggle`, `progress`, `navbar`, `link`, `avatar`/`image`, `divider`, `h1`/`title`). State too: `checked`, `selected`, `on`, `70%`. Controls stack top-to-bottom in written order — edges are only for reordering and are never drawn.
 
-**Edge cardinality**: `customer --> order { cardinality: { source:"1", target:"0..*" } }`
+```seldia
+wireframe "Sign Up" {
+    nav [Navbar MyApp]
+    title [H1 Create your account]
+    email [Email field]
+    pass [Password field]
+    terms [I accept the terms checkbox checked]
+    upload [Upload progress 60%]
+    submit [Create account button]
+    forgot [Forgot password link]
+}
+```
+
+### Cloud Architecture
+
+AWS-style topologies; service kind is read from the label words (CDN, DNS, Load Balancer, EC2, RDS, Cache, Queue, Bucket/storage, security).
+
+```seldia
+cloud "Web Application on AWS" {
+    user [Mobile Client]
+    cdn [CloudFront CDN]
+    lb [Application Load Balancer]
+    api [API Server EC2]
+    db [RDS Database]
+    queue [SQS Queue]
+
+    user -> cdn
+    cdn -> lb
+    lb -> api
+    api -> db
+    api -> queue
+}
+```
 
 ## Conventions
 
 1. **Descriptive kebab-case IDs** — `validate-payment`, not `a1`
 2. **10–30 nodes** per diagram for readability
-3. **Use groups** for complex diagrams
-4. **Always include a title**
-5. **Add edge labels** — `a --> b: "explains"`
-6. **Use meaningful shapes** — cylinder=DB, person=user, cloud=external
-7. **Use C4 levels** for large architectures
-8. **Consistent styling via themes/global style block**
+3. **Always include a quoted title**
+4. **Label decision edges** — `check -> retry: "no"`
+5. **Use typed keywords for meaning** — `database db "…"` draws a cylinder, `person u "…"` an actor
+6. **Use `group "…" { }`** to box related nodes
+7. **Declare nodes before edges**; keep one statement per line, no semicolons
+8. **Positions and colors** go in trailing attr blocks: `{ x: 100, y: 50, fill: "#c8e6c9" }`

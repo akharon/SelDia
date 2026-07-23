@@ -105,6 +105,16 @@ deploy_skill() {
   local target_dir="$2"   # Destination directory (parent of seldia-dsl/)
   local deployed_by="$3"  # Origin identifier for manifest
   local target="${target_dir}/seldia-dsl/SKILL.md"
+  local src_hash
+  src_hash="$(sha256sum "$SKILL_SRC" | cut -d' ' -f1)"
+
+  # Skip the copy when the deployed content already matches the source — the
+  # real hash makes staleness detectable (the old manifest wrote a placeholder,
+  # so installs could never tell a fresh skill from a drifted one).
+  if [ -f "$target" ] && [ "$(sha256sum "$target" | cut -d' ' -f1)" = "$src_hash" ]; then
+    echo "   ✅ ${name} skill already up to date: $(dirname "$target")"
+    return
+  fi
 
   mkdir -p "$(dirname "$target")"
   cp "$SKILL_SRC" "$target"
@@ -116,7 +126,7 @@ deploy_skill() {
   "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "scope": "user",
   "skillPath": "${target}",
-  "contentHash": "sha256:deployed"
+  "contentHash": "sha256:${src_hash}"
 }
 JSONEOF
   echo "   ✅ ${name} skill deployed to: $(dirname "$target")"

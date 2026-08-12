@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.41.0",
+  "version": "1.42.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -95,6 +95,19 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "seldia.marpPreview",
+        "displayName": "Marp Preview",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.mdx"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "markdown.markdownItPlugins": true,

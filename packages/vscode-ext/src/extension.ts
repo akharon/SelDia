@@ -17,7 +17,7 @@ import { registerEditCommands, findDocWithBlock } from './edit/commands.js';
 import { findSelDiABlocks } from './edit/blocks.js';
 import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
 import { isMarpDocument } from './marp/detect.js';
-import { openMarpPreview } from './marp/preview-panel.js';
+import { openMarpPreview, MarpPreviewProvider, MARP_VIEW_TYPE } from './marp/preview-panel.js';
 import { exportMarpToHtml, exportMarpToPdf } from './marp/export.js';
 
 let engine: CoreEngine;
@@ -253,6 +253,15 @@ export function activate(context: vscode.ExtensionContext) {
   // Marp decks (```marp: true``` front-matter) are page-based, not a linear
   // scrolling document, so they get their own slide-by-slide preview panel
   // instead of the built-in Markdown preview — see marp/preview-panel.ts.
+  // Registered as a CustomTextEditorProvider (viewType seldia.marpPreview) so
+  // it shows up as "Marp Preview" in the "Reopen Editor With" picker alongside
+  // "Markdown Preview" and "Markdown Editor (Experimental)".
+  const marpProviderSub = vscode.window.registerCustomEditorProvider(
+    MARP_VIEW_TYPE,
+    new MarpPreviewProvider(engine),
+    { webviewOptions: { retainContextWhenHidden: true } }
+  );
+
   const openMarpPreviewCmd = vscode.commands.registerCommand('seldia.openMarpPreview', () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || !editor.document.fileName.match(/\.(md|mdx)$/)) {
@@ -559,7 +568,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, editBlockVisually, insertDiagram, exportDiagram,
     exportToMermaid, exportToPlantUml, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
-    revealSource, openMarpPreviewCmd, exportMarpDeck, marpAutoPreviewSub
+    revealSource, marpProviderSub, openMarpPreviewCmd, exportMarpDeck, marpAutoPreviewSub
   );
 
   // ── Auto-deploy Copilot skill on first activation ─────────────────────────

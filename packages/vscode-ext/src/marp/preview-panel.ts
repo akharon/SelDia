@@ -11,10 +11,16 @@
 import * as vscode from 'vscode';
 import type { CoreEngine } from '@seldia/core';
 import { renderMarpDeck } from './render.js';
+import { isMarpDocument } from './detect.js';
+
+export const MARP_VIEW_TYPE = 'seldia.marpPreview';
 
 const panels = new Map<string, vscode.WebviewPanel>();
 
-export function openMarpPreview(
+/** Opens the Marp panel programmatically (command / auto-open path). Reuses
+ *  the CustomTextEditorProvider's own panel tracking where possible by just
+ *  opening the document with our custom editor. */
+export async function openMarpPreview(
   context: vscode.ExtensionContext,
   engine: CoreEngine,
   doc: vscode.TextDocument,
@@ -23,38 +29,50 @@ export function openMarpPreview(
    *  the explicit command leaves it false and focuses the deck. */
   preserveFocus = false
 ) {
-  const key = doc.uri.toString();
-  const existing = panels.get(key);
-  if (existing) {
-    existing.reveal(vscode.ViewColumn.Beside, preserveFocus);
-    updatePanel(existing, engine, doc);
-    return;
-  }
-
-  const panel = vscode.window.createWebviewPanel(
-    'seldia.marpPreview',
-    `Marp Preview: ${doc.fileName.split('/').pop()}`,
-    { viewColumn: vscode.ViewColumn.Beside, preserveFocus },
-    { enableScripts: true, retainContextWhenHidden: true }
-  );
-  panels.set(key, panel);
-  panel.onDidDispose(() => panels.delete(key));
-
-  updatePanel(panel, engine, doc);
-
-  const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
-    if (e.document.uri.toString() === key) updatePanel(panel, engine, doc);
+  await vscode.commands.executeCommand('vscode.openWith', doc.uri, MARP_VIEW_TYPE, {
+    viewColumn: vscode.ViewColumn.Beside,
+    preserveFocus,
   });
-  panel.onDidDispose(() => changeSub.dispose());
+}
+
+export class MarpPreviewProvider implements vscode.CustomTextEditorProvider {
+  constructor(private readonly engine: CoreEngine) {}
+
+  resolveCustomTextEditor(
+    doc: vscode.TextDocument,
+    panel: vscode.WebviewPanel,
+    _token: vscode.CancellationToken
+  ): void {
+    panel.webview.options = { enableScripts: true };
+    panels.set(doc.uri.toString(), panel);
+    panel.onDidDispose(() => panels.delete(doc.uri.toString()));
+
+    updatePanel(panel, this.engine, doc);
+
+    const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.document.uri.toString() === doc.uri.toString()) updatePanel(panel, this.engine, doc);
+    });
+    panel.onDidDispose(() => changeSub.dispose());
+  }
 }
 
 function updatePanel(panel: vscode.WebviewPanel, engine: CoreEngine, doc: vscode.TextDocument) {
+  if (!isMarpDocument(doc.getText())) {
+    panel.webview.html = notMarpHtml();
+    return;
+  }
   try {
     const { html, css, slideCount, notes } = renderMarpDeck(engine, doc.getText());
     panel.webview.html = shellHtml(html, css, slideCount, notes);
   } catch (err: any) {
     panel.webview.html = `<pre>Marp render failed: ${escapeHtml(err?.message || String(err))}</pre>`;
   }
+}
+
+function notMarpHtml(): string {
+  return `<!DOCTYPE html><html><body style="font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 2em;">
+  <p>This file isn't a Marp deck — add <code>marp: true</code> to its YAML front-matter to use the slide preview.</p>
+  </body></html>`;
 }
 
 function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: string[]): string {

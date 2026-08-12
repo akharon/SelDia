@@ -50,13 +50,19 @@ export class MarpPreviewProvider implements vscode.CustomTextEditorProvider {
     updatePanel(panel, this.engine, doc);
 
     const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.toString() === doc.uri.toString()) updatePanel(panel, this.engine, doc);
+      if (e.document.uri.toString() === doc.uri.toString()) {
+        updatePanel(panel, this.engine, doc);
+      }
     });
     panel.onDidDispose(() => changeSub.dispose());
   }
 }
 
-function updatePanel(panel: vscode.WebviewPanel, engine: CoreEngine, doc: vscode.TextDocument) {
+function updatePanel(
+  panel: vscode.WebviewPanel,
+  engine: CoreEngine,
+  doc: vscode.TextDocument
+) {
   if (!isMarpDocument(doc.getText())) {
     panel.webview.html = notMarpHtml();
     return;
@@ -77,6 +83,7 @@ function notMarpHtml(): string {
 
 function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: string[]): string {
   const notesJson = JSON.stringify(notes).replace(/</g, '\\u003c');
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -86,8 +93,8 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
   html, body { margin: 0; height: 100%; }
   body { background: var(--vscode-editor-background); font-family: var(--vscode-font-family); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   #slides { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; background: repeating-conic-gradient(var(--vscode-editorWidget-background) 0% 25%, transparent 0% 50%) 50% / 20px 20px; }
-  #slides > svg { display: none; box-shadow: 0 4px 24px rgba(0,0,0,0.4); position: absolute; top: 50%; left: 50%; background: #fff; }
-  #slides > svg.active { display: block; }
+  #slides svg { display: none; box-shadow: 0 4px 24px rgba(0,0,0,0.4); position: absolute; top: 50%; left: 50%; background: #fff; }
+  #slides svg.active { display: block; }
   #toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); font-size: 12px; }
   #toolbar button { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 3px; padding: 4px 10px; cursor: pointer; }
   #toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
@@ -117,10 +124,8 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
 (function() {
   const container = document.getElementById('slides');
   const notes = ${notesJson};
-  // Marp renders each slide as its own top-level <svg><foreignObject><section>,
-  // sized via viewBox (e.g. 0 0 1280 720) — the svg, not the section, is what
-  // needs scale-to-fit + centering to read as a real presentation slide.
-  const sections = Array.from(document.querySelectorAll('#slides > svg'));
+
+  const sections = Array.from(document.querySelectorAll('#slides section'));
   let idx = 0;
 
   function fit() {
@@ -129,7 +134,7 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
     const viewBox = active.getAttribute('viewBox');
     let naturalW = 1280, naturalH = 720;
     if (viewBox) {
-      const parts = viewBox.split(/\s+/).map(Number);
+      const parts = viewBox.split(/\\s+/).map(Number);
       if (parts.length === 4) { naturalW = parts[2]; naturalH = parts[3]; }
     }
     const pad = 24;
@@ -151,6 +156,7 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
     notesEl.textContent = notes[idx] || '';
     fit();
   }
+
   document.getElementById('prev').addEventListener('click', () => { idx = Math.max(0, idx - 1); render(); });
   document.getElementById('next').addEventListener('click', () => { idx = Math.min(sections.length - 1, idx + 1); render(); });
   document.addEventListener('keydown', (e) => {

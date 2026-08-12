@@ -28,8 +28,7 @@ export interface MarpRenderResult {
 }
 
 /** Render a Marp Markdown source string to HTML + CSS, with SelDiA/Mermaid/
- *  PlantUML fences drawn inline via the SelDiA engine. Synchronous — diagram
- *  compilation is sync, matching the Markdown preview's fence renderer. */
+ *  PlantUML fences rendered inline as SVG diagrams. */
 export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRenderResult {
   // Lazy require: marp-core is a heavy, externalized dependency (mathjax,
   // katex, highlight.js) — only pulled in when a document actually opts into
@@ -44,27 +43,13 @@ export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRender
     const lang = token.info?.trim().split(/\s+/)[0] || '';
 
     if (lang === 'seldia' || lang.startsWith('seldia-')) {
-      try {
-        return renderSelDiABlock(engine, token.content);
-      } catch (err: any) {
-        return `<pre class="seldia-marp-error">SelDiA error: ${escapeHtml(err?.message || String(err))}</pre>`;
-      }
+      return renderSelDiABlock(engine, token.content);
     }
     if (lang === 'mermaid') {
-      try {
-        const rendered = renderMermaidBlock(engine, token.content);
-        if (rendered) return rendered;
-      } catch {
-        /* fall through */
-      }
+      return renderMermaidBlock(engine, token.content);
     }
     if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
-      try {
-        const rendered = renderPlantUmlBlock(engine, token.content);
-        if (rendered) return rendered;
-      } catch {
-        /* fall through */
-      }
+      return renderPlantUmlBlock(engine, token.content);
     }
 
     return defaultFence
@@ -73,15 +58,20 @@ export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRender
   };
 
   const { html: rawHtml, css, comments } = marp.render(markdown);
-  // Marp embeds its own client-side auto-scaling polyfill as an inline
-  // <script> at the end of the deck HTML. It mutates the same
-  // svg[data-marpit-svg] viewBox/size attributes that the preview panel's
-  // own pagination/fit script controls, so the two fight over sizing.
-  // The panel does its own scale-to-fit, so Marp's polyfill is dead weight.
   const html = rawHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
   const slideCount = (html.match(/<section\b/g) || []).length;
   const notes = (comments || []).map((perSlide: string[]) => perSlide.join('\n\n'));
+
   return { html, css, slideCount, notes };
+}
+
+function hashSource(source: string): string {
+  let h = 0;
+  for (let i = 0; i < source.length; i++) {
+    h = ((h << 5) - h) + source.charCodeAt(i);
+    h = h & h; // Convert to 32-bit
+  }
+  return Math.abs(h).toString(36);
 }
 
 /** Wrap Marp's HTML + CSS fragments into a standalone document, suitable for
@@ -107,4 +97,12 @@ ${html}
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

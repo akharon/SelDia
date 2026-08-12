@@ -266,6 +266,23 @@ export function activate(context: vscode.ExtensionContext) {
     openMarpPreview(context, engine, editor.document);
   });
 
+  // VS Code's built-in Markdown preview renders a Marp deck as one long
+  // scrolling document, which looks identical to any other .md file and hides
+  // the fact that the deck is paginated. Opening a `marp: true` document
+  // therefore brings up the slide panel automatically (opt-out via
+  // `seldia.marp.autoPreview`). The built-in preview is deliberately left
+  // registered — this adds a panel beside it rather than replacing it.
+  const autoOpenMarp = (doc: vscode.TextDocument) => {
+    if (!vscode.workspace.getConfiguration('seldia').get<boolean>('marp.autoPreview', true)) return;
+    if (doc.languageId !== 'markdown' || doc.uri.scheme !== 'file') return;
+    if (!isMarpDocument(doc.getText())) return;
+    openMarpPreview(context, engine, doc, true);
+  };
+  const marpAutoPreviewSub = vscode.workspace.onDidOpenTextDocument(autoOpenMarp);
+  // onDidOpenTextDocument does not fire for documents already open when the
+  // extension activates, so sweep the current editors once on startup.
+  for (const editor of vscode.window.visibleTextEditors) autoOpenMarp(editor.document);
+
   const exportMarpDeck = vscode.commands.registerCommand('seldia.exportMarp', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || !editor.document.fileName.match(/\.(md|mdx)$/)) {
@@ -542,7 +559,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, editBlockVisually, insertDiagram, exportDiagram,
     exportToMermaid, exportToPlantUml, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
-    revealSource, openMarpPreviewCmd, exportMarpDeck
+    revealSource, openMarpPreviewCmd, exportMarpDeck, marpAutoPreviewSub
   );
 
   // ── Auto-deploy Copilot skill on first activation ─────────────────────────

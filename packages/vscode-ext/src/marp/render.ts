@@ -23,6 +23,8 @@ export interface MarpRenderResult {
   css: string;
   /** Number of top-level slides in the deck. */
   slideCount: number;
+  /** Per-slide speaker notes, from HTML comments (`<!-- note -->`) in the source. */
+  notes: string[];
 }
 
 /** Render a Marp Markdown source string to HTML + CSS, with SelDiA/Mermaid/
@@ -70,9 +72,16 @@ export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRender
       : `<pre><code>${escapeHtml(token.content)}</code></pre>`;
   };
 
-  const { html, css } = marp.render(markdown);
+  const { html: rawHtml, css, comments } = marp.render(markdown);
+  // Marp embeds its own client-side auto-scaling polyfill as an inline
+  // <script> at the end of the deck HTML. It mutates the same
+  // svg[data-marpit-svg] viewBox/size attributes that the preview panel's
+  // own pagination/fit script controls, so the two fight over sizing.
+  // The panel does its own scale-to-fit, so Marp's polyfill is dead weight.
+  const html = rawHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
   const slideCount = (html.match(/<section\b/g) || []).length;
-  return { html, css, slideCount };
+  const notes = (comments || []).map((perSlide: string[]) => perSlide.join('\n\n'));
+  return { html, css, slideCount, notes };
 }
 
 /** Wrap Marp's HTML + CSS fragments into a standalone document, suitable for

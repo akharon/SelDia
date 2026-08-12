@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.40.0",
+  "version": "1.41.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -332,6 +332,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open the Markdown preview when a Markdown file with SelDiA blocks is opened"
+        },
+        "seldia.marp.autoPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the Marp slide preview when a Markdown file whose front-matter sets `marp: true` is opened. The built-in Markdown preview is left alone; this opens SelDiA's slide panel beside it."
         },
         "seldia.copilotSkill.enabled": {
           "type": "boolean",

@@ -40,6 +40,7 @@ The wedge is *drift*, not drawing. See [docs/market.md](docs/market.md) for the 
 - 🔧 **VS Code extension** — Syntax highlighting, LSP, live preview, interactive editing
 - 📄 **Markdown integration** — Embed diagrams in `.md` files with ` ```seldia ` fenced blocks
 - 📑 **PDF export** — Convert Markdown with embedded diagrams to professional PDF
+- 🖥️ **Marp slide decks** — `marp: true` front-matter turns a `.md` file into a paginated slide preview; SelDiA/Mermaid/PlantUML fences render inline on the slide
 - 🌐 **Web components** — `<seldia-viewer>` for embedding diagrams anywhere
 
 ## Packages

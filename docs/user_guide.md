@@ -43,9 +43,10 @@
     - [11.3 Using SelDiA in Markdown](#113-using-seldia-in-markdown)
     - [11.4 Visual Editing](#114-visual-editing)
     - [11.5 Markdown → PDF Export](#115-markdown--pdf-export)
-    - [11.6 Keybindings](#116-keybindings)
-    - [11.7 Extension Settings](#117-extension-settings)
-    - [11.8 Copilot Integration — SelDiA DSL Skill](#118-copilot-integration--seldia-dsl-skill)
+    - [11.6 Marp Slide Decks](#116-marp-slide-decks)
+    - [11.7 Keybindings](#117-keybindings)
+    - [11.8 Extension Settings](#118-extension-settings)
+    - [11.9 Copilot Integration — SelDiA DSL Skill](#119-copilot-integration--seldia-dsl-skill)
 12. [Programmatic API](#12-programmatic-api)
 13. [Best Practices](#13-best-practices)
 14. [Troubleshooting](#14-troubleshooting)
@@ -2480,7 +2481,46 @@ seldia md2pdf README.md \
 seldia md2pdf docs/ --batch -o pdfs/
 ```
 
-### 11.6 Keybindings
+### 11.6 Marp Slide Decks
+
+A `.md` file with `marp: true` in its YAML front-matter is a Marp slide deck.
+SelDiA renders it in a dedicated slide-by-slide preview panel — the built-in
+Markdown preview is a linear scrolling document and can't paginate slides —
+and every ` ```seldia `, ` ```mermaid `, and ` ```plantuml ` fence inside a
+slide renders inline exactly as it does in ordinary Markdown.
+
+```markdown
+---
+marp: true
+theme: default
+paginate: true
+---
+
+# My Deck
+
+---
+
+## Architecture
+
+\`\`\`seldia
+diagram flowchart "Flow" {
+  a: (Start)
+  b: [Process]
+  a --> b
+}
+\`\`\`
+```
+
+Open a Marp file and use the **"Open Marp Slide Preview"** CodeLens above the
+front-matter, or run **"SelDiA: Open Marp Slide Preview"** from the command
+palette. Use the arrow keys or the Prev/Next buttons to navigate slides; the
+panel re-renders automatically as you edit and save.
+
+Run **"SelDiA: Export Marp Deck (PDF/HTML)"** to export the whole deck — pick
+a `.pdf` or `.html` destination in the save dialog. PDF export uses the same
+headless-Chromium pipeline as Markdown → PDF export and requires Puppeteer.
+
+### 11.7 Keybindings
 
 | Shortcut | Action |
 |----------|--------|
@@ -2490,12 +2530,14 @@ seldia md2pdf docs/ --batch -o pdfs/
 | `Ctrl+Shift+P` → "SelDiA: Export Markdown to PDF" | Export .md file to PDF |
 | `Ctrl+Shift+P` → "SelDiA: Open Preview" | Open live preview |
 | `Ctrl+Shift+P` → "SelDiA: Insert Diagram Block" | Insert ` ```seldia ` block in Markdown |
+| `Ctrl+Shift+P` → "SelDiA: Open Marp Slide Preview" | Open a Marp deck (`marp: true`) in the slide-by-slide preview |
+| `Ctrl+Shift+P` → "SelDiA: Export Marp Deck (PDF/HTML)" | Export the active Marp deck |
 | `Ctrl+Space` | Trigger autocomplete |
 | `Ctrl+Shift+F` | Format document |
 | `F2` | Rename (edit label of selected node in diagram view) |
 | `Delete` | Delete selected node/edge in diagram view |
 
-### 11.7 Extension Settings
+### 11.8 Extension Settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
@@ -2510,7 +2552,7 @@ seldia md2pdf docs/ --batch -o pdfs/
 | `seldia.md2pdf.openAfterExport` | boolean | `true` | Open PDF after export |
 | `seldia.export.defaultFormat` | `svg` \| `png` \| `pdf` | `svg` | Default export format |
 
-### 11.8 Copilot Integration — SelDiA DSL Skill
+### 11.9 Copilot Integration — SelDiA DSL Skill
 
 When you install the SelDiA VS Code extension, it can deploy a **Copilot skill** that teaches GitHub Copilot how to write SelDiA DSL. Once deployed, Copilot can generate, modify, explain, and refactor SelDiA diagrams — directly in chat and inline.
 

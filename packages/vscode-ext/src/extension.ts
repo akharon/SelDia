@@ -15,6 +15,10 @@ import { SelDiAInteractiveProvider, SelDiAEditorRegistration } from './webview/p
 import { createSelDiAMarkdownItPlugin } from './markdown-preview/plugin.js';
 import { registerEditCommands, findDocWithBlock } from './edit/commands.js';
 import { findSelDiABlocks } from './edit/blocks.js';
+import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
+import { isMarpDocument } from './marp/detect.js';
+import { openMarpPreview } from './marp/preview-panel.js';
+import { exportMarpToHtml, exportMarpToPdf } from './marp/export.js';
 
 let engine: CoreEngine;
 let skillStatusBarItem: vscode.StatusBarItem | undefined;
@@ -212,9 +216,84 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     const mdPath = editor.document.uri.fsPath;
-    const pdfPath = mdPath.replace(/\.md$/, '.pdf');
-    vscode.window.showInformationMessage(`$(file-pdf) PDF export configured: ${mdPath} → ${pdfPath}`);
-    vscode.window.showInformationMessage('Install puppeteer for full PDF generation: npm install puppeteer');
+    const uri = await vscode.window.showSaveDialog({
+      filters: { 'PDF': ['pdf'] },
+      defaultUri: vscode.Uri.file(mdPath.replace(/\.md$/, '.pdf')),
+    });
+    if (!uri) return;
+
+    const result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Exporting Markdown to PDF', cancellable: false },
+      (progress) => runMd2PdfPipeline(
+        editor.document.getText(),
+        {
+          inputPath: mdPath,
+          outputPath: uri.fsPath,
+          theme: vscode.workspace.getConfiguration('seldia').get<string>('defaultTheme', 'sketchy-light'),
+        },
+        engine
+      ).then((r) => {
+        progress.report({ increment: 100 });
+        return r;
+      })
+    );
+
+    if (!result.success) {
+      const message = result.errors?.map(e => e.message).join('; ') || 'Unknown error';
+      vscode.window.showErrorMessage(`PDF export failed: ${message}`);
+      return;
+    }
+
+    const failedNote = result.failedDiagrams.length > 0
+      ? ` (${result.failedDiagrams.length} diagram(s) failed to render)`
+      : '';
+    vscode.window.showInformationMessage(`$(check) Exported to ${result.outputPath}${failedNote}`);
+  });
+
+  // Marp decks (```marp: true``` front-matter) are page-based, not a linear
+  // scrolling document, so they get their own slide-by-slide preview panel
+  // instead of the built-in Markdown preview — see marp/preview-panel.ts.
+  const openMarpPreviewCmd = vscode.commands.registerCommand('seldia.openMarpPreview', () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !editor.document.fileName.match(/\.(md|mdx)$/)) {
+      vscode.window.showWarningMessage('Open a Marp Markdown file first (front-matter must set marp: true)');
+      return;
+    }
+    if (!isMarpDocument(editor.document.getText())) {
+      vscode.window.showWarningMessage('This file is not a Marp deck — add "marp: true" to its YAML front-matter.');
+      return;
+    }
+    openMarpPreview(context, engine, editor.document);
+  });
+
+  const exportMarpDeck = vscode.commands.registerCommand('seldia.exportMarp', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !editor.document.fileName.match(/\.(md|mdx)$/)) {
+      vscode.window.showWarningMessage('Open a Marp Markdown file first');
+      return;
+    }
+    const markdown = editor.document.getText();
+    if (!isMarpDocument(markdown)) {
+      vscode.window.showWarningMessage('This file is not a Marp deck — add "marp: true" to its YAML front-matter.');
+      return;
+    }
+    const title = editor.document.fileName.split('/').pop()?.replace(/\.(md|mdx)$/, '');
+    const uri = await vscode.window.showSaveDialog({
+      filters: { 'PDF': ['pdf'], 'HTML': ['html'] },
+      defaultUri: vscode.Uri.file(editor.document.fileName.replace(/\.(md|mdx)$/, '.pdf')),
+    });
+    if (!uri) return;
+
+    const asPdf = uri.fsPath.endsWith('.pdf');
+    const result = asPdf
+      ? await exportMarpToPdf(engine, markdown, uri.fsPath, title)
+      : exportMarpToHtml(engine, markdown, uri.fsPath, title);
+
+    if (!result.success) {
+      vscode.window.showErrorMessage(`Marp export failed: ${result.errorMessage}`);
+      return;
+    }
+    vscode.window.showInformationMessage(`$(check) Exported ${result.slideCount} slide(s) to ${uri.fsPath}`);
   });
 
   const deploySkill = vscode.commands.registerCommand('seldia.deploySkill', async () => {
@@ -463,7 +542,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, editBlockVisually, insertDiagram, exportDiagram,
     exportToMermaid, exportToPlantUml, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
-    revealSource
+    revealSource, openMarpPreviewCmd, exportMarpDeck
   );
 
   // ── Auto-deploy Copilot skill on first activation ─────────────────────────

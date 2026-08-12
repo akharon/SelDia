@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import type { SelDiABlock } from './detector.js';
 import { blockIdForSource } from '../edit/blocks.js';
+import { isMarpDocument } from '../marp/detect.js';
 
 export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
   private blocks: SelDiABlock[] = [];
@@ -26,6 +27,24 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
     }
 
     const lenses: vscode.CodeLens[] = [];
+
+    // A document-level lens for Marp decks (```marp: true``` front-matter):
+    // the built-in linear Markdown preview can't paginate slides, so this is
+    // the entry point into the dedicated slide-by-slide panel.
+    if (isMarpDocument(document.getText())) {
+      const topLine = new vscode.Position(0, 0);
+      const topRange = new vscode.Range(topLine, topLine);
+      lenses.push(new vscode.CodeLens(topRange, {
+        title: '$(play) Open Marp Slide Preview',
+        command: 'seldia.openMarpPreview',
+        tooltip: 'Open this Marp deck in the slide-by-slide preview panel',
+      }));
+      lenses.push(new vscode.CodeLens(topRange, {
+        title: '$(desktop-download) Export Marp Deck',
+        command: 'seldia.exportMarp',
+        tooltip: 'Export this Marp deck to PDF or HTML',
+      }));
+    }
 
     for (const block of this.blocks) {
       // "View Diagram" lens at the opening fence line

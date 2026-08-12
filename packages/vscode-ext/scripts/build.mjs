@@ -23,8 +23,9 @@ const extensionConfig = {
   minify: false,
   keepNames: true,
   external: [
-    'vscode',           // provided by VS Code at runtime
-    'puppeteer',        // contains Chromium binary, can't bundle
+    'vscode',                  // provided by VS Code at runtime
+    'puppeteer',                // contains Chromium binary, can't bundle
+    '@marp-team/marp-core',     // heavy (mathjax, katex, highlight.js); lazy-required only for Marp docs
   ],
   logLevel: 'info',
 };

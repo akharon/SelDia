@@ -45,7 +45,7 @@
   "main": "./dist/extension.cjs",
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/build.mjs && node scripts/vendor-external-deps.mjs",
     "dev": "node scripts/build.mjs --watch",
     "test": "vitest run",
     "clean": "rm -rf dist"

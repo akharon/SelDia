@@ -393,6 +393,18 @@ describe('gantt import', () => {
     expect(ir.nodes[0].label).toMatch(/^Design: Jan 6/);
     expect(ir.nodes[1].label).toMatch(/^Implement: Jan 9/);
   });
+
+  // A bare "-D2" is read by parseGanttLabel as a day in the *start* month, so
+  // a task running Jan 27 -> Feb 3 laid out as "Jan 27-3" put the bar's end
+  // 24 days before its start. The end month is spelled out when it differs.
+  it('spells out the end month when a task crosses a month boundary', () => {
+    const ir = irOf(`gantt
+      title Rollout
+      Migrate: 2026-01-27, 2026-02-03
+      Verify: 2026-02-04, 3d`);
+    expect(ir.nodes[0].label).toBe('Migrate: Jan 27 - Feb 3');
+    expect(ir.nodes[1].label).toBe('Verify: Feb 4-7');
+  });
 });
 
 describe('pie import', () => {

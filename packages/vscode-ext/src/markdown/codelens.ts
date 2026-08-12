@@ -66,6 +66,14 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
         arguments: [block.source],
         tooltip: 'Export this diagram to Mermaid (.mmd) syntax',
       }));
+
+      // "Export to PlantUML" lens
+      lenses.push(new vscode.CodeLens(startRange, {
+        title: '$(arrow-swap) Export to PlantUML',
+        command: 'seldia.exportToPlantUml',
+        arguments: [block.source],
+        tooltip: 'Export this diagram to PlantUML (.puml) syntax',
+      }));
     }
 
     return lenses;

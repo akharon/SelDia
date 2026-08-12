@@ -1,0 +1,23 @@
+@startuml
+title TCP-ish connection lifecycle
+
+[*] --> Closed
+
+Closed --> Connecting : open()
+Connecting --> Connected : ack
+Connecting --> Closed : timeout
+
+state Connected {
+  [*] --> Idle
+  Idle --> Sending : write()
+  Sending --> Idle : flushed
+  Idle --> Receiving : data
+  Receiving --> Idle : consumed
+}
+
+Connected --> Closing : close()
+Closing --> Closed : fin
+Connected --> Failed : error
+Failed --> Closed : reset
+Closed --> [*]
+@enduml

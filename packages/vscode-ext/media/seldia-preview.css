@@ -323,15 +323,10 @@
   border-left: 3px solid #e53e3e;
 }
 
-/* ── Responsive ───────────────────────────────────────────────────────── */
-@media (max-width: 600px) {
-  .seldia-diagram-toolbar {
-    gap: 4px;
-    padding: 6px 10px;
-  }
-  .seldia-btn {
-    padding: 2px 7px;
-    font-size: 10px;
-  }
-}
+/* ── Responsive ───────────────────────────────────────────────────────────
+   No narrow-pane overrides: the toolbar is icon-only 22px squares, already
+   as compact as it gets. The old <600px rule here (`.seldia-btn { padding:
+   2px 7px; font-size: 10px }`) came after .seldia-btn-icon in the cascade
+   and stomped its `padding: 0` / square sizing, mangling the icons into
+   unidentifiable specks whenever the preview column was narrow. */
 

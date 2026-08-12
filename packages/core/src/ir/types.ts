@@ -43,6 +43,7 @@ export enum DiagramType {
   TIMELINE = 'timeline',
   WIREFRAME = 'wireframe',
   CLOUD = 'cloud',
+  WORKITEM = 'workitem',
 }
 
 // -----------------------------------------------------------------------------

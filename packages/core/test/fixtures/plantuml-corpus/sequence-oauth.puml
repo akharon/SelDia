@@ -1,0 +1,46 @@
+@startuml
+!theme plain
+title OAuth 2.0 Authorization Code Flow
+skinparam responseMessageBelowArrow true
+
+actor "Resource Owner" as RO
+participant "User Agent" as UA
+participant "Client App" as Client
+participant "Auth Server" as AS
+database "Token Store" as TS
+
+RO -> UA : click "Sign in"
+UA -> Client : GET /login
+Client -> UA : 302 redirect to /authorize
+UA -> AS : GET /authorize?client_id&state
+
+group consent
+  AS -> RO : show consent screen
+  RO --> AS : approve
+end
+
+alt user approved
+  AS --> UA : 302 with ?code=abc
+  UA -> Client : GET /callback?code=abc
+  Client -> AS : POST /token (code, secret)
+  AS -> TS : persist refresh token
+  TS --> AS : ok
+  AS --> Client : access_token + refresh_token
+  Client --> UA : set session cookie
+else user denied
+  AS --> UA : 302 with ?error=access_denied
+  UA -> Client : GET /callback?error
+  Client --> UA : render error page
+end
+
+opt token near expiry
+  Client -> AS : POST /token (refresh_token)
+  AS --> Client : new access_token
+end
+
+loop every 5 minutes
+  Client -> AS : GET /introspect
+end
+
+UA --> RO : signed in
+@enduml

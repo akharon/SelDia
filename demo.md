@@ -29,15 +29,21 @@ color:
   color: start = green, stop/error = red, decision = amber, actor/external =
   violet, note = yellow paper.
 
-## The three modes
+## Viewing and editing
 
-Each diagram block has a toolbar with three modes:
+In the **Markdown preview**, each diagram block has a hover toolbar with two
+modes — the preview itself is read-only:
 
 | Mode | Icon | What it does |
 |------|------|--------------|
-| **Preview** | 👁 | The rendered diagram. Zoom with the toolbar or `Ctrl`+scroll. |
-| **Code** | `< >` | An **editable** DSL source box. Edit the text, then click **Preview** or **Edit** — the diagram re-renders with your changes (it writes back to this Markdown file). |
-| **Edit** | ✎ | **Drag** a node to move it; **double-click** a node to rename it. Changes are written back to the source. Use the auto-layout button to clear manual positions. |
+| **Preview** | 👁 | The rendered diagram. Zoom with the toolbar or `Ctrl`+scroll; grab-to-pan when zoomed. |
+| **Code** | `< >` | The DSL source, read-only, with copy-to-clipboard and an "open in editor" jump to this fence. |
+
+To **edit visually**, use the **✎ Edit Visually** CodeLens above any fence in
+the raw Markdown: it opens an interactive panel where you can drag nodes,
+double-click to rename, right-click for style/add/delete, and undo/redo —
+every change is written straight back into this fence (save the file to
+persist it to disk).
 
 ---
 
@@ -159,13 +165,13 @@ c4comp "API Application" {
     person user "Customer" "Uses the web app"
     component signin "Sign In Controller" "Handles authentication requests"
     component accounts "Accounts Controller" "Serves account summaries"
-    component security "Security Component" "Checks credentials"
+    component security "Security COmponent" "Checks credentials"
     component facade "Mainframe Facade" "Talks to the core banking system"
     database db "Database" "Stores user credentials"
 
-    user -> signin: "Submits credentials"
-    signin -> security: "Validates"
-    security -> db: "Reads from"
+    user -> signin: "Submits credentials" { x: 258, y: 124 }
+    signin -> security: "Validates" { stroke: "steelblue", textColor: "red" }
+    security -> db: "Reads from" { x: 870, y: 134 }
     user -> accounts: "Views balances"
     accounts -> facade: "Fetches accounts"
 }
@@ -327,10 +333,10 @@ mind "System Features" {
 ```seldia
 net "Office" {
     internet [Internet]
-    firewall [Firewall]
-    router [Router]
+    firewall [Firewall] { textColor: "red" }
+    router [Router] { fill: "red" }
     lb [Load Balancer]
-    switch [Switch]
+    switch [SwitcH]
     ap [Wifi Access Point]
     pc1 [Workstation 1]
     pc2 [Workstation 2]
@@ -566,7 +572,7 @@ cloud "Web Application \non AWS" {
   cache [ElastiCache \nRedis]
   queue [SQS Queue]
   bucket [S3 Bucket storage]
-  auth [Cognito User \nPools security]
+  auth [Cognito User \nPools security] { stroke: "blue" }
 
   dns -> cdn
   user -> cdn
@@ -581,5 +587,83 @@ cloud "Web Application \non AWS" {
   worker -> bucket
   user -> auth
   auth -> api
+}
+```
+
+---
+
+## Work Items — requirements, decisions, tests and stories
+
+A documentation / traceability diagram. Each item is a **card** whose sections
+depend on its type — a decision carries a rationale and alternatives, a story
+carries acceptance criteria and points, a risk carries impact and likelihood.
+Items are joined by **typed links** (`satisfies`, `verifies`, `refines`,
+`decides`, `mitigates`, `derives`, `conflicts`, `depends`).
+
+Unlike the other diagram types, this one can be *wrong*: the schema knows that
+only a test may `verify` something and that `satisfies` must point at a
+requirement or capability, so a mis-modelled link is reported rather than
+quietly drawn. Requirements with no test covering them are reported too — the
+question a traceability diagram exists to answer.
+
+```seldia
+wi "Checkout traceability" {
+  CAP1 [Customers can pay] {
+    type: capability
+    description: "Accept payment for a basket and issue a receipt."
+    outcome: "Revenue is collected without manual intervention."
+    measure: "Payment success rate above 98%"
+    status: active
+    owner: "commerce"
+  }
+
+  REQ1 [Card payments are accepted] {
+    type: requirement
+    description: "A customer pays with a credit or debit card at checkout."
+    justification: "Cards are 85% of attempted payments in our market."
+    priority: high
+    verification: "Automated end-to-end test against the sandbox gateway"
+    status: approved
+  }
+
+  ADR1 [Use a hosted payment page] {
+    type: decision
+    rationale: "Keeps card data off our servers, reducing PCI scope to SAQ-A."
+    alternatives: "Self-hosted form with tokenisation; direct API integration."
+    consequences: "Less control over checkout styling; a redirect in the flow."
+    status: accepted
+    date: "2026-04-02"
+  }
+
+  STORY1 [Pay with a saved card] {
+    type: story
+    description: "A returning customer selects a stored card and confirms."
+    acceptance: "Given a saved card, when the customer confirms, the order is paid."
+    estimation: 5
+    startDate: "2026-04-13"
+    status: "in progress"
+  }
+
+  TEST1 [Card payment succeeds end to end] {
+    type: test
+    given: "A basket of one item and a valid test card"
+    expected: "Order marked paid and a receipt email is queued"
+    result: passing
+  }
+
+  RISK1 [Gateway outage stops all revenue] {
+    type: risk
+    impact: high
+    likelihood: low
+    mitigation: "Queue authorisations and retry; show a status banner."
+  }
+
+  REQ1 -> CAP1: refines
+  ADR1 -> REQ1: decides
+  STORY1 -> REQ1: satisfies
+  TEST1 -> REQ1: verifies
+  TEST1 -> CAP1: verifies
+  ADR1 -> RISK1: mitigates
+  STORY1 -> ADR1: derives
 }
 ```

@@ -1,0 +1,50 @@
+@startuml
+title Order domain model
+
+package "domain" {
+  abstract class Entity {
+    # id : UUID
+    + equals(o : Object) : boolean
+  }
+
+  class Customer extends Entity {
+    - name : String
+    - email : String
+    + placeOrder(items : List<Item>) : Order
+  }
+
+  class Order extends Entity {
+    - placedAt : Instant
+    - status : OrderStatus
+    + total() : Money
+    + cancel() : void
+  }
+
+  class Item {
+    - sku : String
+    - qty : int
+    + subtotal() : Money
+  }
+
+  enum OrderStatus {
+    PENDING
+    PAID
+    SHIPPED
+    CANCELLED
+  }
+
+  interface Repository<T> {
+    + findById(id : UUID) : T
+    + save(entity : T) : void
+  }
+
+  class OrderRepository implements Repository {
+    + findByCustomer(c : Customer) : List<Order>
+  }
+}
+
+Customer "1" *-- "0..*" Order : places
+Order "1" o-- "1..*" Item : contains
+Order --> OrderStatus
+OrderRepository ..> Order : manages
+@enduml

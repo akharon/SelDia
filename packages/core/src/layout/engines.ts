@@ -70,9 +70,71 @@ function dirToDagre(d: Direction): string {
   }
 }
 
+/** Register each IRGroup as a dagre cluster and assign its members to it, so
+ *  the layout keeps a group's nodes contiguous instead of letting an unrelated
+ *  node land between them.
+ *
+ *  Without this the group box was purely post-hoc: `layoutGroups()` unions the
+ *  bounds of whatever positions dagre chose, so a non-member placed mid-group
+ *  was silently swallowed by the drawn box (a state machine's sibling state
+ *  appearing inside a composite state; a whole `Data` package appearing inside
+ *  `Services`). Membership has to reach the layout engine for the box to mean
+ *  anything.
+ *
+ *  Only groups that actually have member nodes are registered — dagre throws on
+ *  an empty cluster — and a node is assigned to at most one parent, the
+ *  innermost group claiming it, since dagre's tree admits no multiple
+ *  parenthood. Nested groups are wired parent-to-parent so the hierarchy
+ *  survives. Returns false when there is nothing to cluster, letting the caller
+ *  skip compound mode entirely (it changes dagre's ranking even with no
+ *  clusters set). */
+function applyClusters(g: any, ir: DiagramIR): boolean {
+  if (!ir.groups?.length) return false;
+
+  const byId = new Map(ir.groups.map((gr) => [gr.id, gr]));
+  // Depth of each group in the childGroupIds forest: a deeper group is the more
+  // specific owner of a node listed by both it and an ancestor.
+  const depth = new Map<string, number>();
+  const walk = (id: string, d: number, seen: Set<string>) => {
+    if (seen.has(id)) return; // cyclic childGroupIds are guarded elsewhere too
+    seen.add(id);
+    depth.set(id, Math.max(depth.get(id) ?? 0, d));
+    for (const c of byId.get(id)?.childGroupIds ?? []) walk(c, d + 1, seen);
+  };
+  const childIds = new Set(ir.groups.flatMap((gr) => gr.childGroupIds ?? []));
+  for (const gr of ir.groups) if (!childIds.has(gr.id)) walk(gr.id, 0, new Set());
+  for (const gr of ir.groups) if (!depth.has(gr.id)) depth.set(gr.id, 0);
+
+  const owner = new Map<string, string>();
+  for (const gr of ir.groups) {
+    for (const nodeId of gr.childNodeIds) {
+      const cur = owner.get(nodeId);
+      if (!cur || (depth.get(gr.id) ?? 0) > (depth.get(cur) ?? 0)) owner.set(nodeId, gr.id);
+    }
+  }
+
+  const used = new Set(owner.values());
+  if (!used.size) return false;
+  // A group whose id collides with a real node's would make dagre treat the
+  // node as the cluster; the node's own geometry would then be read back off a
+  // container rect. Bail rather than lay the diagram out wrongly.
+  for (const id of used) if (ir.nodes.some((n) => n.id === id)) return false;
+  // A cluster must exist before anything is parented into it, and a parent
+  // cluster must exist before its child cluster — register shallowest first.
+  const ordered = [...used].sort((a, b) => (depth.get(a) ?? 0) - (depth.get(b) ?? 0));
+  for (const id of ordered) g.setNode(id, {});
+  for (const id of ordered) {
+    const parent = ir.groups.find((gr) => (gr.childGroupIds ?? []).includes(id));
+    if (parent && used.has(parent.id)) g.setParent(id, parent.id);
+  }
+  for (const [nodeId, groupId] of owner) if (g.hasNode(nodeId)) g.setParent(nodeId, groupId);
+  return true;
+}
+
 /** Synchronous hierarchical layout via dagre. Always available. */
 export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLayoutResult {
-  const g = new dagre.graphlib!.Graph({ directed: true, multigraph: false, compound: false });
+  const compound = !!ir.groups?.length;
+  const g = new dagre.graphlib!.Graph({ directed: true, multigraph: false, compound });
   g.setGraph({
     rankdir: dirToDagre(opts.direction),
     nodesep: opts.nodeSpacing,
@@ -98,6 +160,8 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     const labelSize = e.label ? { width: Math.max(20, e.label.length * 7), height: 20 } : {};
     g.setEdge(e.sourceId, e.targetId, { id: e.id, labelpos: 'c', ...labelSize });
   }
+
+  if (compound) applyClusters(g, ir);
 
   dagre.layout(g);
 

@@ -3,7 +3,7 @@
 // =============================================================================
 
 import * as vscode from 'vscode';
-import { createEngine, exportMermaid, isMermaidExportable } from '@seldia/core';
+import { createEngine, exportMermaid, isMermaidExportable, exportPlantUml, isPlantUmlExportable } from '@seldia/core';
 import type { CoreEngine } from '@seldia/core';
 import { readFileSync, existsSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -155,9 +155,17 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Parse → analyze → transform mirrors engine.compile's own pipeline, just
-  // stopping before layout/render since exportMermaid works on IR, not SVG.
-  // Mirrors packages/cli/src/index.ts's `export --to mermaid` command.
-  const exportToMermaid = vscode.commands.registerCommand('seldia.exportToMermaid', async (sourceArg?: string) => {
+  // stopping before layout/render since the exporters work on IR, not SVG.
+  // Mirrors packages/cli/src/index.ts's `export --to <format>` command. One
+  // factory serves both foreign formats — they differ only in the exporter
+  // function and the file extension offered in the save dialog.
+  const makeExportCommand = (
+    commandId: string,
+    formatLabel: string,
+    extension: string,
+    canExport: (type: any) => boolean,
+    write: (ir: any) => string | null,
+  ) => vscode.commands.registerCommand(commandId, async (sourceArg?: string) => {
     const editor = vscode.window.activeTextEditor;
     if (!editor && !sourceArg) {
       vscode.window.showWarningMessage('No active editor');
@@ -181,22 +189,21 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
 
-    if (!isMermaidExportable(r3.value.type)) {
-      vscode.window.showErrorMessage(`Diagram type "${r3.value.type}" cannot be exported to Mermaid.`);
-      return;
-    }
-    const mermaid = exportMermaid(r3.value);
-    if (mermaid === null) {
-      vscode.window.showErrorMessage(`Diagram type "${r3.value.type}" cannot be exported to Mermaid.`);
+    const text = canExport(r3.value.type) ? write(r3.value) : null;
+    if (text === null) {
+      vscode.window.showErrorMessage(`Diagram type "${r3.value.type}" cannot be exported to ${formatLabel}.`);
       return;
     }
 
-    const uri = await vscode.window.showSaveDialog({ filters: { 'Mermaid': ['mmd'] } });
+    const uri = await vscode.window.showSaveDialog({ filters: { [formatLabel]: [extension] } });
     if (uri) {
-      writeFileSync(uri.fsPath, mermaid);
+      writeFileSync(uri.fsPath, text);
       vscode.window.showInformationMessage(`$(check) Exported to ${uri.fsPath}`);
     }
   });
+
+  const exportToMermaid = makeExportCommand('seldia.exportToMermaid', 'Mermaid', 'mmd', isMermaidExportable, exportMermaid);
+  const exportToPlantUml = makeExportCommand('seldia.exportToPlantUml', 'PlantUML', 'puml', isPlantUmlExportable, exportPlantUml);
 
   const exportMarkdownToPdf = vscode.commands.registerCommand('seldia.exportMarkdownToPdf', async () => {
     const editor = vscode.window.activeTextEditor;
@@ -455,7 +462,7 @@ export function activate(context: vscode.ExtensionContext) {
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, editBlockVisually, insertDiagram, exportDiagram,
-    exportToMermaid, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
+    exportToMermaid, exportToPlantUml, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
     revealSource
   );
 

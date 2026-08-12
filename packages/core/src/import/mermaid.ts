@@ -931,7 +931,14 @@ function importGantt(lines: string[], diagnostics: MermaidImportDiagnostic[]): D
     const id = `task-${nodes.length}`;
     const label = isMilestone || startIso === endIso
       ? `${title}: ${ganttDateToLabel(startIso)}`
-      : `${title}: ${ganttDateToLabel(startIso)}-${parseInt(endIso.slice(8, 10), 10)}`;
+      // The end month must be spelled out when the task crosses a boundary:
+      // parseGanttLabel reads a bare "-D2" as a day in the *start* month, so
+      // "Jan 27-3" would land the bar's end four weeks before its start.
+      : `${title}: ${ganttDateToLabel(startIso)}${
+          startIso.slice(5, 7) === endIso.slice(5, 7)
+            ? `-${parseInt(endIso.slice(8, 10), 10)}`
+            : ` - ${ganttDateToLabel(endIso)}`
+        }`;
     nodes.push(makeNode(id, label, ShapeType.RECTANGLE));
   });
 

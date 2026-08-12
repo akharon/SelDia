@@ -6,7 +6,7 @@ import type { ID, Diagnostic, Result, Point, Rect } from './types/common.js';
 import type { DiagramIR, LayoutResult, RenderResult, IRNode, IREdge, IRGroup } from './ir/types.js';
 import { DiagramType, EdgeRouting } from './ir/types.js';
 import type { DiagramAST } from './ast/nodes.js';
-import type { DiagramPlugin, PluginManager } from './plugin/types.js';
+import type { DiagramPlugin, PluginManager, PluginDiagnostic } from './plugin/types.js';
 import type { Theme } from './types/style.js';
 import type { SelDiAConfig } from './config.js';
 import { DiagnosticSeverity, Direction } from './types/common.js';
@@ -20,6 +20,7 @@ import { classPlugin } from './diagrams/class.js';
 import { c4Plugin, c4ContainerPlugin, c4ComponentPlugin } from './diagrams/c4.js';
 import { statePlugin } from './diagrams/state.js';
 import { erPlugin } from './diagrams/er.js';
+import { workitemPlugin } from './diagrams/workitem.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
@@ -175,7 +176,7 @@ class SelDiAEngine implements CoreEngine {
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -206,6 +207,28 @@ class SelDiAEngine implements CoreEngine {
 
   analyze(ast: DiagramAST): Result<DiagramAST> {
     return analyze(ast);
+  }
+
+  /**
+   * Run the handling plugin's own semantic checks over an AST.
+   *
+   * `DiagramPlugin.validate` was declared in the plugin interface but nothing
+   * ever called it, so per-type semantics had no way to be enforced. It is
+   * surfaced as its own method rather than folded into `analyze()` because
+   * `Result<T>` has no warnings channel on the success path (the same
+   * constraint the macro/include work hit) — and these findings must not fail
+   * a compile: an incomplete specification is the normal state of a
+   * specification, and refusing to draw one would make the tool useless
+   * exactly when it is most needed.
+   *
+   * Returns [] for a type whose plugin declares no checks.
+   */
+  validateSemantics(ast: DiagramAST): PluginDiagnostic[] {
+    const plugin = this.plugins.findHandler(ast.type);
+    if (!plugin?.validate) return [];
+    try { return plugin.validate(ast); }
+    // A plugin check that throws must not take the whole compile with it.
+    catch (err: any) { return [{ severity: 'warning', message: `Validation error: ${err?.message ?? err}` }]; }
   }
 
   transform(ast: DiagramAST): Result<DiagramIR> {

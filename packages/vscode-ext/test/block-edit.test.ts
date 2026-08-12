@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { findSelDiABlocks, findBlockById, blockIdForSource } from '../src/edit/blocks.js';
-import { computePositionEdit } from '../src/edit/position-patch.js';
+import { computePositionEdit, computeAttrEdit } from '../src/edit/position-patch.js';
 
 const MD = [
   '# Runbook',
@@ -116,5 +116,30 @@ describe('block-mode write-back (Edit Visually)', () => {
     expect(src).not.toContain('x: 100');
     // Still exactly one declaration line for the node.
     expect(src.split('\n').filter((l) => l.includes('build:')).length).toBe(1);
+  });
+
+  it('writes an Edit Style fill into the fence, quoted, replacing a prior value', () => {
+    const first = computeAttrEdit(findSelDiABlocks(MD)[0].source, 'build', { fill: '#ff8800' })!;
+    const afterFirst = applyFenceEdit(MD, 0, first);
+    expect(findSelDiABlocks(afterFirst)[0].source).toContain('fill: "#ff8800"');
+
+    const second = computeAttrEdit(findSelDiABlocks(afterFirst)[0].source, 'build', { fill: 'steelblue' })!;
+    const afterSecond = applyFenceEdit(afterFirst, 0, second);
+    const src = findSelDiABlocks(afterSecond)[0].source;
+    expect(src).toContain('fill: "steelblue"');
+    expect(src).not.toContain('#ff8800');
+  });
+
+  it('style and position attrs coexist in one attribute block', () => {
+    const pos = computePositionEdit(findSelDiABlocks(MD)[0].source, 'build', 300, 200)!;
+    const afterPos = applyFenceEdit(MD, 0, pos);
+    const style = computeAttrEdit(findSelDiABlocks(afterPos)[0].source, 'build', { stroke: '#333333' })!;
+    const src = findSelDiABlocks(applyFenceEdit(afterPos, 0, style))[0].source;
+    const line = src.split('\n').find((l) => l.includes('build:'))!;
+    expect(line).toContain('x: 300');
+    expect(line).toContain('y: 200');
+    expect(line).toContain('stroke: "#333333"');
+    // Single balanced block on the line.
+    expect(line.split('{').length).toBe(2);
   });
 });

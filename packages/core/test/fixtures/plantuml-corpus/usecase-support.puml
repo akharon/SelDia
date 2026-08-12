@@ -1,0 +1,24 @@
+@startuml
+title Support portal use cases
+
+left to right direction
+
+actor Customer
+actor "Support Agent" as Agent
+actor Admin
+
+rectangle "Support Portal" {
+  (Submit ticket) as UC1
+  (Track ticket status) as UC2
+  (Reply to ticket) as UC3
+  (Escalate ticket) as UC4
+  (Manage users) as UC5
+}
+
+Customer --> UC1
+Customer --> UC2
+Agent --> UC3
+Agent --> UC4
+Admin --> UC5
+Admin --> UC4
+@enduml

@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.38.0",
+  "version": "1.40.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -133,6 +133,10 @@
         "title": "SelDiA: Export Diagram to Mermaid"
       },
       {
+        "command": "seldia.exportToPlantUml",
+        "title": "SelDiA: Export Diagram to PlantUML"
+      },
+      {
         "command": "seldia.exportMarkdownToPdf",
         "title": "SelDiA: Export Markdown to PDF"
       },
@@ -184,6 +188,11 @@
           "command": "seldia.exportToMermaid",
           "when": "editorLangId == seldia",
           "group": "seldia@4"
+        },
+        {
+          "command": "seldia.exportToPlantUml",
+          "when": "editorLangId == seldia",
+          "group": "seldia@5"
         }
       ],
       "editor/title": [
@@ -212,6 +221,10 @@
         },
         {
           "command": "seldia.exportToMermaid",
+          "when": "editorLangId == seldia"
+        },
+        {
+          "command": "seldia.exportToPlantUml",
           "when": "editorLangId == seldia"
         },
         {

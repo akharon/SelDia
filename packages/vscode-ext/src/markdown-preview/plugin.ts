@@ -9,12 +9,12 @@
 //   • Preview (default) — the rendered diagram
 //   • Code               — the source, read-only
 //
-// It also intercepts ```mermaid fences and renders them through the same
-// engine via the Mermaid importer, which is the product position made
-// concrete: your existing Mermaid, unmodified, drawn by SelDiA. That path
-// degrades to the default fence whenever the importer can't model the source,
-// so installing SelDiA can never make a Mermaid document render worse than it
-// did before.
+// It also intercepts ```mermaid and ```plantuml fences and renders them
+// through the same engine via the Mermaid / PlantUML importers, which is the
+// product position made concrete: your existing diagrams, unmodified, drawn by
+// SelDiA. Both paths degrade to the default fence whenever the importer can't
+// model the source, so installing SelDiA can never make a Mermaid or PlantUML
+// document render worse than it did before.
 //
 // The preview is a read-only surface: layout is always automatic, and the DSL
 // is edited in the raw file (the "open in editor" link jumps there). Visual
@@ -27,8 +27,8 @@
 // exact ```seldia fence in the underlying document.
 // =============================================================================
 
-import type { CoreEngine } from '@seldia/core';
-import { importMermaid } from '@seldia/core';
+import type { CoreEngine, DiagramIR } from '@seldia/core';
+import { importMermaid, importPlantUml } from '@seldia/core';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 import { blockIdForSource } from '../edit/blocks.js';
 
@@ -81,6 +81,18 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       if (lang === 'mermaid') {
         try {
           const rendered = renderMermaidBlock(engine, token.content, docUriOf(env));
+          if (rendered) return rendered;
+        } catch {
+          /* fall through to the default fence */
+        }
+      }
+
+      // ```plantuml (and its usual aliases) gets the same treatment for the
+      // same reason — PlantUML is a peer input format, not a rival, so an
+      // existing .md full of ```puml blocks renders through SelDiA untouched.
+      if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
+        try {
+          const rendered = renderPlantUmlBlock(engine, token.content, docUriOf(env));
           if (rendered) return rendered;
         } catch {
           /* fall through to the default fence */
@@ -174,18 +186,40 @@ ${ICON_SPRITE}
  *
  *  Returns `null` — meaning "not ours, let the default fence have it" — when
  *  the importer can't model the source. That covers unsupported diagram types
- *  (pie, gantt, gitGraph…) and any structural failure. This asymmetry is
+ *  (journey, quadrantChart…) and any structural failure. This asymmetry is
  *  deliberate: for SelDiA's own blocks a compile error is worth showing loudly,
  *  because the author asked for SelDiA. A Mermaid author did not, so a block we
  *  can't render must degrade to whatever would have happened without us
  *  installed, never to a SelDiA error box in someone else's document.
+ */
+export function renderMermaidBlock(engine: CoreEngine, code: string, docUri = ''): string | null {
+  const { ir, diagnostics } = importMermaid(code);
+  return renderImportedBlock(engine, code, docUri, 'mermaid', 'Mermaid', ir, diagnostics);
+}
+
+/** Render a ```plantuml block through SelDiA's engine. Same contract as
+ *  renderMermaidBlock, including the fall-back-to-default-fence asymmetry:
+ *  a PlantUML author did not ask for SelDiA either. */
+export function renderPlantUmlBlock(engine: CoreEngine, code: string, docUri = ''): string | null {
+  const { ir, diagnostics } = importPlantUml(code);
+  return renderImportedBlock(engine, code, docUri, 'plantuml', 'PlantUML', ir, diagnostics);
+}
+
+/** The shared body behind both foreign-format fences.
  *
  *  Diagnostics from a *partial* success are attached to the container rather
  *  than shown, so the engine can report what it approximated without pushing an
  *  error surface into a document that renders fine.
  */
-export function renderMermaidBlock(engine: CoreEngine, code: string, docUri = ''): string | null {
-  const { ir, diagnostics } = importMermaid(code);
+function renderImportedBlock(
+  engine: CoreEngine,
+  code: string,
+  docUri: string,
+  format: string,
+  formatLabel: string,
+  ir: DiagramIR | undefined,
+  diagnostics: Array<{ line: number; message: string }>,
+): string | null {
   if (!ir) return null;
 
   const result = engine.compileIRSync(ir);
@@ -197,13 +231,13 @@ export function renderMermaidBlock(engine: CoreEngine, code: string, docUri = ''
 
   return `
 ${ICON_SPRITE}
-<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-source-format="mermaid"${notes ? ` data-seldia-notes="${escapeAttr(notes)}"` : ''}>
+<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-source-format="${escapeAttr(format)}"${notes ? ` data-seldia-notes="${escapeAttr(notes)}"` : ''}>
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram" aria-label="Show rendered diagram">${icon('visibility')}</button>
-      <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="code" title="Show Mermaid source" aria-label="Show Mermaid source">${icon('code')}</button>
+      <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="code" title="Show ${formatLabel} source" aria-label="Show ${formatLabel} source">${icon('code')}</button>
     </span>
-    <span class="seldia-diagram-badge seldia-badge-format" title="Mermaid source, rendered by SelDiA">mermaid</span>
+    <span class="seldia-diagram-badge seldia-badge-format" title="${formatLabel} source, rendered by SelDiA">${format}</span>
     <span class="seldia-toolbar-spacer"></span>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-in" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-out" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
@@ -215,12 +249,12 @@ ${ICON_SPRITE}
   </div>
   <div class="seldia-diagram-source">
     <div class="seldia-diagram-source-header">
-      <span>Mermaid Source</span>
+      <span>${formatLabel} Source</span>
       <span class="seldia-toolbar-spacer"></span>
       <a class="seldia-btn seldia-btn-icon" title="Open this block in the editor to edit it" aria-label="Open in editor" href="${deepLink('revealSource', { blockId, doc: docUri })}">${icon('open-in-editor')}</a>
       <button class="seldia-btn seldia-btn-icon seldia-btn-copy-source" title="Copy source to clipboard" aria-label="Copy source to clipboard">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button>
     </div>
-    <pre class="seldia-source-view"><code class="language-mermaid">${escapeHtml(code)}</code></pre>
+    <pre class="seldia-source-view"><code class="language-${escapeAttr(format)}">${escapeHtml(code)}</code></pre>
   </div>
 </div>`;
 }

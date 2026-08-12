@@ -1,0 +1,30 @@
+@startuml
+title Microservice deployment
+
+package "Edge" {
+  [CDN]
+  [Load Balancer] as LB
+}
+
+package "Services" {
+  [Gateway] <<service>>
+  [Accounts] <<service>>
+  [Billing] <<service>>
+  [Notifications] <<service>>
+}
+
+package "Data" {
+  database "Accounts DB" as ADB
+  database "Billing DB" as BDB
+  queue "Event Bus" as BUS
+}
+
+CDN --> LB
+LB --> Gateway
+Gateway --> Accounts
+Gateway --> Billing
+Accounts --> ADB
+Billing --> BDB
+Billing --> BUS
+BUS --> Notifications
+@enduml

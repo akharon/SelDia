@@ -6,13 +6,28 @@
 // right-click context menus, undo/redo, edge rerouting, and node resizing.
 
 import * as vscode from 'vscode';
-import type { CoreEngine } from '@seldia/core';
+import { createEngine, type CoreEngine, type DiagramIR } from '@seldia/core';
 import { WebviewMessenger } from './messenger.js';
 import type { WebviewToExtMessage } from '../types.js';
-import { VisualEditHandler, type EditHandlerCallbacks } from './edit-handler.js';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
-import { computePositionEdit } from '../edit/position-patch.js';
+import {
+  computeAttrEdit, computeLabelEdit, computeEdgeLabelEdit,
+  computeEdgeDeleteEdit, computeNodeDeleteEdits, computeAppendStatementEdit,
+  type TextEdit,
+} from '../edit/position-patch.js';
 import { findBlockById, findSelDiABlocks, type SelDiABlockLoc } from '../edit/blocks.js';
+
+/** Map the toolbar theme picker onto engine render config. The engine's
+ *  theme channel is a palette id (`config.render.theme` → BUILTIN_PALETTES)
+ *  plus the `sketchy` (Rough.js) flag — the "sketchy-light" default is the
+ *  engine's out-of-the-box rendering. */
+const THEME_RENDER_CONFIG: Record<string, { sketchy: boolean; theme?: string }> = {
+  'sketchy-light': { sketchy: true },
+  'sketchy-dark': { sketchy: true, theme: 'dark' },
+  'clean-light': { sketchy: false },
+  'clean-dark': { sketchy: false, theme: 'dark' },
+  'mono': { sketchy: false, theme: 'high-contrast' },
+};
 
 // -----------------------------------------------------------------------------
 // Custom text editor registration (.sld files)
@@ -75,7 +90,23 @@ export class SelDiAInteractiveProvider {
   private readonly _engine: CoreEngine;
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _messenger: WebviewMessenger;
-  private readonly _editHandler: VisualEditHandler;
+
+  /** Engines configured for non-default themes, created lazily per theme id
+   *  (the injected `_engine` renders the default "sketchy-light"). */
+  private readonly _themedEngines = new Map<string, CoreEngine>();
+
+  /** The laid-out IR from the last successful compile — the ground truth for
+   *  node positions (drag write-back), edge endpoints (edge id → source/
+   *  target), and id-uniqueness when adding nodes. */
+  private _positionedIr: DiagramIR | null = null;
+
+  /** Snapshot-based undo/redo over the edited source (the fence contents in
+   *  block mode, the whole document otherwise). Every visual write-back
+   *  pushes the pre-edit source; undo restores it with a WorkspaceEdit, so
+   *  the text document stays the single source of truth. VS Code's own
+   *  editor undo stack keeps working independently. */
+  private _undoStack: string[] = [];
+  private _redoStack: string[] = [];
 
   private _currentSource: string = '';
   private _htmlInitialized = false;
@@ -95,6 +126,17 @@ export class SelDiAInteractiveProvider {
   /** Registry key this instance is stored under (block panels use
    *  `uri#L<line>`, whole-file panels use the uri). */
   private _registryKey: string | null = null;
+  /** Trailing-debounce timer for document-change re-renders. Bursts of edits
+   *  (a drag storm, fast typing in the fence) must collapse into ONE
+   *  compile + ONE updateContent: every extra full-SVG swap is webview
+   *  churn, and heavy churn is what provokes the intermittent Electron
+   *  compositor bug that blanks the whole panel until it is reopened. */
+  private _renderTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Signature of the last content pushed to the webview — identical
+   *  re-renders (e.g. a document change that didn't touch this fence's
+   *  output) are dropped instead of forcing a repaint. */
+  private _lastSentSig: string | null = null;
+  private _disposed = false;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -114,16 +156,6 @@ export class SelDiAInteractiveProvider {
     this._messenger = new WebviewMessenger();
     this._messenger.connect(panel.webview);
 
-    const editCallbacks: EditHandlerCallbacks = {
-      onDslPatch: (edit, offset, deleteLen) => { void this.applyDslPatch(edit, offset, deleteLen); },
-      onNodeMoved: (nodeId, x, y) => { void this.applyNodePosition(nodeId, x, y); },
-      onRequestReRender: () => this.render(),
-      onUndoRedoStateChange: (canUndo, canRedo) => {
-        this._messenger.sendSyncUndoRedo(canUndo, canRedo);
-      },
-    };
-    this._editHandler = new VisualEditHandler(engine, editCallbacks);
-
     // Set up message handling
     this._messenger.onMessage((msg: WebviewToExtMessage) => this.handleMessage(msg));
     this._panel.webview.onDidReceiveMessage(
@@ -134,11 +166,13 @@ export class SelDiAInteractiveProvider {
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-    // Listen for theme changes
+    // Listen for theme changes — the theme drives the engine's palette and
+    // sketchy flag now, so a VS Code theme flip re-renders the diagram too.
     this._disposables.push(
       vscode.window.onDidChangeActiveColorTheme((theme) => {
         this._currentTheme = theme.kind === vscode.ColorThemeKind.Dark ? 'sketchy-dark' : 'sketchy-light';
         this._messenger.sendUpdateTheme(this._currentTheme);
+        void this.render();
       })
     );
 
@@ -159,13 +193,13 @@ export class SelDiAInteractiveProvider {
           this._blockFenceLine = block.fenceLine;
           if (block.source === this._currentSource) return;
           this._currentSource = block.source;
-          void this.render();
+          this.scheduleRender();
           return;
         }
         const text = e.document.getText();
         if (text === this._currentSource) return;
         this._currentSource = text;
-        void this.render();
+        this.scheduleRender();
       })
     );
 
@@ -311,59 +345,94 @@ export class SelDiAInteractiveProvider {
     }
   }
 
+  /** The engine to compile with for the current theme. */
+  private engineForTheme(): CoreEngine {
+    const cfg = THEME_RENDER_CONFIG[this._currentTheme];
+    if (!cfg || this._currentTheme === 'sketchy-light') return this._engine;
+    let eng = this._themedEngines.get(this._currentTheme);
+    if (!eng) {
+      eng = createEngine({
+        config: {
+          defaultLayoutEngine: (this._engine as any).config?.defaultLayoutEngine,
+          render: cfg as any,
+        },
+      });
+      this._themedEngines.set(this._currentTheme, eng);
+    }
+    return eng;
+  }
+
+  /** Trailing-debounced render — collapses change bursts into one compile. */
+  private scheduleRender(): void {
+    if (this._renderTimer) clearTimeout(this._renderTimer);
+    this._renderTimer = setTimeout(() => {
+      this._renderTimer = null;
+      void this.render();
+    }, 150);
+  }
+
   private async render(): Promise<void> {
-    const result = await this._engine.compile(this._currentSource, this._sourceUri?.fsPath);
-    let renderResult: any = null;
+    // Run the pipeline in stages (not engine.compile) so the laid-out IR is
+    // captured before rendering: the webview needs each node's position to
+    // turn a drag delta into new x/y, and the edit handlers need edge
+    // endpoints / node ids. RenderResult alone carries none of that.
+    const eng = this.engineForTheme();
+    const fsPath = this._sourceUri?.fsPath;
     let svgContent = '';
     let errorMsg = '';
+    let stats = 'Compilation failed';
+    let nodes: Array<{ id: string; x: number; y: number }> = [];
 
-    if (result.ok) {
-      renderResult = result.value;
+    const r1 = eng.parse(this._currentSource, fsPath);
+    const r2 = r1.ok ? eng.analyze(r1.value) : r1;
+    const r3 = r2.ok ? eng.transform(r2.value) : r2;
+    const r4 = r3.ok ? await eng.layoutAsync(r3.value) : r3;
+    const result = r4.ok ? eng.render(r4.value) : r4;
+
+    if (r4.ok && result.ok) {
+      this._positionedIr = r4.value.diagram;
+      nodes = r4.value.diagram.nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }));
       svgContent = result.value.svg;
+      stats = `Nodes: ${result.value.stats?.nodeCount || 0} | Edges: ${result.value.stats?.edgeCount || 0}`;
     } else {
       // Escape each message before joining with <br> — compiler errors can
       // quote source fragments containing '<', which must not become markup.
       const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      errorMsg = (result.errors || []).map((e: any) => esc(String(e.message))).join('<br>');
+      const errs = (result as { ok: false; errors: any[] }).errors || [];
+      errorMsg = errs.map((e: any) => esc(String(e.message))).join('<br>');
     }
 
-    const stats = result.ok
-      ? `Nodes: ${renderResult.stats?.nodeCount || 0} | Edges: ${renderResult.stats?.edgeCount || 0}`
-      : 'Compilation failed';
-
+    if (this._disposed) return;
+    const sig = `${svgContent} ${stats} ${errorMsg}`;
     if (!this._htmlInitialized) {
       // First render: install the full page (styles, toolbar, script).
-      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, renderResult);
+      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes });
       this._htmlInitialized = true;
+      this._lastSentSig = sig;
     } else {
       // Subsequent renders: swap only the diagram content over postMessage so
       // the webview keeps its zoom/pan/selection/undo UI state. Replacing the
       // whole HTML here was the old behavior and it reset all of that on
-      // every document change.
+      // every document change. Identical output is dropped entirely — no
+      // repaint for a change that didn't alter this diagram.
+      if (sig === this._lastSentSig) return;
+      this._lastSentSig = sig;
       this._panel.webview.postMessage({
         type: 'updateContent',
         svg: svgContent,
         error: errorMsg,
         stats,
-        ir: renderResult,
+        ir: { nodes },
       });
     }
-
-    // Keep the typed render channel for listeners that track IR state.
-    this._messenger.sendRender(
-      renderResult,
-      this._currentTheme,
-      this._interactive,
-      this._viewMode
-    );
   }
 
-  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, renderResult: any): string {
+  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }> }): string {
     const theme = this._currentTheme;
     const isDark = theme.includes('dark');
 
-    // Pass render result for interactive rendering
-    const irJson = renderResult ? JSON.stringify(renderResult).replace(/</g, '\\u003c').replace(/>/g, '\\u003e') : 'null';
+    // Node id → laid-out position, for drag write-back in the webview.
+    const irJson = JSON.stringify(irPayload).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -460,9 +529,27 @@ export class SelDiAInteractiveProvider {
     }
     #contextMenu .menu-item:hover { background: #0e639c; color: #fff; }
     #contextMenu .menu-sep { height: 1px; background: ${isDark ? '#3c3c3c' : '#e0e0e0'}; margin: 4px 8px; }
+    /* Theme dropdown (custom, same visual family as the context menu) */
+    #themeMenu {
+      display: none;
+      position: absolute;
+      top: 100%; left: 0;
+      z-index: 1002;
+      background: ${isDark ? '#252526' : '#fff'};
+      border: 1px solid ${isDark ? '#3c3c3c' : '#ccc'};
+      border-radius: 4px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+      min-width: 120px;
+      padding: 4px 0;
+    }
+    #themeMenu .menu-item { padding: 5px 14px; cursor: pointer; font-size: 12px; color: var(--fg-color); white-space: nowrap; }
+    #themeMenu .menu-item:hover { background: #0e639c; color: #fff; }
+    #themeMenu .menu-item.selected { font-weight: 600; }
     .error { color: #e53e3e; padding: 24px; font-family: monospace; font-size: 14px; }
     /* Selection highlight */
     .seldia-selected { outline: 2px solid #0e639c; outline-offset: 2px; }
+    [data-selected="true"] { filter: drop-shadow(0 0 3px #0e639c); }
+    [data-type="node"], [data-type="edge"] { cursor: pointer; }
     /* Edge draw mode */
     .edge-draw-line { stroke: #0e639c; stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
     /* Marks the source node while drawing a new edge (Edit mode). */
@@ -487,13 +574,23 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" onclick="resetZoom()" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
-    <select id="themeSelect" title="Theme" aria-label="Theme">
-      <option value="sketchy-light" ${theme === 'sketchy-light' ? 'selected' : ''}>Sketchy Light</option>
-      <option value="sketchy-dark" ${theme === 'sketchy-dark' ? 'selected' : ''}>Sketchy Dark</option>
-      <option value="clean-light" ${theme === 'clean-light' ? 'selected' : ''}>Clean Light</option>
-      <option value="clean-dark" ${theme === 'clean-dark' ? 'selected' : ''}>Clean Dark</option>
-      <option value="mono" ${theme === 'mono' ? 'selected' : ''}>Mono</option>
-    </select>
+    <!-- Custom dropdown, NOT a native <select>: native popup surfaces spawned
+         from an out-of-process webview iframe are a known Electron/Linux
+         breakage point (invisible dropdowns, popup grabs that destabilize the
+         whole workbench until restart). A plain positioned div stays inside
+         the webview's own compositor surface. -->
+    <span id="themeWrap" style="position:relative">
+      <button id="themeBtn" title="Theme" aria-haspopup="listbox" aria-expanded="false">${
+        ({ 'sketchy-light': 'Sketchy Light', 'sketchy-dark': 'Sketchy Dark', 'clean-light': 'Clean Light', 'clean-dark': 'Clean Dark', 'mono': 'Mono' } as Record<string, string>)[theme] ?? theme
+      } ▾</button>
+      <div id="themeMenu" role="listbox">
+        <div class="menu-item" role="option" data-theme-value="sketchy-light">Sketchy Light</div>
+        <div class="menu-item" role="option" data-theme-value="sketchy-dark">Sketchy Dark</div>
+        <div class="menu-item" role="option" data-theme-value="clean-light">Clean Light</div>
+        <div class="menu-item" role="option" data-theme-value="clean-dark">Clean Dark</div>
+        <div class="menu-item" role="option" data-theme-value="mono">Mono</div>
+      </div>
+    </span>
 
     <span class="sep"></span>
     <button class="icon-btn" id="btnAddNode" onclick="handleAddNode()" title="Add node" aria-label="Add node">${icon('add-node')}</button>
@@ -510,16 +607,17 @@ export class SelDiAInteractiveProvider {
   <!-- Label editor overlay -->
   <div id="labelEditor" contenteditable="true" spellcheck="false"></div>
 
-  <!-- Context menu -->
+  <!-- Context menu: data-scope controls which entries appear for a node,
+       an edge, or the empty canvas -->
   <div id="contextMenu">
-    <div class="menu-item" data-action="edit-label">${icon('edit')} Edit Label</div>
-    <div class="menu-item" data-action="edit-style">${icon('palette')} Edit Style</div>
-    <div class="menu-item" data-action="change-shape">${icon('shape')} Change Shape</div>
-    <div class="menu-sep"></div>
-    <div class="menu-item" data-action="add-connected-node">${icon('add')} Add Connected Node</div>
-    <div class="menu-item" data-action="add-edge">${icon('link')} Add Edge</div>
-    <div class="menu-sep"></div>
-    <div class="menu-item" data-action="delete">${icon('delete')} Delete</div>
+    <div class="menu-item" data-action="edit-label" data-scope="node edge">${icon('edit')} Edit Label</div>
+    <div class="menu-item" data-action="edit-style" data-scope="node">${icon('palette')} Edit Style</div>
+    <div class="menu-sep" data-scope="node"></div>
+    <div class="menu-item" data-action="add-connected-node" data-scope="node">${icon('add')} Add Connected Node</div>
+    <div class="menu-item" data-action="add-edge" data-scope="node">${icon('link')} Add Edge</div>
+    <div class="menu-sep" data-scope="node edge"></div>
+    <div class="menu-item" data-action="add-node" data-scope="canvas">${icon('add-node')} Add Node</div>
+    <div class="menu-item" data-action="delete" data-scope="node edge">${icon('delete')} Delete</div>
   </div>
 
   <script>
@@ -543,31 +641,80 @@ export class SelDiAInteractiveProvider {
 
     // ── Initialize ─────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => {
+      annotateSvg();
       initFromIR();
       vscode.postMessage({ type: 'ready' });
     });
 
+    // The engine emits data-seldia-node-id / data-seldia-edge-id on the
+    // per-element <g> wrappers; the interaction layer here keys everything
+    // (click-select, drag, context menu, label editor) off data-id/data-type.
+    // Bridge the two after every SVG install — without this, clicks find no
+    // [data-id] ancestor and every action silently no-ops.
+    function annotateSvg() {
+      const map = [
+        ['data-seldia-node-id', 'node'],
+        ['data-seldia-edge-id', 'edge'],
+        ['data-seldia-group-id', 'group'],
+      ];
+      for (const [attr, type] of map) {
+        document.querySelectorAll('#container [' + attr + ']').forEach((el) => {
+          el.setAttribute('data-id', el.getAttribute(attr));
+          el.setAttribute('data-type', type);
+        });
+      }
+    }
+
     function initFromIR() {
-      if (!irData) return;
+      nodePositions = {};
+      if (!irData || !Array.isArray(irData.nodes)) return;
       for (const n of irData.nodes) {
         nodePositions[n.id] = { x: n.x, y: n.y };
       }
     }
 
+    // Screen px → SVG user units. Accounts for BOTH the zoom transform and
+    // the CSS max-width scaling (getBoundingClientRect sees the composite).
+    // Without this, drag deltas were written back as raw screen pixels —
+    // off by the scale factor whenever the diagram wasn't at exactly 1:1.
+    function svgUnitsPerPixel() {
+      const svg = container.querySelector('svg');
+      if (!svg) return 1;
+      const vb = svg.viewBox && svg.viewBox.baseVal;
+      const rect = svg.getBoundingClientRect();
+      if (!vb || !vb.width || !rect.width) return 1;
+      return vb.width / rect.width;
+    }
+
     // ── Zoom & Pan ─────────────────────────────────────────────────────
     const container = document.getElementById('container');
 
-    container.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = Math.max(0.1, Math.min(5, scale * delta));
-      const rect = container.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      offsetX = mx - (mx - offsetX) * (newScale / scale);
-      offsetY = my - (my - offsetY) * (newScale / scale);
+    // Upper zoom bound derived from the SVG's natural size, so the scaled
+    // composited layer never exceeds ~8000px on a side. transform:scale
+    // promotes the SVG to its own GPU layer rasterized at full scale — a
+    // 3000px-wide diagram at 5x is a 15000px texture, and layers that size
+    // are exactly what tips Electron's compositor into the blank-webview
+    // state on Linux.
+    function maxScaleFor() {
+      const svg = container.querySelector('svg');
+      const vb = svg && svg.viewBox && svg.viewBox.baseVal;
+      if (!vb || !vb.width || !vb.height) return 5;
+      return Math.max(1, Math.min(5, 8000 / Math.max(vb.width, vb.height)));
+    }
+
+    // Zoom around a fixed point (cx, cy in container coordinates).
+    function zoomAt(cx, cy, factor) {
+      const newScale = Math.max(0.1, Math.min(maxScaleFor(), scale * factor));
+      offsetX = cx - (cx - offsetX) * (newScale / scale);
+      offsetY = cy - (cy - offsetY) * (newScale / scale);
       scale = newScale;
       applyTransform();
+    }
+
+    container.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      zoomAt(e.clientX - rect.left, e.clientY - rect.top, e.deltaY > 0 ? 0.9 : 1.1);
     });
 
     container.addEventListener('mousedown', (e) => {
@@ -601,8 +748,10 @@ export class SelDiAInteractiveProvider {
       }
     }
 
-    window.zoomIn = () => { scale = Math.min(scale * 1.3, 5); applyTransform(); };
-    window.zoomOut = () => { scale = Math.max(scale / 1.3, 0.1); applyTransform(); };
+    // Button zoom pivots on the container centre, not the origin — zooming
+    // around (0,0) walked the diagram off-screen with every click.
+    window.zoomIn = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1.3);
+    window.zoomOut = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1 / 1.3);
     window.resetZoom = () => { scale = 1; offsetX = 0; offsetY = 0; applyTransform(); };
     window.fitToScreen = () => {
       const svg = container.querySelector('svg');
@@ -620,7 +769,10 @@ export class SelDiAInteractiveProvider {
     };
 
     // ── Selection ──────────────────────────────────────────────────────
+    let suppressNextClick = false; // set on drag mouseup so the trailing click doesn't clear selection
+
     container.addEventListener('click', (e) => {
+      if (suppressNextClick) { suppressNextClick = false; return; }
       if (isPanning || e.button !== 0) return;
       const target = e.target.closest('[data-id]');
       if (target) {
@@ -640,7 +792,6 @@ export class SelDiAInteractiveProvider {
             edgeDrawSourceId = null;
             editMode = 'idle';
             document.getElementById('btnAddEdge').classList.remove('active');
-            vscode.postMessage({ type: 'editModeChanged', mode: 'idle' });
           }
           return;
         }
@@ -652,7 +803,6 @@ export class SelDiAInteractiveProvider {
           selectedEdgeId = id;
           target.setAttribute('data-selected', 'true');
         }
-        updateUI();
       } else {
         clearSelection();
       }
@@ -664,10 +814,11 @@ export class SelDiAInteractiveProvider {
       const id = target.getAttribute('data-id');
       const type = target.getAttribute('data-type');
       if (type === 'node') {
+        // Some node renderings carry their label OUTSIDE the <g> wrapper (or
+        // as paths) — open the editor with an empty seed instead of silently
+        // doing nothing, matching the context menu's Edit Label behavior.
         const textEl = target.querySelector('text');
-        if (textEl) {
-          openLabelEditor(target, textEl.textContent, id, 'node');
-        }
+        openLabelEditor(target, textEl ? textEl.textContent : '', id, 'node');
       } else if (type === 'edge') {
         const textEl = target.querySelector('text');
         if (textEl) {
@@ -679,6 +830,8 @@ export class SelDiAInteractiveProvider {
     });
 
     // ── Node Dragging ──────────────────────────────────────────────────
+    let dragUnitsPerPx = 1; // captured at drag start; scale can't change mid-drag
+
     container.addEventListener('mousedown', (e) => {
       if (e.button !== 0 || e.shiftKey || isPanning) return;
       const target = e.target.closest('[data-id][data-type="node"]');
@@ -687,6 +840,7 @@ export class SelDiAInteractiveProvider {
       dragNodeId = id;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
+      dragUnitsPerPx = svgUnitsPerPixel();
       isDragging = false;
     });
 
@@ -706,7 +860,9 @@ export class SelDiAInteractiveProvider {
       if (svg) {
         const el = svg.querySelector('[data-id="' + dragNodeId + '"]');
         if (el) {
-          el.setAttribute('transform', 'translate(' + dx + ', ' + dy + ')');
+          // The ghost translate is in SVG user units, so it must track the
+          // cursor exactly regardless of zoom / CSS scaling.
+          el.setAttribute('transform', 'translate(' + dx * dragUnitsPerPx + ', ' + dy * dragUnitsPerPx + ')');
         }
       }
     });
@@ -715,18 +871,17 @@ export class SelDiAInteractiveProvider {
       if (dragNodeId && isDragging) {
         const oldPos = nodePositions[dragNodeId];
         if (oldPos) {
-          const dx = e.clientX - dragStartX + oldPos.x;
-          const dy = e.clientY - dragStartY + oldPos.y;
-          const screenX = e.clientX;
-          const screenY = e.clientY;
+          const nx = oldPos.x + (e.clientX - dragStartX) * dragUnitsPerPx;
+          const ny = oldPos.y + (e.clientY - dragStartY) * dragUnitsPerPx;
           vscode.postMessage({
             type: 'nodeDragged',
             nodeId: dragNodeId,
             oldPosition: { x: oldPos.x, y: oldPos.y },
-            newPosition: { x: dx, y: dy },
+            newPosition: { x: nx, y: ny },
           });
-          nodePositions[dragNodeId] = { x: dx, y: dy };
+          nodePositions[dragNodeId] = { x: nx, y: ny };
         }
+        suppressNextClick = true; // the click event that follows must not clear the selection
       }
       dragNodeId = null;
       isDragging = false;
@@ -799,14 +954,26 @@ export class SelDiAInteractiveProvider {
         contextTargetId = null;
         contextTargetType = null;
       }
+      // Only show the entries that apply to what was clicked.
+      const scope = contextTargetType || 'canvas';
+      contextMenu.querySelectorAll('[data-scope]').forEach((item) => {
+        const scopes = item.getAttribute('data-scope').split(' ');
+        item.style.display = scopes.indexOf(scope) !== -1 ? '' : 'none';
+      });
       contextMenu.style.display = 'block';
-      contextMenu.style.left = e.clientX + 'px';
-      contextMenu.style.top = e.clientY + 'px';
+      contextMenu.style.left = Math.min(e.clientX, window.innerWidth - 180) + 'px';
+      contextMenu.style.top = Math.min(e.clientY, window.innerHeight - contextMenu.children.length * 30) + 'px';
     });
 
     document.addEventListener('click', (e) => {
       if (!contextMenu.contains(e.target)) {
         contextMenu.style.display = 'none';
+      }
+      const tm = document.getElementById('themeMenu');
+      const tb = document.getElementById('themeBtn');
+      if (tm && !tm.contains(e.target) && e.target !== tb) {
+        tm.style.display = 'none';
+        tb.setAttribute('aria-expanded', 'false');
       }
     });
 
@@ -833,8 +1000,13 @@ export class SelDiAInteractiveProvider {
           break;
         case 'edit-style':
           if (id) {
-            vscode.postMessage({ type: 'styleEdited', nodeId: id, stylePatch: {} });
+            // The extension host shows the QuickPick/InputBox and writes the
+            // resulting style patch back into the source.
+            vscode.postMessage({ type: 'requestStyleEdit', nodeId: id });
           }
+          break;
+        case 'add-node':
+          vscode.postMessage({ type: 'nodeAdded' });
           break;
         case 'add-connected-node':
           if (id) {
@@ -855,12 +1027,6 @@ export class SelDiAInteractiveProvider {
             }
           }
           break;
-        case 'change-shape':
-          // Cycle through shapes as a demo
-          if (id) {
-            vscode.postMessage({ type: 'shapeChanged', nodeId: id, oldShape: 'rect', newShape: 'diamond' });
-          }
-          break;
         case 'delete':
           if (id) {
             if (type === 'node') vscode.postMessage({ type: 'nodeDeleted', nodeId: id });
@@ -875,21 +1041,53 @@ export class SelDiAInteractiveProvider {
     window.handleRedo = () => { vscode.postMessage({ type: 'redoRequested' }); };
     window.handleAddNode = () => { vscode.postMessage({ type: 'nodeAdded' }); };
     window.handleAddEdge = () => {
-      if (!edgeDrawSourceId) {
-        // Enter edge drawing mode — next node click sets source
-        document.getElementById('btnAddEdge').classList.add('active');
-        vscode.postMessage({ type: 'editModeChanged', mode: 'drawing-edge' });
-      } else {
-        // Exit edge drawing mode
+      // Edge-draw mode is purely webview state — the old code posted an
+      // editModeChanged message the host never answered, so the button
+      // never actually entered the mode.
+      if (editMode === 'drawing-edge') {
+        editMode = 'idle';
         edgeDrawSourceId = null;
+        clearEdgeDrawSource();
         document.getElementById('btnAddEdge').classList.remove('active');
-        vscode.postMessage({ type: 'editModeChanged', mode: 'idle' });
+      } else {
+        editMode = 'drawing-edge';
+        document.getElementById('btnAddEdge').classList.add('active');
       }
     };
 
-    // ── Theme ──────────────────────────────────────────────────────────
-    document.getElementById('themeSelect').addEventListener('change', (e) => {
-      vscode.postMessage({ type: 'changeTheme', theme: e.target.value });
+    // ── Theme (custom dropdown; see the toolbar comment for why not a
+    //    native <select>) ────────────────────────────────────────────────
+    const themeBtn = document.getElementById('themeBtn');
+    const themeMenu = document.getElementById('themeMenu');
+    const THEME_LABELS = {
+      'sketchy-light': 'Sketchy Light', 'sketchy-dark': 'Sketchy Dark',
+      'clean-light': 'Clean Light', 'clean-dark': 'Clean Dark', 'mono': 'Mono',
+    };
+    let currentTheme = ${JSON.stringify(theme)};
+    function setThemeUI(t) {
+      currentTheme = t;
+      themeBtn.textContent = (THEME_LABELS[t] || t) + ' \\u25BE';
+      themeMenu.querySelectorAll('[data-theme-value]').forEach((i) => {
+        i.classList.toggle('selected', i.getAttribute('data-theme-value') === t);
+      });
+    }
+    setThemeUI(currentTheme);
+    themeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = themeMenu.style.display === 'block';
+      themeMenu.style.display = open ? 'none' : 'block';
+      themeBtn.setAttribute('aria-expanded', String(!open));
+    });
+    themeMenu.querySelectorAll('[data-theme-value]').forEach((item) => {
+      item.addEventListener('click', () => {
+        const t = item.getAttribute('data-theme-value');
+        themeMenu.style.display = 'none';
+        themeBtn.setAttribute('aria-expanded', 'false');
+        if (t !== currentTheme) {
+          setThemeUI(t);
+          vscode.postMessage({ type: 'changeTheme', theme: t });
+        }
+      });
     });
 
     // ── Export ─────────────────────────────────────────────────────────
@@ -907,6 +1105,10 @@ export class SelDiAInteractiveProvider {
 
     // ── Keyboard shortcuts ─────────────────────────────────────────────
     document.addEventListener('keydown', (e) => {
+      // While typing in the label editor, Delete/Backspace/undo belong to
+      // the text field — without this guard, a Backspace while renaming a
+      // selected node deleted the node out from under the editor.
+      if (document.activeElement === labelEditor) return;
       if (e.key === 'Escape') {
         clearSelection();
         labelEditor.style.display = 'none';
@@ -929,8 +1131,10 @@ export class SelDiAInteractiveProvider {
         vscode.postMessage({ type: 'redoRequested' });
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedNodeId || selectedEdgeId)) {
+        e.preventDefault();
         if (selectedNodeId) vscode.postMessage({ type: 'nodeDeleted', nodeId: selectedNodeId });
         if (selectedEdgeId) vscode.postMessage({ type: 'edgeDeleted', edgeId: selectedEdgeId });
+        clearSelection();
       }
     });
 
@@ -955,27 +1159,25 @@ export class SelDiAInteractiveProvider {
       }
       selectedNodeId = null;
       selectedEdgeId = null;
-      updateUI();
-    }
-
-    function updateUI() {
-      document.getElementById('btnUndo').disabled = false; // will be updated via sync
-      document.getElementById('btnRedo').disabled = false;
     }
 
     // ── Message Handler (from extension) ───────────────────────────────
+    let lastInstalledSvg = null; // first updateContent always installs
     window.addEventListener('message', (event) => {
       const msg = event.data;
       switch (msg.type) {
-        case 'render':
-          if (msg.ir) {
-            irData = msg.ir;
-            nodePositions = {};
-            initFromIR();
-          }
-          break;
         case 'updateContent': {
           // Incremental re-render: swap the diagram, keep zoom/pan/selection.
+          // An unchanged SVG is not re-installed: every innerHTML swap tears
+          // down and re-rasterizes the whole subtree, and pointless repaints
+          // feed the compositor instability this panel is trying to avoid.
+          if (msg.svg && msg.svg === lastInstalledSvg) {
+            const statsEl2 = document.querySelector('.toolbar .stats');
+            if (statsEl2 && msg.stats) statsEl2.textContent = msg.stats;
+            if (msg.ir) { irData = msg.ir; initFromIR(); }
+            break;
+          }
+          lastInstalledSvg = msg.svg || null;
           if (msg.svg) {
             container.innerHTML = msg.svg;
           } else {
@@ -990,10 +1192,11 @@ export class SelDiAInteractiveProvider {
           if (statsEl && msg.stats) statsEl.textContent = msg.stats;
           if (msg.ir) {
             irData = msg.ir;
-            nodePositions = {};
             initFromIR();
           }
-          // Re-apply the current zoom/pan to the fresh SVG and restore selection.
+          // Fresh SVG: re-bridge engine ids to the interaction attributes,
+          // re-apply the current zoom/pan and restore selection.
+          annotateSvg();
           applyTransform();
           if (selectedNodeId) {
             const sel = container.querySelector('[data-id="' + selectedNodeId + '"]');
@@ -1006,7 +1209,7 @@ export class SelDiAInteractiveProvider {
           break;
         }
         case 'updateTheme':
-          document.getElementById('themeSelect').value = msg.theme;
+          setThemeUI(msg.theme);
           break;
         case 'selectNode':
           clearSelection();
@@ -1035,68 +1238,39 @@ export class SelDiAInteractiveProvider {
   private handleMessage(msg: any): void {
     switch (msg.type) {
       case 'ready':
-        this._messenger.sendSyncUndoRedo(this._editHandler.canUndo(), this._editHandler.canRedo());
+        this.syncUndoRedo();
         break;
 
       case 'nodeDragged':
-        this._editHandler.handleNodeDrag(
-          msg.nodeId,
-          msg.oldPosition.x, msg.oldPosition.y,
-          msg.newPosition.x, msg.newPosition.y
-        );
+        void this.applyNodePosition(msg.nodeId, msg.newPosition.x, msg.newPosition.y);
         break;
 
-      case 'nodeDoubleClicked':
-        this._editHandler.handleNodeDoubleClick(msg.nodeId);
+      case 'labelEdited':
+        void this.handleLabelEdited(msg.nodeId, msg.edgeId, msg.newLabel);
         break;
-
-      case 'edgeDoubleClicked':
-        this._editHandler.handleEdgeDoubleClick(msg.edgeId);
-        break;
-
-      case 'labelEdited': {
-        if (msg.nodeId) {
-          this._editHandler.handleLabelEdit(msg.nodeId, msg.oldLabel, msg.newLabel);
-        } else if (msg.edgeId) {
-          // Edge label editing handled similarly
-        }
-        // Re-render to reflect label changes
-        this.render();
-        break;
-      }
 
       case 'nodeAdded':
-        this._editHandler.handleNodeAdd(msg.parentId, msg.connectFromId);
-        // Re-render
-        setTimeout(() => this.render(), 100);
+        void this.handleNodeAdded(msg.connectFromId);
         break;
 
       case 'nodeDeleted':
-        this._editHandler.handleNodeDelete(msg.nodeId);
-        setTimeout(() => this.render(), 100);
+        void this.handleNodeDeleted(msg.nodeId);
         break;
 
       case 'edgeAdded':
-        this._editHandler.handleEdgeAdd(msg.sourceId, msg.targetId);
-        setTimeout(() => this.render(), 100);
+        void this.handleEdgeAdded(msg.sourceId, msg.targetId);
         break;
 
       case 'edgeDeleted':
-        this._editHandler.handleEdgeDelete(msg.edgeId);
-        setTimeout(() => this.render(), 100);
-        break;
-
-      case 'edgeRerouted':
-        this._editHandler.handleEdgeReroute(msg.edgeId, msg.newSourceId, msg.newTargetId);
-        setTimeout(() => this.render(), 100);
+        void this.handleEdgeDeleted(msg.edgeId);
         break;
 
       case 'undoRequested':
-        this._editHandler.undo();
+        void this.undo();
         break;
 
       case 'redoRequested':
-        this._editHandler.redo();
+        void this.redo();
         break;
 
       case 'exportRequested':
@@ -1105,20 +1279,28 @@ export class SelDiAInteractiveProvider {
 
       case 'changeTheme':
         this._currentTheme = msg.theme;
-        this.render();
+        void this.render();
         break;
 
       case 'styleEdited':
-        this._editHandler.handleStyleEdit(msg.nodeId!, msg.stylePatch);
+        // Write the style keys straight into the node's attribute block —
+        // the old path (`handleStyleEdit` → onDslPatch at offset 0) inserted
+        // text at the top of the document and corrupted the source.
+        if (msg.nodeId && msg.stylePatch && Object.keys(msg.stylePatch).length > 0) {
+          void this.applyNodeAttrs(msg.nodeId, msg.stylePatch);
+        }
         break;
 
-      case 'shapeChanged':
-        // Shape changes handled via style
+      case 'requestStyleEdit': {
+        // Webview asked for the native color picker flow: prompt here (the
+        // webview can't show QuickPick), then round-trip the patch.
+        void this.promptStyleEdit(msg.nodeId);
         break;
+      }
 
       case 'viewModeChanged':
         this._viewMode = msg.mode;
-        this.render();
+        void this.render();
         break;
 
       case 'zoomChanged':
@@ -1127,29 +1309,6 @@ export class SelDiAInteractiveProvider {
   }
 
   // ── DSL Patch Application ─────────────────────────────────────────────
-
-  /** Apply a `(text, offset, deleteLength)` patch — as produced by label
-   *  edits, node/edge add/delete, reroute, and resize in edit-handler.ts —
-   *  to the real document via a WorkspaceEdit at the correct offset.
-   *
-   *  Previously this either replaced the *entire* document with '' and
-   *  inserted the patch text at position 0 (the `deleteLength > 0` branch,
-   *  which discarded everything outside the intended range), or, for a pure
-   *  insert (`deleteLength === 0`, e.g. add-node), silently reassigned
-   *  `this._currentSource` without ever calling `applyEdit` — so nothing
-   *  reached the document at all. Both paths are replaced with a single
-   *  offset-accurate edit against `document.positionAt`, mirroring how
-   *  `SelDiAEditorProvider`'s `codeEdit` handler already talks to the
-   *  document elsewhere in this codebase. */
-  /** In block mode, translate an offset relative to the fence source into an
-   *  absolute offset in the Markdown document. Returns undefined if the fence
-   *  can no longer be located (edit is dropped rather than mis-applied). */
-  private blockBaseOffset(document: vscode.TextDocument): number | undefined {
-    const block = this.locateBlock(document.getText());
-    if (!block) return undefined;
-    // The fence source starts at the beginning of sourceStartLine.
-    return document.offsetAt(new vscode.Position(block.sourceStartLine, 0));
-  }
 
   /** After a write-back into the fence, the block's hash-derived id changes;
    *  re-derive it from the fresh document so the next lookup still finds it. */
@@ -1169,33 +1328,186 @@ export class SelDiAInteractiveProvider {
     }
   }
 
-  private async applyDslPatch(edit: string, offset: number, deleteLength: number): Promise<void> {
-    if (!this._sourceUri) return;
+  /** Ground truth for every edit: the live document, the DSL source the
+   *  patchers should run against (fence contents in block mode, whole file
+   *  otherwise), and the base offset that translates patch offsets into
+   *  document offsets. Returns undefined when the fence can no longer be
+   *  located (the edit is dropped rather than mis-applied). */
+  private async groundTruth(): Promise<{ document: vscode.TextDocument; source: string; base: number } | undefined> {
+    if (!this._sourceUri) return undefined;
     const document = await vscode.workspace.openTextDocument(this._sourceUri);
+    const text = document.getText();
+    if (!this._blockId) return { document, source: text, base: 0 };
+    const block = this.locateBlock(text);
+    if (!block) return undefined;
+    return {
+      document,
+      source: block.source,
+      base: document.offsetAt(new vscode.Position(block.sourceStartLine, 0)),
+    };
+  }
 
-    // Block mode: `offset` is relative to the fence contents — shift it to
-    // the fence's position inside the Markdown document.
-    let base = 0;
-    if (this._blockId) {
-      const b = this.blockBaseOffset(document);
-      if (b === undefined) return; // fence gone — drop the edit, never guess
-      base = b;
-    }
+  /** Apply source-relative `TextEdit`s in one WorkspaceEdit, recording an
+   *  undo snapshot of the pre-edit source. All the visual-edit paths funnel
+   *  through here so undo/redo and block-identity refresh stay consistent. */
+  private async applySourceEdits(
+    gt: { document: vscode.TextDocument; source: string; base: number },
+    edits: TextEdit[]
+  ): Promise<void> {
+    if (edits.length === 0) return;
+    this._undoStack.push(gt.source);
+    if (this._undoStack.length > 50) this._undoStack.shift();
+    this._redoStack = [];
 
     const workspaceEdit = new vscode.WorkspaceEdit();
-    const startPos = document.positionAt(base + offset);
-    if (deleteLength > 0) {
-      const endPos = document.positionAt(base + offset + deleteLength);
-      workspaceEdit.replace(this._sourceUri, new vscode.Range(startPos, endPos), edit);
-    } else {
-      workspaceEdit.insert(this._sourceUri, startPos, edit);
+    for (const e of edits) {
+      const startPos = gt.document.positionAt(gt.base + e.start);
+      const endPos = gt.document.positionAt(gt.base + e.end);
+      workspaceEdit.replace(this._sourceUri!, new vscode.Range(startPos, endPos), e.text);
     }
     await vscode.workspace.applyEdit(workspaceEdit);
     if (this._blockId) {
-      this.refreshBlockIdentity(document);
+      this.refreshBlockIdentity(gt.document);
     } else {
-      this._currentSource = document.getText();
+      this._currentSource = gt.document.getText();
     }
+    this.syncUndoRedo();
+  }
+
+  // ── Undo / Redo (source snapshots) ────────────────────────────────────
+
+  private syncUndoRedo(): void {
+    this._messenger.sendSyncUndoRedo(this._undoStack.length > 0, this._redoStack.length > 0);
+  }
+
+  /** Replace the edited source (fence contents or whole file) with `text`
+   *  via a WorkspaceEdit. Used by undo/redo restore. */
+  private async restoreSource(text: string): Promise<void> {
+    const gt = await this.groundTruth();
+    if (!gt) return;
+    const workspaceEdit = new vscode.WorkspaceEdit();
+    workspaceEdit.replace(
+      this._sourceUri!,
+      new vscode.Range(gt.document.positionAt(gt.base), gt.document.positionAt(gt.base + gt.source.length)),
+      text
+    );
+    await vscode.workspace.applyEdit(workspaceEdit);
+    if (this._blockId) {
+      this.refreshBlockIdentity(gt.document);
+    } else {
+      this._currentSource = gt.document.getText();
+    }
+  }
+
+  private async undo(): Promise<void> {
+    const prev = this._undoStack.pop();
+    if (prev === undefined) return;
+    const gt = await this.groundTruth();
+    if (gt) this._redoStack.push(gt.source);
+    await this.restoreSource(prev);
+    this.syncUndoRedo();
+  }
+
+  private async redo(): Promise<void> {
+    const next = this._redoStack.pop();
+    if (next === undefined) return;
+    const gt = await this.groundTruth();
+    if (gt) this._undoStack.push(gt.source);
+    await this.restoreSource(next);
+    this.syncUndoRedo();
+  }
+
+  // ── Visual edit handlers ──────────────────────────────────────────────
+
+  /** A visual edit couldn't be mapped onto a source line (implicit nodes in
+   *  state/mindmap/wireframe blocks, hand-restructured fences, …). Dropping
+   *  it is correct — guessing corrupts the document — but it must never be
+   *  SILENT: an edit that visibly does nothing reads as "the panel is
+   *  broken". */
+  private editSkipped(what: string): void {
+    vscode.window.setStatusBarMessage(`SelDiA: ${what} — edit skipped`, 5000);
+  }
+
+  /** Edge id (`edge-<src>-<tgt>`, ids may contain '-') → endpoints, resolved
+   *  against the laid-out IR rather than by string-splitting. */
+  private edgeEndpoints(edgeId: string): { sourceId: string; targetId: string } | undefined {
+    const e = this._positionedIr?.edges.find((x) => x.id === edgeId);
+    return e ? { sourceId: e.sourceId, targetId: e.targetId } : undefined;
+  }
+
+  private async handleLabelEdited(nodeId: string | undefined, edgeId: string | undefined, newLabel: string): Promise<void> {
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    let edit: TextEdit | undefined;
+    if (nodeId) {
+      edit = computeLabelEdit(gt.source, nodeId, newLabel);
+    } else if (edgeId) {
+      const ep = this.edgeEndpoints(edgeId);
+      if (ep) edit = computeEdgeLabelEdit(gt.source, ep.sourceId, ep.targetId, newLabel);
+    }
+    if (edit) await this.applySourceEdits(gt, [edit]);
+    else this.editSkipped(`no source line found for '${nodeId ?? edgeId}'`);
+  }
+
+  private async handleNodeAdded(connectFromId?: string): Promise<void> {
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    const ids = new Set((this._positionedIr?.nodes ?? []).map((n) => n.id));
+    let n = ids.size + 1;
+    while (ids.has(`node${n}`)) n++;
+    const nodeId = `node${n}`;
+    let stmt = `    ${nodeId}: [New Node ${n}]`;
+    if (connectFromId) stmt += `\n    ${connectFromId} --> ${nodeId}`;
+    const edit = computeAppendStatementEdit(gt.source, stmt);
+    if (edit) await this.applySourceEdits(gt, [edit]);
+    else this.editSkipped('no closing brace to insert before');
+  }
+
+  private async handleNodeDeleted(nodeId: string): Promise<void> {
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    const edits = computeNodeDeleteEdits(gt.source, nodeId);
+    if (edits.length) await this.applySourceEdits(gt, edits);
+    else this.editSkipped(`no source line found for '${nodeId}'`);
+  }
+
+  private async handleEdgeAdded(sourceId: string, targetId: string): Promise<void> {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    const edit = computeAppendStatementEdit(gt.source, `    ${sourceId} --> ${targetId}`);
+    if (edit) await this.applySourceEdits(gt, [edit]);
+    else this.editSkipped('no closing brace to insert before');
+  }
+
+  private async handleEdgeDeleted(edgeId: string): Promise<void> {
+    const ep = this.edgeEndpoints(edgeId);
+    if (!ep) { this.editSkipped(`unknown edge '${edgeId}'`); return; }
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    const edit = computeEdgeDeleteEdit(gt.source, ep.sourceId, ep.targetId);
+    if (edit) await this.applySourceEdits(gt, [edit]);
+    else this.editSkipped(`no source line found for edge '${ep.sourceId} -> ${ep.targetId}'`);
+  }
+
+  /** "Edit Style" flow: QuickPick a property (fill / stroke / text color),
+   *  prompt for a color, write it into the node's attribute block. */
+  private async promptStyleEdit(nodeId: string): Promise<void> {
+    const prop = await vscode.window.showQuickPick(
+      [
+        { label: 'Fill color', key: 'fill' },
+        { label: 'Border (stroke) color', key: 'stroke' },
+        { label: 'Text color', key: 'textColor' },
+      ],
+      { placeHolder: `Style property for '${nodeId}'` }
+    );
+    if (!prop) return;
+    const value = await vscode.window.showInputBox({
+      prompt: `${prop.label} for '${nodeId}' (CSS color, e.g. #ff8800 or steelblue)`,
+      validateInput: (v) => (v.trim() ? undefined : 'Enter a color value'),
+    });
+    if (!value) return;
+    await this.applyNodeAttrs(nodeId, { [prop.key]: value.trim() });
   }
 
   /** Write a dragged node's new position back into its declaration.
@@ -1211,42 +1523,31 @@ export class SelDiAInteractiveProvider {
    *  always reads from the document) regenerated the auto layout and threw
    *  the drag away. */
   private async applyNodePosition(nodeId: string, x: number, y: number): Promise<void> {
-    if (!this._sourceUri) return;
-    const document = await vscode.workspace.openTextDocument(this._sourceUri);
+    await this.applyNodeAttrs(nodeId, { x: Math.round(x), y: Math.round(y) });
+  }
 
-    // Block mode: compute the patch against the fence contents (that's the
-    // DSL the node declaration lives in), then shift the resulting range to
-    // the fence's position inside the Markdown document.
-    let base = 0;
-    let source = document.getText();
-    if (this._blockId) {
-      const block = this.locateBlock(source);
-      if (!block) return; // fence gone — drop the edit, never guess
-      base = document.offsetAt(new vscode.Position(block.sourceStartLine, 0));
-      source = block.source;
-    }
-
-    const edit = computePositionEdit(source, nodeId, x, y);
-    if (!edit) return; // Node declaration not found by the line heuristic — leave the source untouched.
-
-    const workspaceEdit = new vscode.WorkspaceEdit();
-    const startPos = document.positionAt(base + edit.start);
-    const endPos = document.positionAt(base + edit.end);
-    workspaceEdit.replace(this._sourceUri, new vscode.Range(startPos, endPos), edit.text);
-    await vscode.workspace.applyEdit(workspaceEdit);
-    if (this._blockId) {
-      this.refreshBlockIdentity(document);
-    } else {
-      this._currentSource = document.getText();
-    }
+  /** Merge attribute key/values (position, fill/stroke from Edit Style, …)
+   *  into the node's declaration via the same ground-truth read +
+   *  fence-offset translation + single WorkspaceEdit as drags. */
+  private async applyNodeAttrs(nodeId: string, attrs: Record<string, string | number>): Promise<void> {
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; } // fence gone — never guess
+    const edit = computeAttrEdit(gt.source, nodeId, attrs);
+    if (!edit) { this.editSkipped(`no declaration line found for '${nodeId}'`); return; }
+    await this.applySourceEdits(gt, [edit]);
   }
 
   dispose(): void {
+    if (this._disposed) return; // re-entrant: panel.dispose() below re-fires onDidDispose
+    this._disposed = true;
+    if (this._renderTimer) {
+      clearTimeout(this._renderTimer);
+      this._renderTimer = null;
+    }
     const key = this._registryKey ?? SelDiAInteractiveProvider.keyFor(this._sourceUri ?? undefined);
     if (SelDiAInteractiveProvider.panels.get(key) === this) {
       SelDiAInteractiveProvider.panels.delete(key);
     }
-    this._editHandler.reset();
     this._panel.dispose();
     while (this._disposables.length) {
       const d = this._disposables.pop();

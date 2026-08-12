@@ -189,6 +189,32 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     expect(out).toContain('data-seldia-source-format="mermaid"');
   });
 
+  it('intercepts ```plantuml fences and renders them through the engine', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine)(md);
+    const out = md.renderer.rules.fence(
+      [{ info: 'plantuml', content: '@startuml\nAlice -> Bob: hello\n@enduml' }],
+      0, {}, {}, {}
+    );
+    expect(out).toContain('seldia-diagram');
+    expect(out).toContain('<svg');
+    expect(out).toContain('data-seldia-source-format="plantuml"');
+  });
+
+  it('falls back to the default fence for PlantUML it cannot import', () => {
+    const md = makeMd();
+    const fallback = vi.fn(() => '<pre><code>original</code></pre>');
+    md.renderer.rules.fence = fallback;
+    createSelDiAMarkdownItPlugin(engine)(md);
+    // @startjson is a real PlantUML block with no diagram IR by design, so it
+    // exercises the same degrade-to-plain-fence contract as Mermaid's journey.
+    const tokens = [{ info: 'puml', content: '@startjson\n{ "a": 1 }\n@endjson' }];
+    const out = md.renderer.rules.fence(tokens, 0, {}, {}, {});
+    expect(fallback).toHaveBeenCalled();
+    expect(out).toBe('<pre><code>original</code></pre>');
+    expect(out).not.toContain('seldia-error');
+  });
+
   // The safety property that makes shipping this defensible: for Mermaid we
   // can't render, the block must come out exactly as it would have without
   // SelDiA installed — a plain code fence, not a SelDiA error box.

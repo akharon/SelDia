@@ -82,9 +82,9 @@ describe('seldia export --to bpmn / sql-ddl', () => {
     expect(readFileSync(outPath, 'utf-8')).toContain('<bpmn:definitions');
   });
 
-  it('lists all three supported targets on an unsupported --to', () => {
+  it('lists all supported targets on an unsupported --to', () => {
     const { stderr, status } = run(['export', flowchartFile, '--to', 'graphml']);
     expect(status).not.toBe(0);
-    expect(stderr).toMatch(/mermaid, bpmn, sql-ddl/);
+    expect(stderr).toMatch(/mermaid, plantuml, bpmn, sql-ddl/);
   });
 });

@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { Command } from 'commander';
-import { createEngine, importMermaid, exportMermaid, exportBpmn, exportSqlDdl, diffDiagrams, BUILTIN_PALETTES } from '@seldia/core';
+import { createEngine, importMermaid, importPlantUml, exportMermaid, exportPlantUml, exportBpmn, exportSqlDdl, diffDiagrams, BUILTIN_PALETTES } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename, join, relative as pathRelative } from 'path';
 import { scanRepo } from './scan.js';
@@ -100,52 +100,64 @@ program
     }
   });
 
-// ── mermaid ───────────────────────────────────────────────────────────────────
-// Render a Mermaid file through SelDiA's engine. No conversion step, no new
-// file to maintain: the .mmd stays the source of truth and SelDiA is just the
-// renderer. That is the whole pitch, reduced to one command.
-program
-  .command('mermaid')
-  .description('Render a Mermaid (.mmd) file to SVG using the SelDiA engine')
-  .argument('<file>', 'Path to .mmd/.mermaid file')
-  .option('-o, --output <path>', 'Output path')
-  .option('--theme <name>', 'Theme name', 'sketchy-light')
-  .action((file, options) => {
-    const inPath = resolve(process.cwd(), file);
-    if (!existsSync(inPath)) {
-      console.error(`❌ File not found: ${inPath}`);
-      process.exit(1);
-    }
+// ── mermaid / plantuml ───────────────────────────────────────────────────────
+// Render a foreign-format file through SelDiA's engine. No conversion step, no
+// new file to maintain: the .mmd/.puml stays the source of truth and SelDiA is
+// just the renderer. That is the whole pitch, reduced to one command per
+// format — and the two are the same command, because both importers are
+// frontends onto the same IR.
+function registerImportRenderCommand(
+  name: string,
+  formatLabel: string,
+  extensions: string,
+  load: (source: string) => { ir?: any; diagnostics: Array<{ line: number; message: string }> },
+) {
+  program
+    .command(name)
+    .description(`Render a ${formatLabel} (${extensions}) file to SVG using the SelDiA engine`)
+    .argument('<file>', `Path to ${extensions} file`)
+    .option('-o, --output <path>', 'Output path')
+    .option('--theme <name>', 'Theme name', 'sketchy-light')
+    .action((file, options) => {
+      const inPath = resolve(process.cwd(), file);
+      if (!existsSync(inPath)) {
+        console.error(`❌ File not found: ${inPath}`);
+        process.exit(1);
+      }
 
-    const source = readFileSync(inPath, 'utf-8');
-    const { ir, diagnostics } = importMermaid(source);
+      const source = readFileSync(inPath, 'utf-8');
+      const { ir, diagnostics } = load(source);
 
-    // Diagnostics are worth printing even on success — they say what the
-    // importer approximated, which is exactly the trust question a user has
-    // when handing their diagram to a different renderer.
-    for (const d of diagnostics) console.warn(`⚠️  Line ${d.line}: ${d.message}`);
+      // Diagnostics are worth printing even on success — they say what the
+      // importer approximated, which is exactly the trust question a user has
+      // when handing their diagram to a different renderer.
+      for (const d of diagnostics) console.warn(`⚠️  Line ${d.line}: ${d.message}`);
 
-    if (!ir) {
-      console.error('❌ Could not import this Mermaid diagram.');
-      process.exit(1);
-    }
+      if (!ir) {
+        console.error(`❌ Could not import this ${formatLabel} diagram.`);
+        process.exit(1);
+      }
 
-    const engine = createEngine({ config: { defaultTheme: options.theme, render: { theme: options.theme } } });
-    const result = engine.compileIRSync(ir);
-    if (!result.ok) {
-      console.error('❌ Rendering failed:');
-      for (const err of result.errors) console.error(`   ${err.message}`);
-      process.exit(1);
-    }
+      const engine = createEngine({ config: { defaultTheme: options.theme, render: { theme: options.theme } } });
+      const result = engine.compileIRSync(ir);
+      if (!result.ok) {
+        console.error('❌ Rendering failed:');
+        for (const err of result.errors) console.error(`   ${err.message}`);
+        process.exit(1);
+      }
 
-    const outPath = options.output
-      ? resolve(process.cwd(), options.output)
-      : resolve(dirname(inPath), basename(inPath, extname(inPath)) + '.svg');
-    writeFileSync(outPath, result.value.svg);
-    console.log(`✅ Rendered ${ir.type} from Mermaid`);
-    console.log(`   Output: ${outPath}`);
-    console.log(`   Nodes: ${result.value.stats.nodeCount}, Edges: ${result.value.stats.edgeCount}`);
-  });
+      const outPath = options.output
+        ? resolve(process.cwd(), options.output)
+        : resolve(dirname(inPath), basename(inPath, extname(inPath)) + '.svg');
+      writeFileSync(outPath, result.value.svg);
+      console.log(`✅ Rendered ${ir.type} from ${formatLabel}`);
+      console.log(`   Output: ${outPath}`);
+      console.log(`   Nodes: ${result.value.stats.nodeCount}, Edges: ${result.value.stats.edgeCount}`);
+    });
+}
+
+registerImportRenderCommand('mermaid', 'Mermaid', '.mmd/.mermaid', importMermaid);
+registerImportRenderCommand('plantuml', 'PlantUML', '.puml/.plantuml/.iuml/.wsd', importPlantUml);
 
 // ── render ────────────────────────────────────────────────────────────────────
 // Repository-wide batch render: finds every standalone .sld file and every
@@ -208,14 +220,14 @@ function relativeLabel(from: string, to: string): string {
 }
 
 // ── export ────────────────────────────────────────────────────────────────────
-// Convert a .sld file to Mermaid text. Parse → analyze → transform mirrors
-// engine.compileSync's own pipeline, just stopping before layout/render since
-// exportMermaid works on IR, not SVG.
+// Convert a .sld file to another format's text. Parse → analyze → transform
+// mirrors engine.compileSync's own pipeline, just stopping before
+// layout/render since the exporters work on IR, not SVG.
 program
   .command('export')
   .description('Export a .sld file to another diagram format')
   .argument('<file>', 'Path to .sld file')
-  .requiredOption('--to <format>', 'Target format: mermaid, bpmn, sql-ddl')
+  .requiredOption('--to <format>', 'Target format: mermaid, plantuml, bpmn, sql-ddl')
   .option('-o, --output <path>', 'Output file path (defaults to stdout)')
   .action((file, options) => {
     const inPath = resolve(process.cwd(), file);
@@ -223,13 +235,15 @@ program
 
     const EXPORTERS: Record<string, (ir: any) => string | null> = {
       mermaid: exportMermaid,
+      plantuml: exportPlantUml,
+      puml: exportPlantUml,
       bpmn: exportBpmn,
       'sql-ddl': exportSqlDdl,
     };
     const exporter = EXPORTERS[options.to];
     if (!exporter) {
       console.error(`❌ Unsupported export target: ${options.to}`);
-      console.error('   Supported targets: mermaid, bpmn, sql-ddl');
+      console.error('   Supported targets: mermaid, plantuml, bpmn, sql-ddl');
       process.exit(1);
     }
 

@@ -73,8 +73,25 @@ describe('seldia export', () => {
     expect(stderr).toMatch(/cannot be exported to Mermaid/i);
   });
 
+  it('exports a flowchart to PlantUML', () => {
+    const outPath = join(dir, 'flow.puml');
+    const { status } = run(['export', flowchartFile, '--to', 'plantuml', '-o', outPath]);
+    expect(status).toBe(0);
+    expect(existsSync(outPath)).toBe(true);
+    const puml = readFileSync(outPath, 'utf-8');
+    expect(puml).toContain('@startuml');
+    expect(puml).toContain('@enduml');
+  });
+
+  it('accepts "puml" as an alias for the plantuml target', () => {
+    const outPath = join(dir, 'flow-alias.puml');
+    const { status } = run(['export', flowchartFile, '--to', 'puml', '-o', outPath]);
+    expect(status).toBe(0);
+    expect(readFileSync(outPath, 'utf-8')).toContain('@startuml');
+  });
+
   it('exits non-zero for an unsupported --to target', () => {
-    const { stderr, status } = run(['export', flowchartFile, '--to', 'plantuml']);
+    const { stderr, status } = run(['export', flowchartFile, '--to', 'graphml']);
     expect(status).not.toBe(0);
     expect(stderr).toMatch(/Unsupported export target/i);
   });

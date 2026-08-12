@@ -1,0 +1,38 @@
+@startuml
+title Billing schema
+
+entity Customer {
+  * id : uuid <<PK>>
+  --
+  * email : varchar
+  name : varchar
+  created_at : timestamp
+}
+
+entity Subscription {
+  * id : uuid <<PK>>
+  --
+  * customer_id : uuid <<FK>>
+  * plan_id : uuid <<FK>>
+  status : varchar
+}
+
+entity Plan {
+  * id : uuid <<PK>>
+  --
+  * name : varchar
+  price_cents : int
+}
+
+entity Invoice {
+  * id : uuid <<PK>>
+  --
+  * subscription_id : uuid <<FK>>
+  amount_cents : int
+  issued_at : timestamp
+}
+
+Customer ||--o{ Subscription
+Plan ||--o{ Subscription
+Subscription ||--o{ Invoice
+@enduml

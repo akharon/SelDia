@@ -1,0 +1,26 @@
+@startuml
+title Release process
+
+start
+:Cut release branch;
+:Run test suite;
+if (Tests green?) then (yes)
+  :Build artifacts;
+  fork
+    :Publish npm package;
+  fork again
+    :Publish container image;
+  end fork
+  :Tag release;
+  if (Prod deploy approved?) then (yes)
+    :Deploy to production;
+    :Announce release;
+  else (no)
+    :Hold at staging;
+  endif
+else (no)
+  :Open bug ticket;
+  :Abort release;
+endif
+stop
+@enduml

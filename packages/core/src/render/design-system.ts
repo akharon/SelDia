@@ -69,6 +69,10 @@ export interface PaletteOverride {
   neutralText?: string;
   neutralMuted?: string;
   neutralFill?: string;
+  /** Card/panel surface — the ground that neutralText is read against. A dark
+   *  palette MUST set this alongside neutralText, or renderers that paint a
+   *  surface (work-item cards) end up with light text on white. */
+  neutralSurface?: string;
 }
 
 let activeOverride: PaletteOverride | undefined;
@@ -133,7 +137,7 @@ export const DS = {
       edge: o?.edgeStroke ?? '#64748b',
       fill: o?.neutralFill ?? '#f6f8fb',
       stroke: '#94a3b8',
-      surface: '#ffffff',
+      surface: o?.neutralSurface ?? '#ffffff',
     };
   },
 } as const;
@@ -255,6 +259,7 @@ export const BUILTIN_PALETTES: Record<string, PaletteOverride> = {
     neutralText: '#e2e8f0',
     neutralMuted: '#94a3b8',
     neutralFill: '#1e293b',
+    neutralSurface: '#172033',
   },
   'high-contrast': {
     nodeStroke: '#000000',
@@ -265,6 +270,7 @@ export const BUILTIN_PALETTES: Record<string, PaletteOverride> = {
     neutralText: '#000000',
     neutralMuted: '#000000',
     neutralFill: '#ffffff',
+    neutralSurface: '#ffffff',
   },
 };
 

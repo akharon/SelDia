@@ -34,7 +34,7 @@ The wedge is *drift*, not drawing. See [docs/market.md](docs/market.md) for the 
 - 🔀 **Runs other formats** — Mermaid in, rendered through SelDiA's engine; export back out so it still renders natively on GitHub
 - 🧠 **A real IR** — a typed intermediate representation between text and pixels, so diagrams are queryable and mutable, not just drawable
 - 🤖 **Agent-facing** — LSP diagnostics mean a model can be told it's wrong and self-correct, instead of rendering garbage silently
-- 🎨 **30 diagram types** — Flowchart, Sequence, Class, C4 (4 levels), BPMN, DMN, State, ER, Gantt, Mindmap, Sankey, Gitgraph, and more
+- 🎨 **31 diagram types** — Flowchart, Sequence, Class, C4 (4 levels), BPMN, DMN, State, ER, Gantt, Mindmap, Sankey, Gitgraph, Work Items, and more
 - ✏️ **Hand-drawn style** — Rough.js sketchy rendering, or smooth fallback
 - 📐 **Smart layout** — Dagre hierarchical layout, d3-force for network graphs
 - 🔧 **VS Code extension** — Syntax highlighting, LSP, live preview, interactive editing

@@ -1,13 +1,12 @@
 {
   "name": "seldia",
-  "version": "1.36.0",
+  "version": "1.40.0",
   "private": true,
   "description": "Self-Diagramming Architecture — A unified text-based Diagram-as-Code tool",
   "workspaces": [
     "packages/core",
     "packages/interaction",
     "packages/cli",
-    "packages/mcp",
     "packages/web",
     "packages/vscode-ext"
   ],

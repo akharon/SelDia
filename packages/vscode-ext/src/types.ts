@@ -166,6 +166,7 @@ export type WebviewToExtMessage =
   | WebviewMsgEdgeDoubleClicked
   | WebviewMsgLabelEdited
   | WebviewMsgStyleEdited
+  | WebviewMsgRequestStyleEdit
   | WebviewMsgShapeChanged
   | WebviewMsgNodeAdded
   | WebviewMsgNodeDeleted
@@ -213,6 +214,13 @@ export interface WebviewMsgStyleEdited {
   edgeId?: ID;
   groupId?: ID;
   stylePatch: Record<string, unknown>;
+}
+
+/** Webview asks the extension host to run the Edit Style QuickPick flow
+ *  (the webview itself has no access to native pickers). */
+export interface WebviewMsgRequestStyleEdit {
+  type: 'requestStyleEdit';
+  nodeId: ID;
 }
 
 export interface WebviewMsgShapeChanged {

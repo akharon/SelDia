@@ -23,9 +23,12 @@ export { createEngine } from './engine.js';
 // Importers — other diagram formats as engine inputs
 export type { MermaidImportResult, MermaidImportDiagnostic } from './import/mermaid.js';
 export { importMermaid, isMermaidSource } from './import/mermaid.js';
+export type { PlantUmlImportResult, PlantUmlImportDiagnostic } from './import/plantuml.js';
+export { importPlantUml, isPlantUmlSource } from './import/plantuml.js';
 
 // Exporters — IR back out to other diagram formats
 export { exportMermaid, isMermaidExportable } from './export/mermaid.js';
+export { exportPlantUml, isPlantUmlExportable } from './export/plantuml.js';
 export { exportBpmn, isBpmnExportable } from './export/bpmn.js';
 export { exportSqlDdl, isSqlDdlExportable } from './export/sql-ddl.js';
 

@@ -1,6 +1,6 @@
 ---
 name: seldia-dsl
-description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 23 types: flowchart, sequence, class, er, state, c4 (context/container/component), bpmn, dmn, component, usecase, activity, deployment, gantt, mindmap, network, chart (bar/line/pie/radar/scatter), gitgraph, form, sankey, block, timeline, wireframe, cloud. Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
+description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 24 types: flowchart, sequence, class, er, state, c4 (context/container/component), bpmn, dmn, component, usecase, activity, deployment, gantt, mindmap, network, chart (bar/line/pie/radar/scatter), gitgraph, form, sankey, block, timeline, wireframe, cloud, workitem. Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
 argument-hint: '[diagram description or .seldia file path]'
 user-invocable: true
 disable-model-invocation: false
@@ -35,6 +35,7 @@ When the user asks to create or modify a diagram, or to write `.seldia`/`.sld` f
 | Events | `time` (`timeline`) |
 | UI mockups | `wireframe` |
 | Cloud/AWS topology | `cloud` |
+| Requirements & traceability | `wi` (`workitem`) |
 
 ## Grammar
 
@@ -491,6 +492,69 @@ cloud "Web Application on AWS" {
     lb -> api
     api -> db
     api -> queue
+}
+```
+
+### Work Items (requirements, decisions, tests, stories)
+
+Traceability documents: requirements, design decisions, tests, capabilities,
+features, stories and risks. Each item's `type:` picks which **sections** it may
+carry — a decision has `rationale`/`alternatives`/`consequences`, a story has
+`acceptance`/`estimation`, a risk has `impact`/`likelihood`/`mitigation`. Every
+type also has `description`/`status`/`owner`. A field that is not a section of
+that type is dropped and reported, so check the type before inventing one.
+
+Edge labels are **typed links**, not free text: `refines`, `satisfies`,
+`verifies`, `derives`, `decides`, `conflicts`, `mitigates`, `depends`. The
+schema enforces them — only a `test` may `verifies`, and `satisfies` must point
+at a requirement or capability. Requirements and capabilities with no test
+verifying them are reported as gaps. All findings are warnings; the diagram
+still renders.
+
+```seldia
+wi "Payments traceability" {
+    CAP1 [Customers can pay] {
+        type: capability
+        outcome: "Revenue is collected without manual intervention."
+        measure: "Payment success rate above 98%"
+    }
+    REQ1 [Card payments are accepted] {
+        type: requirement
+        description: "A customer pays with a credit or debit card at checkout."
+        justification: "Cards are 85% of attempted payments."
+        priority: high
+        status: approved
+    }
+    ADR1 [Use a hosted payment page] {
+        type: decision
+        rationale: "Keeps card data off our servers, reducing PCI scope."
+        alternatives: "Self-hosted form with tokenisation."
+        status: accepted
+    }
+    STORY1 [Pay with a saved card] {
+        type: story
+        acceptance: "Given a saved card, confirming pays the order."
+        estimation: 5
+    }
+    TEST1 [Card payment succeeds] {
+        type: test
+        given: "A basket of one item and a valid test card"
+        expected: "Order marked paid"
+        result: passing
+    }
+    RISK1 [Gateway outage stops revenue] {
+        type: risk
+        impact: high
+        likelihood: low
+        mitigation: "Queue authorisations and retry."
+    }
+
+    REQ1 -> CAP1: refines
+    ADR1 -> REQ1: decides
+    STORY1 -> REQ1: satisfies
+    TEST1 -> REQ1: verifies
+    TEST1 -> CAP1: verifies
+    ADR1 -> RISK1: mitigates
 }
 ```
 

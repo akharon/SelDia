@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
 # SelDiA — Build Script
-# Usage: ./scripts/build.sh [--watch] [--clean] [--scope <package>]
+# Usage: ./scripts/build.sh [--watch] [--clean] [--scope <package>] [--strict]
 #
 # Builds all packages or a specific scope in the monorepo.
-# Supports: --watch (dev mode), --clean (full rebuild), --scope (single pkg)
+# Supports: --watch (dev mode), --clean (full rebuild), --scope (single pkg),
+#           --strict (type errors fail the build instead of only warning)
 # =============================================================================
 
 set -euo pipefail
@@ -15,6 +16,7 @@ cd "$ROOT_DIR"
 WATCH=false
 CLEAN=false
 SCOPE=""
+STRICT=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -22,7 +24,8 @@ while [[ $# -gt 0 ]]; do
     --watch|-w)    WATCH=true; shift ;;
     --clean|-c)    CLEAN=true; shift ;;
     --scope|-s)    SCOPE="$2"; shift 2 ;;
-    --help|-h)     echo "Usage: ./scripts/build.sh [--watch] [--clean] [--scope <package>]"; exit 0 ;;
+    --strict)      STRICT=true; shift ;;
+    --help|-h)     echo "Usage: ./scripts/build.sh [--watch] [--clean] [--scope <package>] [--strict]"; exit 0 ;;
     *)             echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -66,9 +69,30 @@ else
 fi
 
 # Type check (only in full production build)
+# NOTE: check each package's own tsconfig.json. tsconfig.base.json is a base for
+# `extends` only — it has no `include`, so pointing tsc at it globs the whole repo
+# against a rootDir (./src) that does not exist at the root, yielding only TS6059.
 if [ "$WATCH" = false ] && [ -z "$SCOPE" ]; then
   echo "🔍 Checking types..."
-  npx tsc --noEmit --project tsconfig.base.json 2>/dev/null || echo "   ⚠️  Type check skipped (use --strict for full check)"
+  TYPE_ERRORS=0
+  for cfg in packages/*/tsconfig.json; do
+    pkg_dir="$(dirname "$cfg")"
+    if npx tsc --noEmit --project "$cfg"; then
+      echo "   ✓ $(basename "$pkg_dir")"
+    else
+      echo "   ✗ $(basename "$pkg_dir") — type errors above"
+      TYPE_ERRORS=$((TYPE_ERRORS + 1))
+    fi
+  done
+
+  if [ "$TYPE_ERRORS" -gt 0 ]; then
+    if [ "$STRICT" = true ]; then
+      echo ""
+      echo "❌ Type check failed in $TYPE_ERRORS package(s)."
+      exit 1
+    fi
+    echo "   ⚠️  Type errors in $TYPE_ERRORS package(s) (use --strict to fail the build)"
+  fi
 fi
 
 echo ""

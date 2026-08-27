@@ -19,6 +19,7 @@ import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
 import { isMarpDocument } from './marp/detect.js';
 import { openMarpPreview, MarpPreviewProvider, MARP_VIEW_TYPE } from './marp/preview-panel.js';
 import { exportMarpToHtml, exportMarpToPdf } from './marp/export.js';
+import { registerLanguageModelTools } from './lm-tools/index.js';
 
 let engine: CoreEngine;
 let skillStatusBarItem: vscode.StatusBarItem | undefined;
@@ -46,6 +47,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     SelDiAEditorRegistration.register(context, engine)
   );
+
+  // ── Language Model Tools (GitHub Copilot agent-mode integration) ──────────
+  registerLanguageModelTools(context, engine);
 
   // ── Markdown preview edit commands (drag / rename / attributes) ───────────
   registerEditCommands(context);

@@ -189,6 +189,64 @@
         "path": "./snippets/seldia.code-snippets"
       }
     ],
+    "languageModelTools": [
+      {
+        "name": "seldia_renderDiagram",
+        "displayName": "Render SelDiA Diagram",
+        "modelDescription": "Compiles SelDiA DSL source (flowchart, sequence, class, ER, C4, BPMN, state, gantt, mindmap, and 15+ other diagram types) to SVG and writes it to a temp file. Use this to visually verify a diagram you wrote or edited compiles and looks correct before showing it to the user.",
+        "toolReferenceName": "seldiaRender",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(graph)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "description": "The full SelDiA DSL source text to render."
+            },
+            "fileName": {
+              "type": "string",
+              "description": "Optional file path of the source, used for resolving `include` directives and in error messages."
+            }
+          },
+          "required": ["source"]
+        }
+      },
+      {
+        "name": "seldia_validateDiagram",
+        "displayName": "Validate SelDiA Diagram",
+        "modelDescription": "Parses and semantically analyzes SelDiA DSL source without rendering it, returning any syntax or validation errors. Use this for a fast check-and-fix loop while authoring or editing a diagram, before rendering the final result.",
+        "toolReferenceName": "seldiaValidate",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(check)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "description": "The full SelDiA DSL source text to validate."
+            },
+            "fileName": {
+              "type": "string",
+              "description": "Optional file path of the source, used for resolving `include` directives and in error messages."
+            }
+          },
+          "required": ["source"]
+        }
+      },
+      {
+        "name": "seldia_listDiagramTypes",
+        "displayName": "List SelDiA Diagram Types",
+        "modelDescription": "Returns the list of diagram type keywords supported by SelDiA (e.g. flowchart, sequence, class, er, c4-context, bpmn, state, gantt, mindmap). Use this before generating a new diagram from scratch to pick a valid type keyword for the `diagram <type> \"Title\" { ... }` header.",
+        "toolReferenceName": "seldiaTypes",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(list-unordered)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    ],
     "menus": {
       "editor/context": [
         {

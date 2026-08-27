@@ -262,7 +262,7 @@ export function activate(context: vscode.ExtensionContext) {
   // "Markdown Preview" and "Markdown Editor (Experimental)".
   const marpProviderSub = vscode.window.registerCustomEditorProvider(
     MARP_VIEW_TYPE,
-    new MarpPreviewProvider(engine),
+    new MarpPreviewProvider(engine, context.extensionUri),
     { webviewOptions: { retainContextWhenHidden: true } }
   );
 

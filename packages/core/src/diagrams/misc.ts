@@ -506,28 +506,6 @@ function cloudKindOf(nd: ASTNodeDecl): CloudKind {
   return 'compute';
 }
 
-/** Google Material Symbols icon name for each cloud service kind. */
-function cloudIcon(kind: CloudKind): string {
-  switch (kind) {
-    case 'cloud': return 'cloud';
-    case 'region': return 'public';
-    case 'vpc': return 'account_tree';
-    case 'az': return 'hub';
-    case 'compute': return 'dns';
-    case 'container': return 'deployed_code';
-    case 'serverless': return 'function';
-    case 'storage': return 'folder';
-    case 'database': return 'storage';
-    case 'network': return 'share';
-    case 'security': return 'shield';
-    case 'queue': return 'queue';
-    case 'cdn': return 'cloud_sync';
-    case 'dns': return 'language';
-    case 'user': return 'person';
-    default: return 'circle';
-  }
-}
-
 function cloudSize(kind: CloudKind): { width: number; height: number } {
   switch (kind) {
     case 'cloud': case 'region': return { width: 260, height: 200 };

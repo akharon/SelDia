@@ -1,6 +1,6 @@
 {
   "name": "@seldia/web",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "description": "SelDiA web components: viewer for embedding diagrams in web pages",
   "type": "module",
   "main": "./dist/index.js",

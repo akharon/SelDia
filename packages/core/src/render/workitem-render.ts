@@ -15,9 +15,7 @@ import type { IRNode } from '../ir/types.js';
 import { roughRect, seedFor } from './rough.js';
 import { DS, type Swatch } from './design-system.js';
 import { sectionsFor, type WorkItemType } from '../workitem/schema.js';
-
-const esc = (s: string): string =>
-  (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+import { escapeXml as esc } from './escape.js';
 
 const CARD_WIDTH = 260;
 const HEADER_H = 42;

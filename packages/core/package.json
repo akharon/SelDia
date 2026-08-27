@@ -1,6 +1,6 @@
 {
   "name": "@seldia/core",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "description": "SelDiA core: parser, engine, types, plugin system for 21+ diagram types",
   "type": "module",
   "main": "./dist/index.js",

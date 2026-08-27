@@ -36,6 +36,7 @@ export { exportSqlDdl, isSqlDdlExportable } from './export/sql-ddl.js';
 // forking any renderer code (see render/design-system.ts).
 export type { PaletteOverride } from './render/design-system.js';
 export { BUILTIN_PALETTES, resolvePalette } from './render/design-system.js';
+export { escapeXml } from './render/escape.js';
 
 // Macro/include — literal file-inclusion preprocessor, expanded before parse.
 export { expandIncludes } from './macro/include.js';

@@ -31,6 +31,7 @@ import { computeEdgeLabelPositions, type LabelPlacement } from './render/edge-la
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
 import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
+import { escapeXml } from './render/escape.js';
 import { expandIncludes } from './macro/include.js';
 // Per-type NODE rendering now dispatches through each plugin's renderNode
 // hook (see plugin/types.ts) — only whole-canvas grammars (charts, sankey,
@@ -462,6 +463,20 @@ class SelDiAEngine implements CoreEngine {
           stats: { nodeCount: nodes.length, edgeCount: edges.length, groupCount: layoutResult.diagram.groups.length, renderTimeMs: 0 },
         },
       };
+    } catch (err: any) {
+      // A renderer (plugin renderNode hook, or a custom whole-canvas grammar)
+      // threw on malformed IR. Report it as a normal pipeline error so hosts get
+      // an error box for this one diagram instead of an exception that takes down
+      // the surrounding document render.
+      return {
+        ok: false,
+        errors: [{
+          severity: DiagnosticSeverity.ERROR,
+          message: `Render error: ${err?.message ?? err}`,
+          source: { file: '', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1, offset: 0 },
+          code: 'E0006',
+        }],
+      };
     } finally {
       clearPaletteOverride();
     }
@@ -629,7 +644,7 @@ class SelDiAEngine implements CoreEngine {
       }
       const routedEdges = edges.map((e) => routedWps.has(e.id) ? { ...e, waypoints: routedWps.get(e.id) } : e);
       const labelPos = computeEdgeLabelPositions(routedEdges, nodeById, pad);
-      for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id))}  </g>\n`;
+      for (const e of routedEdges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes)}  </g>\n`;
     }
     for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
     svg += '</svg>';
@@ -756,15 +771,18 @@ class SelDiAEngine implements CoreEngine {
     return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes);
   }
 
-  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement): string {
+  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement, preRouted = false, allNodesIn?: IRNode[]): string {
     if (diagramType === DiagramType.SEQUENCE) return renderSequenceMessage(edge, pad, sketchy, typeAccent);
     if (diagramType === DiagramType.ER) {
       const raw = edge.waypoints || [];
       const src = byId?.get(edge.sourceId), tgt = byId?.get(edge.targetId);
       // ER draws its own cardinality marks but wants the same clipped, fanned
       // route as every other edge.
-      const allNodes = byId ? [...byId.values()] : undefined;
-      const routed = raw.length >= 2 ? this.routedWaypoints(edge, raw, src, tgt, fan, allNodes) : raw;
+      const routed = preRouted
+        ? raw
+        : (raw.length >= 2
+            ? this.routedWaypoints(edge, raw, src, tgt, fan, allNodesIn ?? (byId ? [...byId.values()] : undefined))
+            : raw);
       return renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed);
     }
     if (diagramType === DiagramType.GANTT) return renderGanttDependency(edge, pad, sketchy, typeAccent.stroke);
@@ -793,8 +811,13 @@ class SelDiAEngine implements CoreEngine {
     const dash = (s.strokeStyle as string) === 'dashed' ? [6, 4] : undefined;
     const rawWps = edge.waypoints || [];
     if (rawWps.length < 2) return '';
-    const allNodes = byId ? [...byId.values()] : undefined;
-    const wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan, allNodes);
+    let wps: Point[];
+    if (preRouted) {
+      wps = rawWps;
+    } else {
+      const allNodes = allNodesIn ?? (byId ? [...byId.values()] : undefined);
+      wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan, allNodes);
+    }
     let el: string;
     if (sketchy) {
       const seed = seedFor(edge.id);
@@ -870,7 +893,7 @@ class SelDiAEngine implements CoreEngine {
     }
   }
 
-  private esc(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  private esc(s: string): string { return escapeXml(s); }
 
   compileSync(source: string, filePath?: string): Result<RenderResult> {
     const r1 = this.parse(source, filePath); if (!r1.ok) return r1;

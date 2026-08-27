@@ -62,9 +62,28 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       const token = tokens[idx];
       const lang = token.info?.trim().split(/\s+/)[0] || '';
 
+      // ICON_SPRITE is a ~7KB block of <symbol id="seldia-icon-*"> defs that
+      // every rendered block needs, but only one copy may be emitted per
+      // document — duplicate ids are invalid HTML and pure payload bloat on
+      // a document with several diagrams. markdown-it shares one `env` per
+      // document render, so it doubles as the once-per-document flag. Only
+      // commit the flag once a block actually renders through us — a
+      // mermaid/plantuml block that falls through to the default fence must
+      // not "spend" the sprite slot for a sprite it never emitted.
+      const spriteKey = '__seldiaSpriteEmitted';
+      let includeSprite = true;
+      try {
+        includeSprite = !env?.[spriteKey];
+      } catch {
+        includeSprite = true;
+      }
+      const commitSprite = () => { try { if (env && includeSprite) env[spriteKey] = true; } catch { /* ignore */ } };
+
       if (lang === 'seldia' || lang.startsWith('seldia-')) {
         try {
-          return renderSelDiABlock(engine, token.content, docUriOf(env));
+          const rendered = renderSelDiABlock(engine, token.content, docUriOf(env), includeSprite);
+          commitSprite();
+          return rendered;
         } catch (err: any) {
           // A single block must never take down the whole preview — render
           // an inline error box for this block only and let every other
@@ -80,8 +99,8 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       // block) still handles it. Never worse than not being installed.
       if (lang === 'mermaid') {
         try {
-          const rendered = renderMermaidBlock(engine, token.content, docUriOf(env));
-          if (rendered) return rendered;
+          const rendered = renderMermaidBlock(engine, token.content, docUriOf(env), includeSprite);
+          if (rendered) { commitSprite(); return rendered; }
         } catch {
           /* fall through to the default fence */
         }
@@ -92,8 +111,8 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       // existing .md full of ```puml blocks renders through SelDiA untouched.
       if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
         try {
-          const rendered = renderPlantUmlBlock(engine, token.content, docUriOf(env));
-          if (rendered) return rendered;
+          const rendered = renderPlantUmlBlock(engine, token.content, docUriOf(env), includeSprite);
+          if (rendered) { commitSprite(); return rendered; }
         } catch {
           /* fall through to the default fence */
         }
@@ -127,16 +146,25 @@ function docUriOf(env: any): string {
 }
 
 /** Render a single ```seldia block to the interactive preview container HTML.
- *  Exported so it can be unit-tested without a MarkdownIt instance. */
-export function renderSelDiABlock(engine: CoreEngine, code: string, docUri = ''): string {
+ *  Exported so it can be unit-tested without a MarkdownIt instance.
+ *  `includeSprite` defaults to true so direct unit-test calls keep seeing the
+ *  sprite; the fence rule passes false for every block after the first in a
+ *  document so the ~7KB sprite (and its `id="seldia-icon-*"` symbols) isn't
+ *  duplicated once per diagram. */
+export function renderSelDiABlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true): string {
   const blockId = blockIdForSource(code);
   // Synchronous compile — the markdown-it fence renderer cannot await.
-  const result = engine.compileSync(code);
+  let result;
+  try {
+    result = engine.compileSync(code);
+  } catch (err: any) {
+    result = { ok: false as const, errors: [{ message: `Internal error: ${err?.message ?? err}` }] };
+  }
 
   if (!result.ok) {
     const errors = result.errors.map((e: any) => e.message).join('\n');
     return `
-${ICON_SPRITE}
+${includeSprite ? ICON_SPRITE : ''}
 <div class="seldia-diagram seldia-error" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-diagram-badge">${icon('error')} SelDiA Error</span>
@@ -154,7 +182,7 @@ ${ICON_SPRITE}
   const svg = result.value.svg;
 
   return `
-${ICON_SPRITE}
+${includeSprite ? ICON_SPRITE : ''}
 <div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview">
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
@@ -192,17 +220,17 @@ ${ICON_SPRITE}
  *  can't render must degrade to whatever would have happened without us
  *  installed, never to a SelDiA error box in someone else's document.
  */
-export function renderMermaidBlock(engine: CoreEngine, code: string, docUri = ''): string | null {
+export function renderMermaidBlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true): string | null {
   const { ir, diagnostics } = importMermaid(code);
-  return renderImportedBlock(engine, code, docUri, 'mermaid', 'Mermaid', ir, diagnostics);
+  return renderImportedBlock(engine, code, docUri, 'mermaid', 'Mermaid', ir, diagnostics, includeSprite);
 }
 
 /** Render a ```plantuml block through SelDiA's engine. Same contract as
  *  renderMermaidBlock, including the fall-back-to-default-fence asymmetry:
  *  a PlantUML author did not ask for SelDiA either. */
-export function renderPlantUmlBlock(engine: CoreEngine, code: string, docUri = ''): string | null {
+export function renderPlantUmlBlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true): string | null {
   const { ir, diagnostics } = importPlantUml(code);
-  return renderImportedBlock(engine, code, docUri, 'plantuml', 'PlantUML', ir, diagnostics);
+  return renderImportedBlock(engine, code, docUri, 'plantuml', 'PlantUML', ir, diagnostics, includeSprite);
 }
 
 /** The shared body behind both foreign-format fences.
@@ -219,6 +247,7 @@ function renderImportedBlock(
   formatLabel: string,
   ir: DiagramIR | undefined,
   diagnostics: Array<{ line: number; message: string }>,
+  includeSprite = true,
 ): string | null {
   if (!ir) return null;
 
@@ -230,7 +259,7 @@ function renderImportedBlock(
   const notes = diagnostics.map((d) => `L${d.line}: ${d.message}`).join('\n');
 
   return `
-${ICON_SPRITE}
+${includeSprite ? ICON_SPRITE : ''}
 <div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-source-format="${escapeAttr(format)}"${notes ? ` data-seldia-notes="${escapeAttr(notes)}"` : ''}>
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">

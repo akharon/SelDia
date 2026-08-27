@@ -403,7 +403,10 @@ export class SelDiAInteractiveProvider {
     }
 
     if (this._disposed) return;
-    const sig = `${svgContent} ${stats} ${errorMsg}`;
+    // NUL separators: neither the SVG, the stats line, nor an error message can
+    // contain U+0000, so the joined signature is unambiguous. Written as an escape
+    // rather than a literal NUL byte so the file stays plain text for grep/diff.
+    const sig = `${svgContent}\0${stats}\0${errorMsg}`;
     if (!this._htmlInitialized) {
       // First render: install the full page (styles, toolbar, script).
       this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes });

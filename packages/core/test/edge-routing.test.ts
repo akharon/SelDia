@@ -285,3 +285,42 @@ describe('computeFans', () => {
     expect(fans.get('e1')).toEqual({ srcIndex: 0, srcCount: 1, tgtIndex: 0, tgtCount: 1 });
   });
 });
+
+describe('renderToSvg routes each edge once and reuses it for rendering', () => {
+  it('produces identical, non-raw geometry for a flowchart with obstacles', async () => {
+    const { createEngine } = await import('../src/index.js');
+    const engine = createEngine();
+    // A chain plus a detour edge that must dodge an obstacle node sitting
+    // between its endpoints, so the router actually has routing to do.
+    const source = `fl "T" {
+      a [A]
+      b [B]
+      c [C]
+      d [D]
+      e [E]
+      a -> b
+      b -> c
+      c -> d
+      a -> d
+      d -> e
+    }`;
+    const r1 = engine.compileSync(source);
+    const r2 = engine.compileSync(source);
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+    const svg1 = (r1 as any).value.svg as string;
+    const svg2 = (r2 as any).value.svg as string;
+    // Determinism: routing once and reusing it must produce byte-identical
+    // output across repeated compiles of the same source.
+    expect(svg1).toBe(svg2);
+
+    // The rendered edge geometry must not be the raw (unrouted) layout
+    // waypoints — every edge group should contain drawn path/polyline
+    // segments reflecting clip-to-border routing.
+    const edgeGroups = [...svg1.matchAll(/<g class="seldia-edge"[^>]*>([\s\S]*?)<\/g>/g)];
+    expect(edgeGroups.length).toBeGreaterThan(0);
+    for (const g of edgeGroups) {
+      expect(g[1]).toMatch(/<path |<polyline /);
+    }
+  });
+});

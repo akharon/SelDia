@@ -200,3 +200,26 @@ describe('diagram-wide manual layout override', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('render() error guard', () => {
+  it('returns { ok: false } instead of throwing when a custom renderer hits malformed IR', () => {
+    const src = 'cls "M" { user [User] }';
+    const parsed = engine.parse(src);
+    expect(parsed.ok).toBe(true);
+    const laid = engine.layout(engine.transform(engine.analyze((parsed as any).value).value as any).value as any);
+    expect((laid as any).ok).toBe(true);
+    const layoutResult = (laid as any).value;
+    // Class nodes with data.kind === 'class' && data.compartments dispatch to
+    // renderClassCompartments, which reads `.attributes.length` with no
+    // guard. Corrupt `attributes` to simulate malformed IR (e.g. from a
+    // misbehaving plugin or importer) that reaches that unsafe code path.
+    const node = layoutResult.diagram.nodes.find((n: any) => n.id === 'user');
+    node.data.kind = 'class';
+    node.data.compartments = { name: 'User', attributes: null, operations: [] };
+
+    let result: any;
+    expect(() => { result = engine.render(layoutResult); }).not.toThrow();
+    expect(result.ok).toBe(false);
+    expect(result.errors[0].message).toMatch(/^Render error:/);
+  });
+});

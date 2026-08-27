@@ -318,20 +318,27 @@ export function computeFans(edges: IREdge[], nodeById: Map<string, IRNode>): Map
 // geometry library and Graph model. This version works directly on SelDiA's
 // Point / Rect / IRNode types with zero new dependencies.
 
-/** Build the sorted set of "interesting" coordinates for one axis: all obstacle
- *  edges (inflated by `gap`), plus source and target anchor coordinates. */
+/** Build the sorted set of "interesting" coordinates for one axis: the obstacle
+ *  edges on that axis (inflated by `gap`), plus the source and target anchor
+ *  coordinates. Only the requested axis's boundaries are included — mixing in
+ *  the other axis's coordinates inflates the A* search space without adding
+ *  any route the correct grid cannot express. */
 function gridLines(
   obstacles: IRNode[],
   gap: number,
-  extra: number[]
+  extra: number[],
+  axis: 'x' | 'y'
 ): number[] {
   const s = new Set<number>();
   for (const o of obstacles) {
     const r = nodeRect(o, gap);
-    s.add(r.x);
-    s.add(r.x + r.width);
-    s.add(r.y);
-    s.add(r.y + r.height);
+    if (axis === 'x') {
+      s.add(r.x);
+      s.add(r.x + r.width);
+    } else {
+      s.add(r.y);
+      s.add(r.y + r.height);
+    }
   }
   for (const v of extra) s.add(v);
   return [...s].sort((p, q) => p - q);
@@ -387,6 +394,45 @@ function manhattan(a: Point, b: Point): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
+/** Minimal binary min-heap over A* nodes, keyed on `f`. Replaces the previous
+ *  sort-then-shift open set, which was O(V² log V) overall. */
+class MinHeap<T> {
+  private items: T[] = [];
+  constructor(private readonly key: (t: T) => number) {}
+  get size(): number { return this.items.length; }
+  push(item: T): void {
+    const a = this.items;
+    a.push(item);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.key(a[p]) <= this.key(a[i])) break;
+      [a[p], a[i]] = [a[i], a[p]];
+      i = p;
+    }
+  }
+  pop(): T | undefined {
+    const a = this.items;
+    if (a.length === 0) return undefined;
+    const top = a[0];
+    const last = a.pop()!;
+    if (a.length > 0) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.key(a[l]) < this.key(a[m])) m = l;
+        if (r < a.length && this.key(a[r]) < this.key(a[m])) m = r;
+        if (m === i) break;
+        [a[m], a[i]] = [a[i], a[m]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
 /** A* search on the visibility grid. Returns the shortest orthogonal path from
  *  `src` to `tgt` that avoids all `obstacles`, or `null` if unreachable. */
 function manhattanRoute(
@@ -396,8 +442,8 @@ function manhattanRoute(
   gap: number,
   bendBias = 0
 ): Point[] | null {
-  const xs = gridLines(obstacles, gap, [src.x, tgt.x]);
-  const ys = gridLines(obstacles, gap, [src.y, tgt.y]);
+  const xs = gridLines(obstacles, gap, [src.x, tgt.x], 'x');
+  const ys = gridLines(obstacles, gap, [src.y, tgt.y], 'y');
 
   // Find source and target grid indices.
   let srcIx = -1, srcIy = -1, tgtIx = -1, tgtIy = -1;
@@ -422,17 +468,23 @@ function manhattanRoute(
     parent: AStarNode | null;
   }
 
-  const open: AStarNode[] = [{ v: srcV, g: 0, f: manhattan(src, tgt), parent: null }];
+  const open = new MinHeap<AStarNode>((n) => n.f);
+  // Best known g-score per vertex, so a stale heap entry (superseded by a
+  // cheaper push for the same vertex) can be recognised and skipped on pop
+  // instead of being popped as if it were still the best route.
+  const bestG = new Map<string, number>();
+  open.push({ v: srcV, g: 0, f: manhattan(src, tgt), parent: null });
+  bestG.set(vertexKey(srcV), 0);
   const closed = new Set<string>();
   closed.add(vertexKey(srcV));
 
   // Direction vectors: right, down, left, up
   const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
-  while (open.length > 0) {
-    // Pick lowest f-score.
-    open.sort((p, q) => p.f - q.f);
-    const cur = open.shift()!;
+  while (open.size > 0) {
+    const cur = open.pop()!;
+    // Stale entry: a cheaper route to this vertex was pushed after this one.
+    if (cur.g > (bestG.get(vertexKey(cur.v)) ?? Infinity)) continue;
 
     if (cur.v.ix === tgtIx && cur.v.iy === tgtIy) {
       // Reconstruct path.
@@ -469,15 +521,10 @@ function manhattanRoute(
       // spreading fanned edges apart instead of routing them identically.
       const nf = ng + manhattan(next, tgt) + bendBias * 0.01;
 
-      // Check if a better path to this vertex is already in open.
-      const existing = open.find((n) => n.v.ix === nix && n.v.iy === niy);
-      if (existing) {
-        if (ng < existing.g) {
-          existing.g = ng;
-          existing.f = nf;
-          existing.parent = cur;
-        }
-      } else {
+      // Check if a better path to this vertex is already known.
+      const existingG = bestG.get(key);
+      if (existingG === undefined || ng < existingG) {
+        bestG.set(key, ng);
         open.push({ v: next, g: ng, f: nf, parent: cur });
         closed.add(key);
       }

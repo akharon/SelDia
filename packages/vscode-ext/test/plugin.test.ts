@@ -231,4 +231,19 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     expect(out).toBe('<pre><code>original</code></pre>');
     expect(out).not.toContain('seldia-error');
   });
+
+  // ICON_SPRITE declares `id="seldia-icon-*"` symbols; duplicate ids across
+  // several diagram blocks in the same document are invalid HTML and pure
+  // payload bloat. markdown-it renders every fence in a document with the
+  // SAME env object, so it doubles as the once-per-document flag.
+  it('emits ICON_SPRITE only once across multiple blocks sharing one env', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine)(md);
+    const env: any = {};
+    const out1 = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    const out2 = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    const combined = out1 + out2;
+    const matches = combined.match(/id="seldia-icon-visibility"/g) || [];
+    expect(matches.length).toBe(1);
+  });
 });

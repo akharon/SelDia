@@ -4,8 +4,8 @@
 // Marp decks are page-based (one <section> per slide with its own CSS
 // dimensions), not a linear scrolling document, so they don't fit VS Code's
 // built-in Markdown preview model. This owns a dedicated webview panel that
-// shows one slide at a time with prev/next navigation, and re-renders on save
-// so SelDiA/Mermaid/PlantUML diagrams inside slides stay live.
+// shows one slide at a time with prev/next navigation, and re-renders as you
+// type (debounced) so SelDiA/Mermaid/PlantUML diagrams inside slides stay live.
 // =============================================================================
 
 import * as vscode from 'vscode';
@@ -36,25 +36,43 @@ export async function openMarpPreview(
 }
 
 export class MarpPreviewProvider implements vscode.CustomTextEditorProvider {
-  constructor(private readonly engine: CoreEngine) {}
+  constructor(
+    private readonly engine: CoreEngine,
+    private readonly extensionUri: vscode.Uri
+  ) {}
 
   resolveCustomTextEditor(
     doc: vscode.TextDocument,
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): void {
-    panel.webview.options = { enableScripts: true };
+    panel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
+    };
     panels.set(doc.uri.toString(), panel);
-    panel.onDidDispose(() => panels.delete(doc.uri.toString()));
 
     updatePanel(panel, this.engine, doc);
 
+    // Re-rendering a deck means a full Marp render plus a compile of every
+    // fenced diagram in it, and reassigning webview.html rebuilds the whole
+    // DOM (losing the current slide). Debounce so that only lands once the
+    // author pauses, rather than on every keystroke.
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.toString() === doc.uri.toString()) {
+      if (e.document.uri.toString() !== doc.uri.toString()) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
         updatePanel(panel, this.engine, doc);
-      }
+      }, 300);
     });
-    panel.onDidDispose(() => changeSub.dispose());
+
+    panel.onDidDispose(() => {
+      if (timer) clearTimeout(timer);
+      changeSub.dispose();
+      panels.delete(doc.uri.toString());
+    });
   }
 }
 
@@ -64,30 +82,43 @@ function updatePanel(
   doc: vscode.TextDocument
 ) {
   if (!isMarpDocument(doc.getText())) {
-    panel.webview.html = notMarpHtml();
+    panel.webview.html = notMarpHtml(panel.webview.cspSource);
     return;
   }
   try {
     const { html, css, slideCount, notes } = renderMarpDeck(engine, doc.getText());
-    panel.webview.html = shellHtml(html, css, slideCount, notes);
+    panel.webview.html = shellHtml(html, css, slideCount, notes, panel.webview.cspSource);
   } catch (err: any) {
-    panel.webview.html = `<pre>Marp render failed: ${escapeHtml(err?.message || String(err))}</pre>`;
+    const csp = `default-src 'none'; style-src 'unsafe-inline'`;
+    panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"></head><body><pre>Marp render failed: ${escapeHtml(err?.message || String(err))}</pre></body></html>`;
   }
 }
 
-function notMarpHtml(): string {
-  return `<!DOCTYPE html><html><body style="font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 2em;">
+function notMarpHtml(cspSource: string): string {
+  const csp = `default-src 'none'; style-src 'unsafe-inline'`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"></head><body style="font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 2em;">
   <p>This file isn't a Marp deck — add <code>marp: true</code> to its YAML front-matter to use the slide preview.</p>
   </body></html>`;
 }
 
-function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: string[]): string {
+function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: string[], cspSource: string): string {
   const notesJson = JSON.stringify(notes).replace(/</g, '\\u003c');
+  const csp = [
+    `default-src 'none'`,
+    `img-src ${cspSource} https: data:`,
+    `style-src ${cspSource} 'unsafe-inline'`,
+    `font-src ${cspSource} data:`,
+    // TODO: move the shell's inline <script> to a nonce instead of
+    // 'unsafe-inline' — deferred, not required for the resource-root/CSP
+    // hardening this was added for.
+    `script-src 'unsafe-inline'`,
+  ].join('; ');
 
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>
   :root { color-scheme: light dark; }
   html, body { margin: 0; height: 100%; }

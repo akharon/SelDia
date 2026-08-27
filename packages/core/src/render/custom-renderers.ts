@@ -18,8 +18,7 @@ import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughSt
 import { DS, typeSwatch, roleSwatch, seriesColor, type Swatch } from './design-system.js';
 import { ganttDayLabel } from './custom-layout.js';
 import { FontWeight, FontStyle, type GroupStyle } from '../types/style.js';
-
-function esc(s: string): string { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+import { escapeXml as esc } from './escape.js';
 
 function splitLabelLines(label: string): string[] {
   return (label || '').replace(/\\n/g, '\n').split('\n');

@@ -1,6 +1,6 @@
 {
   "name": "@seldia/interaction",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "description": "SelDiA interaction: zoom/pan, drag-drop, selection, collapse/expand, tooltips, ARIA, source maps, undo/redo",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,6 +31,7 @@
     "@seldia/core": "*"
   },
   "devDependencies": {
+    "happy-dom": "^20.11.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   }

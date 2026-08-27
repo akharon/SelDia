@@ -48,7 +48,7 @@ const FENCE_RE = /^(\s*)(`{3,}|~{3,})\s*(seldia(?:-[\w-]+)?)\s*$/;
 
 /** Locate every ```seldia fenced block in a Markdown document. */
 export function findSelDiABlocks(markdown: string): SelDiABlockLoc[] {
-  const lines = markdown.split('\n');
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const blocks: SelDiABlockLoc[] = [];
 
   for (let i = 0; i < lines.length; i++) {

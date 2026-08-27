@@ -44,13 +44,22 @@ echo "======================"
 echo ""
 
 # ── Check prerequisites ──────────────────────────────────────
-if ! command -v vsce &>/dev/null; then
-  echo -e "${RED}✗ 'vsce' not found. Install with: npm install -g @vscode/vsce${NC}"
-  exit 1
+# Resolve vsce via npx so it works regardless of which nvm/node version is
+# active. @vscode/vsce is a devDependency of packages/vscode-ext, so this hits
+# node_modules/.bin and needs no global install and no network.
+VSCE=(npx --no-install vsce)
+if ! "${VSCE[@]}" --version &>/dev/null; then
+  if command -v vsce &>/dev/null; then
+    VSCE=(vsce)
+  else
+    echo -e "${RED}✗ 'vsce' not found. Run 'npm install' at the repo root${NC}"
+    echo -e "${RED}  (or install globally: npm install -g @vscode/vsce)${NC}"
+    exit 1
+  fi
 fi
-echo -e "${GREEN}✓ vsce found: $(which vsce)${NC}"
+echo -e "${GREEN}✓ vsce found: ${VSCE[*]}${NC}"
 
-VSCE_VERSION=$(vsce --version 2>/dev/null || echo "?")
+VSCE_VERSION=$("${VSCE[@]}" --version 2>/dev/null || echo "?")
 echo "  Version: $VSCE_VERSION"
 echo ""
 
@@ -93,14 +102,14 @@ echo "  Source: $EXT_DIR"
 
 if [ -n "$OUT_DIR" ]; then
   mkdir -p "$OUT_DIR"
-  vsce package --allow-missing-repository --no-dependencies --out "$OUT_DIR"
+  "${VSCE[@]}" package --allow-missing-repository --no-dependencies --out "$OUT_DIR"
   echo ""
   echo -e "${GREEN}✅ VSIX package created in:${NC}"
   echo "   $(ls -1 "$OUT_DIR"/*.vsix 2>/dev/null || echo '(none)')"
 else
   # Output to root dir to avoid including parent workspace files
   VSIX_OUT="$ROOT_DIR/seldia-vscode-ext.vsix"
-  vsce package --allow-missing-repository --no-dependencies --out "$VSIX_OUT"
+  "${VSCE[@]}" package --allow-missing-repository --no-dependencies --out "$VSIX_OUT"
   echo ""
   echo -e "${GREEN}✅ VSIX package created:${NC}"
   echo "   $VSIX_OUT"

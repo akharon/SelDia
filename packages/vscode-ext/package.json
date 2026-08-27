@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.45.0",
+  "version": "1.46.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -404,6 +404,16 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open the Markdown preview when a Markdown file with SelDiA blocks is opened"
+        },
+        "seldia.markdown.toc.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Inject an automatic Table of Contents (headings + numbered diagrams) at the top of the Markdown preview"
+        },
+        "seldia.markdown.captions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render numbered captions (\"Diagram 1\", \"Diagram 2\") under diagrams in the Markdown preview"
         },
         "seldia.marp.autoPreview": {
           "type": "boolean",

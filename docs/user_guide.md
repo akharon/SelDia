@@ -2384,6 +2384,75 @@ emitting empty or misleading output. This is a CLI-only integration so far —
 there is no equivalent "export to Mermaid" action in the VS Code preview pane
 yet.
 
+### 11.3.2 Diagram numbering and cross-references
+
+Every diagram rendered in the Markdown preview — SelDiA, Mermaid, and PlantUML
+alike — is numbered in document order and given a stable anchor:
+`#diagram-1`, `#diagram-2`, and so on. A caption ("Diagram 3", or
+"Diagram 3 — Payment flow" when the DSL names it) appears under the diagram in
+both preview and code mode.
+
+Name a SelDiA diagram to give it a caption:
+
+````markdown
+```seldia
+diagram flowchart "Payment flow" {
+  a: (Start)
+  b: [Charge card]
+  a --> b
+}
+```
+````
+
+Link to a diagram from anywhere in the document, or from another document,
+with a plain Markdown anchor link:
+
+```markdown
+See [Diagram 3](#diagram-3) for the full payment flow.
+```
+
+A short Table of Contents is injected automatically at the top of the preview
+once a document has at least 3 headings or 2 diagrams, listing both headings
+and diagrams with links to their anchors.
+
+**Renumbering caveat.** Diagram numbers are positional: inserting or removing
+a diagram earlier in the document renumbers every diagram after it. This is
+correct behavior, but it means an `#diagram-3` link written into prose can
+silently point at a different diagram after an edit elsewhere in the file.
+There is currently no way to pin a diagram to a fixed anchor — treat these
+links as accurate as of the last edit, not permanent.
+
+Both settings default to on and can be turned off workspace-wide in `settings.json`:
+
+```json
+{
+  "seldia.markdown.toc.enabled": true,
+  "seldia.markdown.captions.enabled": true
+}
+```
+
+**Per-document override.** A single document can override the workspace
+setting with its own YAML front-matter — useful for a document that already
+has a hand-written TOC and doesn't need SelDiA's:
+
+```markdown
+---
+seldia_toc: false
+seldia_captions: false
+---
+
+# My Document
+```
+
+Front-matter wins over the workspace setting whenever the key is present;
+omit a key to fall back to whatever `settings.json` says. Each key can be set
+independently — a document can suppress the TOC while keeping captions, or the
+reverse.
+
+The Markdown → PDF export (§11.5) uses the same `Diagram N` caption wording
+and `#diagram-N` anchors, so a document reads the same whether viewed in the
+editor or exported.
+
 ### 11.4 Visual Editing
 
 Visual editing is available in the **interactive editor for `.sld` files**
@@ -2546,6 +2615,8 @@ headless-Chromium pipeline as Markdown → PDF export and requires Puppeteer.
 | `seldia.markdown.enabled` | boolean | `true` | Enable diagram detection in Markdown |
 | `seldia.markdown.renderOnOpen` | boolean | `true` | Auto-render diagrams when opening .md files |
 | `seldia.markdown.maxDiagramsPerFile` | number | `20` | Max diagrams to auto-render per file |
+| `seldia.markdown.toc.enabled` | boolean | `true` | Inject the auto-generated Table of Contents into the Markdown preview |
+| `seldia.markdown.captions.enabled` | boolean | `true` | Render numbered "Diagram N" captions under diagrams in the Markdown preview |
 | `seldia.interactive.enabled` | boolean | `true` | Enable visual editing (drag, double-click) |
 | `seldia.interactive.undoStackSize` | number | `50` | Undo history size for visual edits |
 | `seldia.md2pdf.defaultFormat` | string | `A4` | Default PDF page format |

@@ -38,7 +38,7 @@ The wedge is *drift*, not drawing. See [docs/market.md](docs/market.md) for the 
 - ✏️ **Hand-drawn style** — Rough.js sketchy rendering, or smooth fallback
 - 📐 **Smart layout** — Dagre hierarchical layout, d3-force for network graphs
 - 🔧 **VS Code extension** — Syntax highlighting, LSP, live preview, interactive editing
-- 📄 **Markdown integration** — Embed diagrams in `.md` files with ` ```seldia ` fenced blocks
+- 📄 **Markdown integration** — Embed diagrams in `.md` files with ` ```seldia ` fenced blocks, with auto-numbered captions and a Table of Contents
 - 📑 **PDF export** — Convert Markdown with embedded diagrams to professional PDF
 - 🖥️ **Marp slide decks** — `marp: true` front-matter turns a `.md` file into a paginated slide preview; SelDiA/Mermaid/PlantUML fences render inline on the slide
 - 🌐 **Web components** — `<seldia-viewer>` for embedding diagrams anywhere

@@ -330,3 +330,81 @@
    and stomped its `padding: 0` / square sizing, mangling the icons into
    unidentifiable specks whenever the preview column was narrow. */
 
+/* ── Table of Contents ─────────────────────────────────────────────────────
+   Injected by the preview script as the first child of <body>. Plain block
+   flow, not `position: sticky` — sticky would eat vertical space on every
+   scroll for a feature that is mostly useful once, at the top of the read. */
+.seldia-toc {
+  margin: 0 0 20px;
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background);
+  padding: 4px 14px;
+}
+.seldia-toc summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+  color: var(--vscode-editor-foreground);
+}
+.seldia-toc-section {
+  margin: 4px 0 12px;
+}
+.seldia-toc-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 4px;
+}
+.seldia-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.seldia-toc-item {
+  padding: 2px 0;
+}
+.seldia-toc-item a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+.seldia-toc-item a:hover {
+  text-decoration: underline;
+}
+.seldia-toc-item.seldia-toc-error a::before {
+  content: '⚠ ';
+}
+.seldia-toc-level-2 { padding-left: 14px; }
+.seldia-toc-level-3 { padding-left: 28px; }
+.seldia-toc-level-4 { padding-left: 42px; }
+.seldia-toc-level-5 { padding-left: 56px; }
+.seldia-toc-level-6 { padding-left: 70px; }
+
+/* ── Diagram Caption ──────────────────────────────────────────────────────
+   Sits outside .seldia-diagram-svg so `exportSvg` (which clones only the svg
+   node) never picks it up, and stays visible in both preview and code mode —
+   it identifies the block, not the rendering. */
+.seldia-caption {
+  text-align: center;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  padding: 4px 8px 2px;
+}
+.seldia-caption-label {
+  font-weight: 600;
+}
+.seldia-caption-label::after {
+  content: '';
+}
+.seldia-caption-title::before {
+  content: ' — ';
+}
+
+@media print {
+  .seldia-diagram {
+    break-inside: avoid;
+  }
+}
+

@@ -592,9 +592,27 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // ── Return extendMarkdownIt for built-in Markdown preview integration ─────
+  // Config is read once here, at plugin-construction time — never per token
+  // inside the hot renderer rule. A change to seldia.markdown.captions.enabled
+  // takes effect on the next preview refresh, triggered below.
+  const captionsEnabled = vscode.workspace.getConfiguration('seldia').get<boolean>('markdown.captions.enabled', true);
+  const tocEnabled = vscode.workspace.getConfiguration('seldia').get<boolean>('markdown.toc.enabled', true);
+  const seldiaMarkdownItPlugin = createSelDiAMarkdownItPlugin(engine, { captionsEnabled, tocEnabled });
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (
+        e.affectsConfiguration('seldia.markdown.captions.enabled') ||
+        e.affectsConfiguration('seldia.markdown.toc.enabled')
+      ) {
+        vscode.commands.executeCommand('markdown.preview.refresh');
+      }
+    })
+  );
+
   return {
     extendMarkdownIt(md: any) {
-      return createSelDiAMarkdownItPlugin(engine)(md);
+      return seldiaMarkdownItPlugin(md);
     },
   };
 }

@@ -43,13 +43,13 @@ export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRender
     const lang = token.info?.trim().split(/\s+/)[0] || '';
 
     if (lang === 'seldia' || lang.startsWith('seldia-')) {
-      return renderSelDiABlock(engine, token.content);
+      return renderSelDiABlock(engine, token.content, '', true, env);
     }
     if (lang === 'mermaid') {
-      return renderMermaidBlock(engine, token.content);
+      return renderMermaidBlock(engine, token.content, '', true, env);
     }
     if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
-      return renderPlantUmlBlock(engine, token.content);
+      return renderPlantUmlBlock(engine, token.content, '', true, env);
     }
 
     return defaultFence

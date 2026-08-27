@@ -31,12 +31,19 @@ import type { CoreEngine, DiagramIR } from '@seldia/core';
 import { importMermaid, importPlantUml } from '@seldia/core';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 import { blockIdForSource } from '../edit/blocks.js';
+import { nextDiagramNumber, anchorForDiagram, captionFor, titleFromDsl, registerDiagram } from './numbering.js';
+import { readFrontMatterOverrides } from './frontmatter.js';
 
 // Minimal MarkdownIt interface — matches what VS Code passes to extendMarkdownIt
 export interface MarkdownIt {
   renderer: {
     rules: {
       fence?: (tokens: any[], idx: number, options: any, env: any, slf: any) => string;
+    };
+  };
+  core?: {
+    ruler: {
+      before: (anchor: string, name: string, fn: (state: { src: string; env: any }) => void) => void;
     };
   };
 }
@@ -47,8 +54,36 @@ export interface MarkdownIt {
  *  deep link the preview emitted. One implementation, one id. */
 export { blockIdForSource };
 
-export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
+export interface SelDiAMarkdownItPluginOptions {
+  /** Render numbered captions under diagrams. Default true. */
+  captionsEnabled?: boolean;
+  /** Let the preview script inject the auto-TOC. Default true. */
+  tocEnabled?: boolean;
+}
+
+export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiAMarkdownItPluginOptions = {}) {
+  const captionsEnabled = options.captionsEnabled ?? true;
+  const tocEnabled = options.tocEnabled ?? true;
   return function seldiaPlugin(md: MarkdownIt) {
+    // Stash this document's seldia_toc/seldia_captions front-matter overrides
+    // onto `env` before rendering starts, so the fence rule (which never sees
+    // the raw source, only individual token content) can read them per
+    // render. `before('normalize', ...)` runs first in core's ruler chain,
+    // ahead of anything that could mutate `state.src`.
+    try {
+      md.core?.ruler.before('normalize', 'seldia_frontmatter_overrides', (state) => {
+        try {
+          if (state.env && typeof state.env === 'object') {
+            state.env.__seldiaOverrides = readFrontMatterOverrides(state.src);
+          }
+        } catch {
+          /* ignore — falls back to the workspace-wide setting */
+        }
+      });
+    } catch {
+      /* older/alternate MarkdownIt shape without `core` — no per-document override */
+    }
+
     const defaultFence =
       md.renderer.rules.fence ||
       ((tokens: any[], idx: number): string => {
@@ -79,11 +114,30 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       }
       const commitSprite = () => { try { if (env && includeSprite) env[spriteKey] = true; } catch { /* ignore */ } };
 
+      // Per-document front-matter (seldia_toc / seldia_captions) overrides
+      // the workspace-wide setting when present, e.g. a document that already
+      // has its own hand-written TOC and doesn't want a second one.
+      let docOverrides: { toc?: boolean; captions?: boolean } = {};
+      try {
+        docOverrides = env?.__seldiaOverrides || {};
+      } catch {
+        docOverrides = {};
+      }
+      const effectiveCaptionsEnabled = docOverrides.captions ?? captionsEnabled;
+      const effectiveTocEnabled = docOverrides.toc ?? tocEnabled;
+
+      // A hidden marker carrying the toc setting to the preview script, which
+      // has no access to `vscode.workspace.getConfiguration` from inside the
+      // webview. Emitted once per document, alongside the sprite.
+      const tocMarker = includeSprite
+        ? `<span id="seldia-toc-config" data-seldia-toc-enabled="${effectiveTocEnabled ? '1' : '0'}" style="display:none"></span>`
+        : '';
+
       if (lang === 'seldia' || lang.startsWith('seldia-')) {
         try {
-          const rendered = renderSelDiABlock(engine, token.content, docUriOf(env), includeSprite);
+          const rendered = renderSelDiABlock(engine, token.content, docUriOf(env), includeSprite, env, effectiveCaptionsEnabled);
           commitSprite();
-          return rendered;
+          return tocMarker + rendered;
         } catch (err: any) {
           // A single block must never take down the whole preview — render
           // an inline error box for this block only and let every other
@@ -99,8 +153,8 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       // block) still handles it. Never worse than not being installed.
       if (lang === 'mermaid') {
         try {
-          const rendered = renderMermaidBlock(engine, token.content, docUriOf(env), includeSprite);
-          if (rendered) { commitSprite(); return rendered; }
+          const rendered = renderMermaidBlock(engine, token.content, docUriOf(env), includeSprite, env, effectiveCaptionsEnabled);
+          if (rendered) { commitSprite(); return tocMarker + rendered; }
         } catch {
           /* fall through to the default fence */
         }
@@ -111,8 +165,8 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine) {
       // existing .md full of ```puml blocks renders through SelDiA untouched.
       if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
         try {
-          const rendered = renderPlantUmlBlock(engine, token.content, docUriOf(env), includeSprite);
-          if (rendered) { commitSprite(); return rendered; }
+          const rendered = renderPlantUmlBlock(engine, token.content, docUriOf(env), includeSprite, env, effectiveCaptionsEnabled);
+          if (rendered) { commitSprite(); return tocMarker + rendered; }
         } catch {
           /* fall through to the default fence */
         }
@@ -151,8 +205,17 @@ function docUriOf(env: any): string {
  *  sprite; the fence rule passes false for every block after the first in a
  *  document so the ~7KB sprite (and its `id="seldia-icon-*"` symbols) isn't
  *  duplicated once per diagram. */
-export function renderSelDiABlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true): string {
+export function renderSelDiABlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true, env?: any, captionsEnabled = true): string {
   const blockId = blockIdForSource(code);
+  const n = nextDiagramNumber(env);
+  const anchor = anchorForDiagram(n);
+  const title = titleFromDsl(code);
+  const captionHtml = captionsEnabled
+    ? `
+  <div class="seldia-caption">
+    <span class="seldia-caption-label">Diagram ${n}</span>${title ? `<span class="seldia-caption-title">${escapeHtml(title)}</span>` : ''}
+  </div>`
+    : '';
   // Synchronous compile — the markdown-it fence renderer cannot await.
   let result;
   try {
@@ -163,9 +226,10 @@ export function renderSelDiABlock(engine: CoreEngine, code: string, docUri = '',
 
   if (!result.ok) {
     const errors = result.errors.map((e: any) => e.message).join('\n');
+    registerDiagram(env, { n, anchor, blockId, title, hasError: true });
     return `
 ${includeSprite ? ICON_SPRITE : ''}
-<div class="seldia-diagram seldia-error" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}">
+<div class="seldia-diagram seldia-error" id="${anchor}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-number="${n}" data-seldia-error="1"${title ? ` data-seldia-title="${escapeAttr(title)}"` : ''}>
   <div class="seldia-diagram-toolbar">
     <span class="seldia-diagram-badge">${icon('error')} SelDiA Error</span>
     <span class="seldia-toolbar-spacer"></span>
@@ -175,15 +239,16 @@ ${includeSprite ? ICON_SPRITE : ''}
   <pre class="seldia-error-detail">${escapeHtml(errors)}</pre>
   <div class="seldia-diagram-source">
     <pre><code class="language-seldia">${escapeHtml(code)}</code></pre>
-  </div>
+  </div>${captionHtml}
 </div>`;
   }
 
   const svg = result.value.svg;
+  registerDiagram(env, { n, anchor, blockId, title });
 
   return `
 ${includeSprite ? ICON_SPRITE : ''}
-<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview">
+<div class="seldia-diagram" id="${anchor}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-number="${n}"${title ? ` data-seldia-title="${escapeAttr(title)}"` : ''}>
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram" aria-label="Show rendered diagram">${icon('visibility')}</button>
@@ -206,7 +271,7 @@ ${includeSprite ? ICON_SPRITE : ''}
       <button class="seldia-btn seldia-btn-icon seldia-btn-copy-source" title="Copy source to clipboard" aria-label="Copy source to clipboard">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button>
     </div>
     <pre class="seldia-source-view"><code class="language-seldia">${escapeHtml(code)}</code></pre>
-  </div>
+  </div>${captionHtml}
 </div>`;
 }
 
@@ -220,17 +285,17 @@ ${includeSprite ? ICON_SPRITE : ''}
  *  can't render must degrade to whatever would have happened without us
  *  installed, never to a SelDiA error box in someone else's document.
  */
-export function renderMermaidBlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true): string | null {
+export function renderMermaidBlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true, env?: any, captionsEnabled = true): string | null {
   const { ir, diagnostics } = importMermaid(code);
-  return renderImportedBlock(engine, code, docUri, 'mermaid', 'Mermaid', ir, diagnostics, includeSprite);
+  return renderImportedBlock(engine, code, docUri, 'mermaid', 'Mermaid', ir, diagnostics, includeSprite, env, captionsEnabled);
 }
 
 /** Render a ```plantuml block through SelDiA's engine. Same contract as
  *  renderMermaidBlock, including the fall-back-to-default-fence asymmetry:
  *  a PlantUML author did not ask for SelDiA either. */
-export function renderPlantUmlBlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true): string | null {
+export function renderPlantUmlBlock(engine: CoreEngine, code: string, docUri = '', includeSprite = true, env?: any, captionsEnabled = true): string | null {
   const { ir, diagnostics } = importPlantUml(code);
-  return renderImportedBlock(engine, code, docUri, 'plantuml', 'PlantUML', ir, diagnostics, includeSprite);
+  return renderImportedBlock(engine, code, docUri, 'plantuml', 'PlantUML', ir, diagnostics, includeSprite, env, captionsEnabled);
 }
 
 /** The shared body behind both foreign-format fences.
@@ -248,6 +313,8 @@ function renderImportedBlock(
   ir: DiagramIR | undefined,
   diagnostics: Array<{ line: number; message: string }>,
   includeSprite = true,
+  env?: any,
+  captionsEnabled = true,
 ): string | null {
   if (!ir) return null;
 
@@ -257,10 +324,20 @@ function renderImportedBlock(
   const blockId = blockIdForSource(code);
   const svg = result.value.svg;
   const notes = diagnostics.map((d) => `L${d.line}: ${d.message}`).join('\n');
+  const n = nextDiagramNumber(env);
+  const anchor = anchorForDiagram(n);
+  const title = ir.title;
+  registerDiagram(env, { n, anchor, blockId, title });
+  const captionHtml = captionsEnabled
+    ? `
+  <div class="seldia-caption">
+    <span class="seldia-caption-label">Diagram ${n}</span>${title ? `<span class="seldia-caption-title">${escapeHtml(title)}</span>` : ''}
+  </div>`
+    : '';
 
   return `
 ${includeSprite ? ICON_SPRITE : ''}
-<div class="seldia-diagram" id="${blockId}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-source-format="${escapeAttr(format)}"${notes ? ` data-seldia-notes="${escapeAttr(notes)}"` : ''}>
+<div class="seldia-diagram" id="${anchor}" data-seldia-block="${escapeAttr(blockId)}" data-seldia-doc="${escapeAttr(docUri)}" data-seldia-mode="preview" data-seldia-source-format="${escapeAttr(format)}" data-seldia-number="${n}"${title ? ` data-seldia-title="${escapeAttr(title)}"` : ''}${notes ? ` data-seldia-notes="${escapeAttr(notes)}"` : ''}>
   <div class="seldia-diagram-toolbar">
     <span class="seldia-mode-switch" role="tablist">
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram" aria-label="Show rendered diagram">${icon('visibility')}</button>
@@ -284,7 +361,7 @@ ${includeSprite ? ICON_SPRITE : ''}
       <button class="seldia-btn seldia-btn-icon seldia-btn-copy-source" title="Copy source to clipboard" aria-label="Copy source to clipboard">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button>
     </div>
     <pre class="seldia-source-view"><code class="language-${escapeAttr(format)}">${escapeHtml(code)}</code></pre>
-  </div>
+  </div>${captionHtml}
 </div>`;
 }
 

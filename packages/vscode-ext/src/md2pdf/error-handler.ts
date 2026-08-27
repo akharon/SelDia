@@ -4,6 +4,7 @@
 // Provides error fallback rendering for diagrams that fail to compile.
 
 import type { Diagnostic } from '@seldia/core';
+import { anchorForDiagram } from '../markdown-preview/numbering.js';
 
 export interface ErrorBlockResult {
   html: string;
@@ -37,7 +38,7 @@ export function renderErrorBlock(
 
   return {
     html: `
-<div class="seldia-diagram seldia-diagram--error" data-block-idx="${blockIndex}">
+<div class="seldia-diagram seldia-diagram--error" id="${anchorForDiagram(blockIndex + 1)}" data-block-idx="${blockIndex}">
   <div class="error-title">${errorIcon} Diagram Compilation Failed${diagramType ? ` (${escapeHtml(diagramType)})` : ''}</div>
   <div class="error-summary">${errorCount} error(s), ${warnCount} warning(s)</div>
   ${errorLines}

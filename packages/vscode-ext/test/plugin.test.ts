@@ -85,6 +85,32 @@ describe('renderSelDiABlock', () => {
       expect(href).not.toMatch(/[?&]doc=/);
     }
   });
+
+  it('numbers diagrams in document order via a shared env counter', () => {
+    const env: any = {};
+    const first = renderSelDiABlock(engine, SRC, '', true, env);
+    const second = renderSelDiABlock(engine, SRC, '', true, env);
+    expect(first).toContain('id="diagram-1"');
+    expect(first).toContain('data-seldia-number="1"');
+    expect(second).toContain('id="diagram-2"');
+    expect(second).toContain('data-seldia-number="2"');
+  });
+
+  it('captions with the declared DSL title', () => {
+    const env: any = {};
+    const html = renderSelDiABlock(engine, SRC, '', true, env);
+    expect(html).toContain('seldia-caption-label">Diagram 1</span>');
+    expect(html).toContain('seldia-caption-title">T</span>');
+    expect(html).toContain('data-seldia-title="T"');
+  });
+
+  it('numbers a compile-error block instead of skipping it', () => {
+    const env: any = {};
+    const html = renderSelDiABlock(engine, 'diagram flowchart { broken {{{ }', '', true, env);
+    expect(html).toContain('data-seldia-error="1"');
+    expect(html).toContain('data-seldia-number="1"');
+    expect(html).toContain('id="diagram-1"');
+  });
 });
 
 // The engine positioning lives or dies on this path: a user's existing
@@ -146,7 +172,18 @@ describe('renderMermaidBlock', () => {
 
 describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
   function makeMd() {
-    const md: any = { renderer: { rules: {} } };
+    const rules: Array<(state: { src: string; env: any }) => void> = [];
+    const md: any = {
+      renderer: { rules: {} },
+      core: { ruler: { before: (_anchor: string, _name: string, fn: (state: any) => void) => rules.push(fn) } },
+    };
+    // Mimics markdown-it's real core.ruler pipeline for tests: normally
+    // `md.render(src, env)` runs every registered core rule against a shared
+    // state before the fence renderer ever fires. Tests call the fence rule
+    // directly, so this replays that step against the raw source, letting
+    // front-matter-derived `env` state (see frontmatter.ts) reach the rule
+    // exactly as it would in the real preview.
+    md.__runCoreRules = (src: string, env: any) => rules.forEach((fn) => fn({ src, env }));
     return md;
   }
 
@@ -175,6 +212,62 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     };
     const out = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
     expect(out).toContain('data-seldia-doc="file:///w/demo.md"');
+  });
+
+  it('suppresses captions when front-matter sets seldia_captions: false', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine, { captionsEnabled: true })(md);
+    const src = '---\nseldia_captions: false\n---\n\n```seldia\n' + SRC + '\n```\n';
+    const env: any = {};
+    md.__runCoreRules(src, env);
+    const out = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    expect(out).not.toContain('seldia-caption-label');
+  });
+
+  it('renders captions when front-matter omits the override', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine, { captionsEnabled: true })(md);
+    const src = '```seldia\n' + SRC + '\n```\n';
+    const env: any = {};
+    md.__runCoreRules(src, env);
+    const out = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    expect(out).toContain('seldia-caption-label');
+  });
+
+  it('front-matter seldia_toc: false flips the toc marker off even when the workspace setting is on', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine, { tocEnabled: true })(md);
+    const src = '---\nseldia_toc: false\n---\n\n```seldia\n' + SRC + '\n```\n';
+    const env: any = {};
+    md.__runCoreRules(src, env);
+    const out = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    expect(out).toContain('data-seldia-toc-enabled="0"');
+  });
+
+  it('front-matter seldia_toc: true flips the toc marker on even when the workspace setting is off', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine, { tocEnabled: false })(md);
+    const src = '---\nseldia_toc: true\n---\n\n```seldia\n' + SRC + '\n```\n';
+    const env: any = {};
+    md.__runCoreRules(src, env);
+    const out = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    expect(out).toContain('data-seldia-toc-enabled="1"');
+  });
+
+  it('shares one diagram counter across seldia and mermaid fences', () => {
+    const md = makeMd();
+    createSelDiAMarkdownItPlugin(engine)(md);
+    const env: any = {};
+    const first = md.renderer.rules.fence([{ info: 'seldia', content: SRC }], 0, {}, env, {});
+    const second = md.renderer.rules.fence(
+      [{ info: 'mermaid', content: 'flowchart TD\n  A[Start] --> B{Ok?}' }],
+      0,
+      {},
+      env,
+      {}
+    );
+    expect(first).toContain('data-seldia-number="1"');
+    expect(second).toContain('data-seldia-number="2"');
   });
 
   it('intercepts ```mermaid fences and renders them through the engine', () => {

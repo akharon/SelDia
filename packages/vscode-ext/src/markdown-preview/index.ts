@@ -24,6 +24,117 @@
 (() => {
   const zoomState = new Map<string, number>();
 
+  // ── Table of Contents ─────────────────────────────────────────────────────
+  // Built from the rendered DOM, not from markdown-it's `env` — a renderer
+  // rule fires per token with nothing downstream counted yet, so the TOC can
+  // only be assembled here, after the DOM exists. Runs on load and on every
+  // `vscode.markdown.updateContent` (the preview's full-DOM re-render), and is
+  // idempotent: any previously injected nav is removed first.
+  let headingSlugSeq = 0;
+  function slugify(text: string): string {
+    const base = text
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-');
+    return base || `heading-${++headingSlugSeq}`;
+  }
+
+  function collectHeadings(): { level: number; text: string; anchor: string }[] {
+    const seen = new Set<string>();
+    const headings: { level: number; text: string; anchor: string }[] = [];
+    document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((el) => {
+      const text = (el.textContent || '').trim();
+      if (!text) return;
+      let anchor = el.id;
+      if (!anchor) {
+        // VS Code's built-in preview normally assigns heading ids itself; this
+        // is a defensive fallback for the case where it hasn't (e.g. a custom
+        // markdown-it config upstream), since a TOC entry without a target is
+        // worse than no entry.
+        anchor = slugify(text);
+        while (seen.has(anchor) || document.getElementById(anchor)) {
+          anchor = `${anchor}-${++headingSlugSeq}`;
+        }
+        el.id = anchor;
+      }
+      seen.add(anchor);
+      const level = parseInt(el.tagName.slice(1), 10);
+      headings.push({ level, text, anchor });
+    });
+    return headings;
+  }
+
+  function collectDiagrams(): { n: number; anchor: string; title?: string; blockId: string; hasError?: boolean }[] {
+    const diagrams: { n: number; anchor: string; title?: string; blockId: string; hasError?: boolean }[] = [];
+    document.querySelectorAll<HTMLElement>('.seldia-diagram[data-seldia-number]').forEach((el) => {
+      const n = parseInt(el.dataset.seldiaNumber || '', 10);
+      if (!n) return;
+      diagrams.push({
+        n,
+        anchor: el.id,
+        title: el.dataset.seldiaTitle,
+        blockId: el.dataset.seldiaBlock || '',
+        hasError: el.dataset.seldiaError === '1',
+      });
+    });
+    diagrams.sort((a, b) => a.n - b.n);
+    return diagrams;
+  }
+
+  function captionFor(n: number, title?: string): string {
+    const trimmed = title?.trim();
+    return trimmed ? `Diagram ${n} — ${trimmed}` : `Diagram ${n}`;
+  }
+
+  function tocHtml(
+    headings: { level: number; text: string; anchor: string }[],
+    diagrams: { n: number; anchor: string; title?: string }[]
+  ): string {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const parts: string[] = [];
+    if (headings.length > 0) {
+      parts.push('<div class="seldia-toc-section"><div class="seldia-toc-heading">Contents</div><ul class="seldia-toc-list">');
+      for (const h of headings) {
+        parts.push(`<li class="seldia-toc-item seldia-toc-level-${h.level}"><a href="#${esc(h.anchor)}">${esc(h.text)}</a></li>`);
+      }
+      parts.push('</ul></div>');
+    }
+    if (diagrams.length > 0) {
+      parts.push('<div class="seldia-toc-section"><div class="seldia-toc-heading">Diagrams</div><ul class="seldia-toc-list">');
+      for (const d of diagrams) {
+        parts.push(`<li class="seldia-toc-item"><a href="#${esc(d.anchor)}">${esc(captionFor(d.n, d.title))}</a></li>`);
+      }
+      parts.push('</ul></div>');
+    }
+    return parts.join('');
+  }
+
+  function buildToc() {
+    // Remove any previously injected TOC before rebuilding — the preview
+    // rebuilds its whole DOM on every keystroke, so this must be idempotent.
+    document.querySelectorAll('nav.seldia-toc').forEach((n) => n.remove());
+
+    // The toc.enabled setting is read once, host-side, at plugin-construction
+    // time (extendMarkdownIt has no per-render config channel into this
+    // webview), and carried in as a hidden marker the fence rule stamps once
+    // per document. Absence of the marker means no diagram rendered through
+    // us on this page — nothing to build a TOC from either way.
+    const config = document.getElementById('seldia-toc-config') as HTMLElement | null;
+    if (config && config.dataset.seldiaTocEnabled === '0') return;
+
+    const headings = collectHeadings();
+    const diagrams = collectDiagrams();
+
+    // A short note should not grow a TOC.
+    if (headings.length < 3 && diagrams.length < 2) return;
+
+    const nav = document.createElement('nav');
+    nav.className = 'seldia-toc';
+    nav.innerHTML = `<details open><summary>Table of Contents</summary>${tocHtml(headings, diagrams)}</details>`;
+    document.body.insertBefore(nav, document.body.firstChild);
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────────
   function diagramOf(el: Element | null): HTMLElement | null {
     return el ? (el.closest('.seldia-diagram') as HTMLElement | null) : null;
@@ -252,10 +363,17 @@
       applyZoom(container, blockId, scaleOf(blockId));
     });
   }
-  window.addEventListener('vscode.markdown.updateContent', () => reapplyZoom());
+  window.addEventListener('vscode.markdown.updateContent', () => {
+    reapplyZoom();
+    buildToc();
+  });
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => reapplyZoom());
+    document.addEventListener('DOMContentLoaded', () => {
+      reapplyZoom();
+      buildToc();
+    });
   } else {
     reapplyZoom();
+    buildToc();
   }
 })();

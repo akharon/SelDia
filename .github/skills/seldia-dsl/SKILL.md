@@ -562,7 +562,7 @@ wi "Payments traceability" {
 
 1. **Descriptive kebab-case IDs** — `validate-payment`, not `a1`
 2. **10–30 nodes** per diagram for readability
-3. **Always include a quoted title**
+3. **Always include a quoted title** — in the Markdown preview this becomes the diagram's numbered caption ("Diagram 3 — Payment flow"), so name it as you'd want it to read there
 4. **Label decision edges** — `check -> retry: "no"`
 5. **Use typed keywords for meaning** — `database db "…"` draws a cylinder, `person u "…"` an actor
 6. **Use `group "…" { }`** to box related nodes

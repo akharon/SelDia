@@ -3,6 +3,8 @@
 // =============================================================================
 // Generates a Table of Contents from the document headings and diagram list.
 
+import { anchorForDiagram, captionFor } from '../markdown-preview/numbering.js';
+
 export interface TocConfig {
   /** Minimum number of diagrams to trigger TOC */
   minDiagrams: number;
@@ -73,9 +75,10 @@ export function generateToc(
     const warningIcon = '<svg width="12" height="12" viewBox="0 0 24 24" style="vertical-align:-1px"><path d="M12 3 2 21h20L12 3Z" fill="none" stroke="#b45309" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4" stroke="#b45309" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1" fill="#b45309"/></svg>';
     const diagramIcon = '<svg width="12" height="12" viewBox="0 0 24 24" style="vertical-align:-1px"><rect x="3" y="4" width="7" height="5" rx="1" fill="none" stroke="#334155" stroke-width="2"/><rect x="14" y="4" width="7" height="5" rx="1" fill="none" stroke="#334155" stroke-width="2"/><rect x="8.5" y="15" width="7" height="5" rx="1" fill="none" stroke="#334155" stroke-width="2"/><path d="M6.5 9v3.5h10.5V9M12 12.5V15" fill="none" stroke="#334155" stroke-width="2" stroke-linecap="round"/></svg>';
     for (const d of diagrams) {
-      const label = d.title || `${d.type} diagram`;
+      const n = d.index + 1;
+      const label = captionFor(n, d.title);
       const icon = d.hasError ? warningIcon : diagramIcon;
-      const diagramAnchor = `seldia-diagram-${d.index}`;
+      const diagramAnchor = anchorForDiagram(n);
       html += `  <li class="toc-h2"><a href="#${diagramAnchor}">${icon} ${escapeHtml(label)}</a></li>\n`;
     }
   }

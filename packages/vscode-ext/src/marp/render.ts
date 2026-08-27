@@ -59,7 +59,11 @@ export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRender
 
   const { html: rawHtml, css, comments } = marp.render(markdown);
   const html = rawHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-  const slideCount = (html.match(/<section\b/g) || []).length;
+  // Marp always wraps the whole deck in one outer <div class="marpit">, so
+  // top-level slides are its direct <section> children, not every <section>
+  // in the document (diagram SVGs or user HTML can contain their own nested
+  // <section>-like markup that a raw regex count would double-count).
+  const slideCount = comments ? comments.length : (html.match(/<section\b/g) || []).length;
   const notes = (comments || []).map((perSlide: string[]) => perSlide.join('\n\n'));
 
   return { html, css, slideCount, notes };

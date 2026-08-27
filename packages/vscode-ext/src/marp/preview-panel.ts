@@ -93,8 +93,21 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
   html, body { margin: 0; height: 100%; }
   body { background: var(--vscode-editor-background); font-family: var(--vscode-font-family); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   #slides { flex: 1; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; background: repeating-conic-gradient(var(--vscode-editorWidget-background) 0% 25%, transparent 0% 50%) 50% / 20px 20px; }
-  #slides svg { display: none; box-shadow: 0 4px 24px rgba(0,0,0,0.4); position: absolute; top: 50%; left: 50%; background: #fff; }
-  #slides svg.active { display: block; }
+  /* Marp's own theme CSS is scoped to "div.marpit > svg > foreignObject >
+     section" — each slide is a top-level <svg data-marpit-svg> under
+     div.marpit, wrapping a <foreignObject><section>. Toggle visibility and
+     scale on that outer <svg> so the selector chain (and Marp's styling)
+     stays intact; unwrapping to bare <section> would lose all Marp CSS. */
+  #slides div.marpit { display: contents; }
+  /* Marp's default theme resolves its text color through light-dark(), which
+     tracks our root color-scheme (set to "light dark" so VS Code chrome
+     follows the editor theme) rather than the slide's own background — so a
+     default-theme deck can end up with light-on-light text in a dark VS Code
+     theme. Pin the default-theme token to its light value; a deck's own
+     custom CSS (e.g. a themed slide class) still overrides this normally. */
+  #slides section { --fgColor-default: #1f2328 !important; }
+  #slides svg[data-marpit-svg] { display: none; box-shadow: 0 4px 24px rgba(0,0,0,0.4); flex: none; }
+  #slides svg[data-marpit-svg].active { display: block; }
   #toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--vscode-panel-border); color: var(--vscode-foreground); font-size: 12px; }
   #toolbar button { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 3px; padding: 4px 10px; cursor: pointer; }
   #toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
@@ -125,7 +138,7 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
   const container = document.getElementById('slides');
   const notes = ${notesJson};
 
-  const sections = Array.from(document.querySelectorAll('#slides section'));
+  const sections = Array.from(document.querySelectorAll('#slides svg[data-marpit-svg]'));
   let idx = 0;
 
   function fit() {
@@ -143,7 +156,7 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
     const scale = Math.max(0.05, Math.min(availW / naturalW, availH / naturalH));
     active.style.width = naturalW + 'px';
     active.style.height = naturalH + 'px';
-    active.style.transform = 'translate(-50%, -50%) scale(' + scale + ')';
+    active.style.transform = 'scale(' + scale + ')';
   }
 
   const notesEl = document.getElementById('notes');

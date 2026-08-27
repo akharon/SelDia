@@ -3,7 +3,6 @@ marp: true
 theme: default
 paginate: true
 footer: "SelDiA + Marp Presentation"
-backgroundColor: "#f5f5f5"
 ---
 
 <!-- Global styles -->
@@ -388,28 +387,105 @@ Speaker notes appear in the **Notes** panel (toggle with the toolbar button).
 
 ---
 
+## Timeline & Milestones
+
+```seldia
+gantt "Project Timeline" {
+  t1 [Requirements: Jan 6-17]
+  t2 [Architecture: Jan 13-24]
+  t3 [Development: Jan 27 - Mar 10]
+  t4 [Testing: Mar 11-24]
+  m1 [Launch: Apr 1]
+  
+  t1 -> t2
+  t2 -> t3
+  t3 -> t4
+  t4 -> m1
+}
+```
+
+<!-- Gantt charts display project schedules and milestones in a timeline view. -->
+
+---
+
+## Process Flow
+
+```seldia
+fl "User Onboarding" {
+  start (Start)
+  signup [Sign Up]
+  verify diamond "Email Verified?"
+  profile [Complete Profile]
+  tutorial [View Tutorial]
+  done (Done)
+  
+  start -> signup
+  signup -> verify
+  verify -> signup: "no"
+  verify -> profile: "yes"
+  profile -> tutorial
+  tutorial -> done
+}
+```
+
+<!-- Flowcharts with decision diamonds show branching logic and conditional paths. -->
+
+---
+
+## Mindmap of Features
+
+```seldia
+mind "SelDiA Capabilities" {
+  root "Core Engine"
+  
+  diag "Diagram Types"
+  root -> diag
+  
+  struct "Structural"
+  diag -> struct: "C4, ER, Class"
+  
+  behav "Behavioral"
+  diag -> behav: "Sequence, State"
+  
+  plan "Planning"
+  diag -> plan: "Gantt, Timeline"
+  
+  render "Rendering"
+  root -> render
+  render -> layouts: "Auto Layout"
+  render -> styling: "Full Customization"
+  render -> export: "PDF, PNG, SVG"
+}
+```
+
+<!-- Mindmaps organize concepts hierarchically from a central root. -->
+
+---
+
 ## Gallery of Diagram Types
 
 ```seldia
-diagram flowchart "Supported Types" {
-  start: (Start)
-  flow: [Flowchart]
-  seq: [Sequence]
-  class: [Class]
-  er: [ER]
-  state: [State]
-  c4: [C4]
-  gang: [Gantt]
-  end: (End)
+fl "Supported Types" {
+  start (Start)
+  flow [Flowchart]
+  seq [Sequence]
+  class [Class]
+  er [ER]
+  state [State]
+  c4 [C4]
+  gang [Gantt]
+  mind [Mindmap]
+  end (End)
   
-  start --> flow
-  flow --> seq
-  seq --> class
-  class --> er
-  er --> state
-  state --> c4
-  c4 --> gang
-  gang --> end
+  start -> flow
+  flow -> seq
+  seq -> class
+  class -> er
+  er -> state
+  state -> c4
+  c4 -> gang
+  gang -> mind
+  mind -> end
 }
 ```
 

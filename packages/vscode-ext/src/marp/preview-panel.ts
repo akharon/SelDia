@@ -10,7 +10,7 @@
 
 import * as vscode from 'vscode';
 import type { CoreEngine } from '@seldia/core';
-import { renderMarpDeck } from './render.js';
+import { renderMarpDeck, SHRINK_DIAGRAMS_TO_FIT_JS } from './render.js';
 import { isMarpDocument } from './detect.js';
 
 export const MARP_VIEW_TYPE = 'seldia.marpPreview';
@@ -165,6 +165,7 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
   <span id="counter"></span>
 </div>
 <script>
+${SHRINK_DIAGRAMS_TO_FIT_JS}
 (function() {
   const container = document.getElementById('slides');
   const notes = ${notesJson};
@@ -198,6 +199,14 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
     sections.forEach((s, i) => s.classList.toggle('active', i === idx));
     document.getElementById('counter').textContent = sections.length ? (idx + 1) + ' / ' + sections.length : '';
     notesEl.textContent = notes[idx] || '';
+    // Measure before fit() applies its scale transform: shrinkDiagramsToFit
+    // needs the section's natural (unscaled) box so the max-height it writes
+    // is in the same 1280x720 coordinate space the SVG's own viewBox uses.
+    const active = sections[idx];
+    if (active && !active.dataset.seldiaShrunk) {
+      shrinkDiagramsToFit(active);
+      active.dataset.seldiaShrunk = '1';
+    }
     fit();
   }
 

@@ -78,6 +78,31 @@ function hashSource(source: string): string {
   return Math.abs(h).toString(36);
 }
 
+// Marp's <section> is a fixed-size (from the deck's @page size), padded,
+// overflow:hidden block box — plain CSS percentage/max-height rules on a
+// diagram inside it can't account for space already taken by a heading or
+// other slide content above it (percentages resolve against the section's
+// own box, not the room actually left after prior siblings), so an oversized
+// diagram would be silently clipped with no scrollbar. This measures the
+// real remaining space after layout and caps the SVG in pixels — exported
+// once so both the headless-export document and the live preview panel (see
+// preview-panel.ts's fit()) apply the identical fit logic.
+export const SHRINK_DIAGRAMS_TO_FIT_JS = `
+function shrinkDiagramsToFit(root) {
+  (root || document).querySelectorAll('.seldia-diagram-svg').forEach(function (box) {
+    var section = box.closest('section');
+    var svg = box.querySelector('svg');
+    if (!section || !svg) return;
+    var sectionRect = section.getBoundingClientRect();
+    var style = getComputedStyle(section);
+    var bottomPad = parseFloat(style.paddingBottom) || 0;
+    var boxRect = box.getBoundingClientRect();
+    var available = (sectionRect.bottom - bottomPad) - boxRect.top;
+    if (available > 0) svg.style.maxHeight = available + 'px';
+  });
+}
+`;
+
 /** Wrap Marp's HTML + CSS fragments into a standalone document, suitable for
  *  a webview or for headless export (PDF/PNG via Puppeteer). */
 export function assembleMarpDocument(html: string, css: string, title = 'Marp Slides'): string {
@@ -90,11 +115,15 @@ export function assembleMarpDocument(html: string, css: string, title = 'Marp Sl
 ${css}
 .seldia-diagram { background: transparent; }
 .seldia-diagram-source, .seldia-diagram-toolbar { display: none; }
-.seldia-diagram-svg svg { max-width: 100%; height: auto; }
+.seldia-diagram-svg svg { max-width: 100%; height: auto; object-fit: contain; }
 </style>
 </head>
 <body>
 ${html}
+<script>
+${SHRINK_DIAGRAMS_TO_FIT_JS}
+shrinkDiagramsToFit(document);
+</script>
 </body>
 </html>`;
 }

@@ -63,6 +63,43 @@ diagram flowchart "T" {
     expect(doc).toContain('My Deck');
     expect(doc).toContain('<section');
   });
+
+  it('shrinks a diagram taller than the slide instead of letting Marp clip it', async () => {
+    // Marp's <section> is a fixed-height, overflow:hidden box, so a diagram
+    // taller than the room left under the heading would otherwise be cut off
+    // silently with no scrollbar (verified against a real clipped screenshot
+    // during development). This is a real Puppeteer render, not a string
+    // check, because the bug is about actual layout math (percentage
+    // max-height doesn't account for space already used by prior siblings),
+    // which no IR-shape or string-contains assertion can catch.
+    const nodes = Array.from({ length: 12 }, (_, i) => `n${i}: [Step ${i}]`).join('\n  ');
+    const chain = Array.from({ length: 12 }, (_, i) => `n${i}`).join(' --> ');
+    const tallDeck = `---\nmarp: true\n---\n\n# Tall\n\n\`\`\`seldia\ndiagram flowchart "T" {\n  ${nodes}\n  ${chain}\n}\n\`\`\`\n`;
+
+    const { html, css } = renderMarpDeck(engine, tallDeck);
+    const doc = assembleMarpDocument(html, css, 'Tall');
+
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 720 });
+      await page.setContent(doc, { waitUntil: 'networkidle0', timeout: 60000 });
+
+      const rects = await page.evaluate(() => {
+        const section = document.querySelector('section')!;
+        const svg = document.querySelector('.seldia-diagram-svg svg')!;
+        return {
+          sectionBottom: section.getBoundingClientRect().bottom,
+          svgBottom: svg.getBoundingClientRect().bottom,
+        };
+      });
+
+      expect(rects.svgBottom).toBeLessThanOrEqual(rects.sectionBottom + 1);
+    } finally {
+      await browser.close();
+    }
+  }, 30000);
 });
 
 describe('readSlideSize', () => {

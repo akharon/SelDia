@@ -2585,6 +2585,12 @@ front-matter, or run **"SelDiA: Open Marp Slide Preview"** from the command
 palette. Use the arrow keys or the Prev/Next buttons to navigate slides; the
 panel re-renders automatically as you edit and save.
 
+A diagram taller than the room left on its slide is automatically shrunk to
+fit (preserving its aspect ratio) rather than being cut off by Marp's fixed
+slide bounds — this applies in the live preview and in PDF/PPTX export alike.
+Very large diagrams may end up with small text; if that happens, prefer
+splitting the diagram across multiple slides over relying on the shrink.
+
 Run **"SelDiA: Export Marp Deck (PDF/PPTX/HTML)"** to export the whole deck —
 pick a `.pdf`, `.pptx`, or `.html` destination in the save dialog. PDF and
 PPTX export use the same headless-Chromium pipeline as Markdown → PDF export

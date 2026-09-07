@@ -19,6 +19,7 @@ import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
 import { isMarpDocument } from './marp/detect.js';
 import { openMarpPreview, MarpPreviewProvider, MARP_VIEW_TYPE } from './marp/preview-panel.js';
 import { exportMarpToHtml, exportMarpToPdf } from './marp/export.js';
+import { exportMarpToPptx } from './marp/pptx.js';
 import { registerLanguageModelTools } from './lm-tools/index.js';
 
 let engine: CoreEngine;
@@ -309,15 +310,29 @@ export function activate(context: vscode.ExtensionContext) {
     }
     const title = editor.document.fileName.split('/').pop()?.replace(/\.(md|mdx)$/, '');
     const uri = await vscode.window.showSaveDialog({
-      filters: { 'PDF': ['pdf'], 'HTML': ['html'] },
+      filters: { 'PDF': ['pdf'], 'PowerPoint': ['pptx'], 'HTML': ['html'] },
       defaultUri: vscode.Uri.file(editor.document.fileName.replace(/\.(md|mdx)$/, '.pdf')),
     });
     if (!uri) return;
 
-    const asPdf = uri.fsPath.endsWith('.pdf');
-    const result = asPdf
-      ? await exportMarpToPdf(engine, markdown, uri.fsPath, title)
-      : exportMarpToHtml(engine, markdown, uri.fsPath, title);
+    // PPTX and PDF both drive headless Chrome and can take a while on a long
+    // deck, so they run under a progress notification; HTML is a direct write.
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Exporting Marp deck…',
+        cancellable: false,
+      },
+      async () => {
+        if (uri.fsPath.endsWith('.pptx')) {
+          return exportMarpToPptx(engine, markdown, uri.fsPath, title);
+        }
+        if (uri.fsPath.endsWith('.pdf')) {
+          return exportMarpToPdf(engine, markdown, uri.fsPath, title);
+        }
+        return exportMarpToHtml(engine, markdown, uri.fsPath, title);
+      }
+    );
 
     if (!result.success) {
       vscode.window.showErrorMessage(`Marp export failed: ${result.errorMessage}`);

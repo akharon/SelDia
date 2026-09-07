@@ -2585,9 +2585,13 @@ front-matter, or run **"SelDiA: Open Marp Slide Preview"** from the command
 palette. Use the arrow keys or the Prev/Next buttons to navigate slides; the
 panel re-renders automatically as you edit and save.
 
-Run **"SelDiA: Export Marp Deck (PDF/HTML)"** to export the whole deck — pick
-a `.pdf` or `.html` destination in the save dialog. PDF export uses the same
-headless-Chromium pipeline as Markdown → PDF export and requires Puppeteer.
+Run **"SelDiA: Export Marp Deck (PDF/PPTX/HTML)"** to export the whole deck —
+pick a `.pdf`, `.pptx`, or `.html` destination in the save dialog. PDF and
+PPTX export use the same headless-Chromium pipeline as Markdown → PDF export
+and require Puppeteer. PPTX slides are exported as high-resolution images
+(the same approach `marp-cli --pptx` uses by default), so slide text is not
+selectable/editable in PowerPoint — but speaker notes from `<!-- ... -->`
+comments are preserved as real PPTX notes.
 
 ### 11.7 Keybindings
 
@@ -2600,7 +2604,7 @@ headless-Chromium pipeline as Markdown → PDF export and requires Puppeteer.
 | `Ctrl+Shift+P` → "SelDiA: Open Preview" | Open live preview |
 | `Ctrl+Shift+P` → "SelDiA: Insert Diagram Block" | Insert ` ```seldia ` block in Markdown |
 | `Ctrl+Shift+P` → "SelDiA: Open Marp Slide Preview" | Open a Marp deck (`marp: true`) in the slide-by-slide preview |
-| `Ctrl+Shift+P` → "SelDiA: Export Marp Deck (PDF/HTML)" | Export the active Marp deck |
+| `Ctrl+Shift+P` → "SelDiA: Export Marp Deck (PDF/PPTX/HTML)" | Export the active Marp deck |
 | `Ctrl+Space` | Trigger autocomplete |
 | `Ctrl+Shift+F` | Format document |
 | `F2` | Rename (edit label of selected node in diagram view) |

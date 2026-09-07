@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.46.0",
+  "version": "1.47.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -55,6 +55,7 @@
     "@seldia/core": "*",
     "@seldia/interaction": "*",
     "marked": "^15.0.0",
+    "pptxgenjs": "^4.0.1",
     "puppeteer": "^24.0.0"
   },
   "devDependencies": {
@@ -181,7 +182,7 @@
       },
       {
         "command": "seldia.exportMarp",
-        "title": "SelDiA: Export Marp Deck (PDF/HTML)"
+        "title": "SelDiA: Export Marp Deck (PDF/PPTX/HTML)"
       }
     ],
     "snippets": [

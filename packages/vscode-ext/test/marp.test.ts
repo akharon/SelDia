@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { createEngine } from '@seldia/core';
 import { isMarpDocument } from '../src/marp/detect.js';
 import { renderMarpDeck, assembleMarpDocument } from '../src/marp/render.js';
+import { readSlideSize, exportMarpToPptx } from '../src/marp/pptx.js';
 
 const engine = createEngine();
 
@@ -62,4 +63,41 @@ diagram flowchart "T" {
     expect(doc).toContain('My Deck');
     expect(doc).toContain('<section');
   });
+});
+
+describe('readSlideSize', () => {
+  it('reads the slide size out of Marp @page CSS', () => {
+    expect(readSlideSize('@page {size:1280px 720px;margin:0}'))
+      .toEqual({ width: 1280, height: 720 });
+  });
+
+  it('reads a 4:3 deck size', () => {
+    expect(readSlideSize('@page {size:960px 720px;margin:0}'))
+      .toEqual({ width: 960, height: 720 });
+  });
+
+  it('falls back to 16:9 when no @page rule is present', () => {
+    expect(readSlideSize('section { color: red }'))
+      .toEqual({ width: 1280, height: 720 });
+  });
+
+  it('reads the size out of a full Marp stylesheet, not just a bare rule', () => {
+    const { css } = renderMarpDeck(engine, '---\nmarp: true\n---\n\n# Slide\n');
+    expect(readSlideSize(css)).toEqual({ width: 1280, height: 720 });
+  });
+
+  it('falls back rather than mis-reading a non-px @page size', () => {
+    expect(readSlideSize('@page {size:210mm 297mm;margin:0}'))
+      .toEqual({ width: 1280, height: 720 });
+  });
+});
+
+it('reports an error for markdown that cannot be rendered', async () => {
+  const result = await exportMarpToPptx(
+    null as any, // engine is only touched by fence rendering
+    '---\nmarp: true\n---\n\n# Hi\n',
+    '/nonexistent-dir-xyz/out.pptx'
+  );
+  expect(result.success).toBe(false);
+  expect(result.errorMessage).toBeTruthy();
 });

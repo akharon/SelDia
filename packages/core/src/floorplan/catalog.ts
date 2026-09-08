@@ -22,7 +22,7 @@ export interface FurnitureSpec {
   /** Which generic symbol drawer renders this item. */
   symbol: 'rect-label' | 'bed' | 'sink' | 'stove' | 'fridge' | 'toilet' | 'bathtub'
     | 'shower' | 'sofa' | 'chair' | 'table' | 'tv' | 'shelf' | 'stairs-straight'
-    | 'stairs-turn' | 'stairs-spiral' | 'carpet' | 'counter';
+    | 'stairs-turn' | 'stairs-spiral' | 'carpet' | 'counter' | 'radiator' | 'floor-heating';
 }
 
 const F = (key: string, label: string, width: number, depth: number, symbol: FurnitureSpec['symbol']): FurnitureSpec =>
@@ -71,6 +71,12 @@ export const FURNITURE_CATALOG: Record<string, FurnitureSpec> = {
   // Misc
   'carpet-small':  F('carpet-small', 'Rug', 1.6, 2.3, 'carpet'),
   'carpet-large':  F('carpet-large', 'Rug', 2.4, 3.4, 'carpet'),
+
+  // Heating — radiator is a thin wall-mounted panel (default width along a
+  // wall, shallow depth away from it); floor-heating is an area fill sized
+  // like a rug, since it covers a zone of the floor rather than sitting on it.
+  'radiator':      F('radiator', 'Rad.', 0.8, 0.12, 'radiator'),
+  'floor-heating': F('floor-heating', 'UFH', 2.0, 2.0, 'floor-heating'),
 };
 
 /** Standard door/window widths (metres), used when the DSL omits `width`. */

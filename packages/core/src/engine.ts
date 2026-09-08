@@ -630,7 +630,12 @@ class SelDiAEngine implements CoreEngine {
       // all text. Room names go last of the plan content so no symbol can be
       // drawn over a label — the overlap the old single-pass loop allowed.
       svg += renderFloorplanFloors(roomNodes);
-      const isRug = (n: IRNode) => String((n.data as any)?.symbol || '') === 'carpet';
+      // Floor heating is a zone fill like a rug — it must sit under whatever
+      // furniture stands on that part of the floor, not on top of it.
+      const isRug = (n: IRNode) => {
+        const sym = String((n.data as any)?.symbol || '');
+        return sym === 'carpet' || sym === 'floor-heating';
+      };
       for (const n of furnNodes.filter(isRug)) {
         svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
       }

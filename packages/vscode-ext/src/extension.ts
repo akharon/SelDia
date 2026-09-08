@@ -57,7 +57,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // ── Markdown Detection ────────────────────────────────────────────────────
   const decorator = new SelDiADecorator(engine);
-  const codeLensProvider = new SelDiACodeLensProvider();
+  const codeLensProvider = new SelDiACodeLensProvider(engine);
   let activeDetector: BlockDetector | null = null;
 
   // Register CodeLens provider for markdown files

@@ -382,6 +382,7 @@ export class SelDiAInteractiveProvider {
     let errorMsg = '';
     let stats = 'Compilation failed';
     let nodes: Array<{ id: string; x: number; y: number }> = [];
+    let fpScale: number | undefined;
 
     const r1 = eng.parse(this._currentSource, fsPath);
     const r2 = r1.ok ? eng.analyze(r1.value) : r1;
@@ -392,6 +393,7 @@ export class SelDiAInteractiveProvider {
     if (r4.ok && result.ok) {
       this._positionedIr = r4.value.diagram;
       nodes = r4.value.diagram.nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }));
+      fpScale = r4.value.diagram.metadata?.floorplanScale as number | undefined;
       svgContent = result.value.svg;
       stats = `Nodes: ${result.value.stats?.nodeCount || 0} | Edges: ${result.value.stats?.edgeCount || 0}`;
     } else {
@@ -409,7 +411,7 @@ export class SelDiAInteractiveProvider {
     const sig = `${svgContent}\0${stats}\0${errorMsg}`;
     if (!this._htmlInitialized) {
       // First render: install the full page (styles, toolbar, script).
-      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes });
+      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes, fpScale });
       this._htmlInitialized = true;
       this._lastSentSig = sig;
     } else {
@@ -425,12 +427,12 @@ export class SelDiAInteractiveProvider {
         svg: svgContent,
         error: errorMsg,
         stats,
-        ir: { nodes },
+        ir: { nodes, fpScale },
       });
     }
   }
 
-  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }> }): string {
+  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }>; fpScale?: number }): string {
     const theme = this._currentTheme;
     const isDark = theme.includes('dark');
 
@@ -558,6 +560,18 @@ export class SelDiAInteractiveProvider {
     /* Marks the source node while drawing a new edge (Edit mode). */
     .seldia-edge-source { outline: 2px dashed #0e639c; outline-offset: 3px; }
     .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
+    /* Floorplan drag guides: live horizontal/vertical distance lines from the
+       dragged item to the nearest wall or object sharing its x/y, drawn in the
+       same dashed-blue language as the static dimension strings so they read
+       as "more of the same system" rather than a different overlay. */
+    #fpDragGuides { pointer-events: none; }
+    #fpDragGuides .fp-guide-line { stroke: #2563eb; stroke-width: 1; stroke-dasharray: 4,3; }
+    #fpDragGuides .fp-guide-tick { stroke: #2563eb; stroke-width: 1.2; }
+    #fpDragGuides .fp-guide-text {
+      font-size: 10.5px; font-weight: 600; fill: #2563eb;
+      font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    #fpDragGuides .fp-guide-pill { fill: ${isDark ? '#1e1e1e' : '#ffffff'}; opacity: 0.94; }
   </style>
 </head>
 <body>
@@ -687,6 +701,147 @@ export class SelDiAInteractiveProvider {
       const rect = svg.getBoundingClientRect();
       if (!vb || !vb.width || !rect.width) return 1;
       return vb.width / rect.width;
+    }
+
+    // ── Floorplan drag guides ────────────────────────────────────────────
+    // While dragging a piece of furniture, show live horizontal and vertical
+    // distance lines from it to the nearest wall or object that shares its
+    // x-range (below/above) or y-range (left/right) — the same "what's my
+    // clearance" question the static dimension strings answer for the plan as
+    // a whole, but live, for the thing actually moving.
+    const FP_TICK = 5;
+
+    /** Every candidate the dragged item can be measured against: wall
+     *  segments (as thin boxes) and every other furniture piece's bbox, all
+     *  in SVG user units. Re-read from the live DOM on every move rather than
+     *  cached, since it's cheap and guarantees it never drifts from what's
+     *  on screen. */
+    function fpObstacles(svg, dragId) {
+      const boxes = [];
+      svg.querySelectorAll('.seldia-floorplan-walls line').forEach((w) => {
+        const x1 = parseFloat(w.getAttribute('x1')), y1 = parseFloat(w.getAttribute('y1'));
+        const x2 = parseFloat(w.getAttribute('x2')), y2 = parseFloat(w.getAttribute('y2'));
+        const t = parseFloat(w.getAttribute('stroke-width')) || 4.5;
+        const half = t / 2;
+        boxes.push({
+          x: Math.min(x1, x2) - half, y: Math.min(y1, y2) - half,
+          w: Math.abs(x2 - x1) + t, h: Math.abs(y2 - y1) + t,
+          kind: 'wall',
+        });
+      });
+      svg.querySelectorAll('[data-id][data-type="node"]').forEach((el) => {
+        if (el.getAttribute('data-id') === dragId) return;
+        const b = el.getBBox();
+        if (b.width <= 0 || b.height <= 0) return;
+        boxes.push({ x: b.x, y: b.y, w: b.width, h: b.height, kind: 'object' });
+      });
+      return boxes;
+    }
+
+    function fpGuideGroup(svg) {
+      let g = svg.querySelector('#fpDragGuides');
+      if (!g) {
+        g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('id', 'fpDragGuides');
+        svg.appendChild(g);
+      }
+      return g;
+    }
+
+    function fpFormatLen(px) {
+      const scale = (irData && irData.fpScale) || 60;
+      const m = px / scale;
+      return m < 1 ? Math.round(m * 100) + ' cm' : m.toFixed(2) + ' m';
+    }
+
+    function fpLine(g, x1, y1, x2, y2, cls) {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      el.setAttribute('x1', x1); el.setAttribute('y1', y1);
+      el.setAttribute('x2', x2); el.setAttribute('y2', y2);
+      el.setAttribute('class', cls);
+      g.appendChild(el);
+    }
+
+    function fpLabel(g, x, y, text, vertical) {
+      const w = text.length * 10.5 * 0.58 + 8, h = 15;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('class', 'fp-guide-pill');
+      rect.setAttribute('rx', '2');
+      if (vertical) {
+        rect.setAttribute('x', x - h / 2); rect.setAttribute('y', y - w / 2);
+        rect.setAttribute('width', h); rect.setAttribute('height', w);
+      } else {
+        rect.setAttribute('x', x - w / 2); rect.setAttribute('y', y - h / 2);
+        rect.setAttribute('width', w); rect.setAttribute('height', h);
+      }
+      g.appendChild(rect);
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', x); t.setAttribute('y', y);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('dominant-baseline', 'central');
+      t.setAttribute('class', 'fp-guide-text');
+      if (vertical) t.setAttribute('transform', 'rotate(-90 ' + x + ' ' + y + ')');
+      t.textContent = text;
+      g.appendChild(t);
+    }
+
+    /** Draw a dimension-style line from the dragged box's near edge to the
+     *  nearest obstacle edge that overlaps it on the perpendicular axis —
+     *  i.e. "what's directly above/below/left/right of me right now". */
+    function fpGuideToNearest(g, box, obstacles, axis) {
+      // axis 'y': measure vertically (up/down) to something overlapping in x.
+      // axis 'x': measure horizontally (left/right) to something overlapping in y.
+      const horiz = axis === 'x';
+      let best = null, bestGap = Infinity, bestSide = null;
+      for (const o of obstacles) {
+        const overlaps = horiz
+          ? box.y < o.y + o.h && box.y + box.h > o.y
+          : box.x < o.x + o.w && box.x + box.w > o.x;
+        if (!overlaps) continue;
+        if (horiz) {
+          const gapRight = o.x - (box.x + box.w);
+          const gapLeft = box.x - (o.x + o.w);
+          if (gapRight >= 0 && gapRight < bestGap) { bestGap = gapRight; best = o; bestSide = 'right'; }
+          if (gapLeft >= 0 && gapLeft < bestGap) { bestGap = gapLeft; best = o; bestSide = 'left'; }
+        } else {
+          const gapDown = o.y - (box.y + box.h);
+          const gapUp = box.y - (o.y + o.h);
+          if (gapDown >= 0 && gapDown < bestGap) { bestGap = gapDown; best = o; bestSide = 'down'; }
+          if (gapUp >= 0 && gapUp < bestGap) { bestGap = gapUp; best = o; bestSide = 'up'; }
+        }
+      }
+      if (!best || !isFinite(bestGap)) return;
+      const midY = Math.max(box.y, best.y) / 2 + Math.min(box.y + box.h, best.y + best.h) / 2;
+      const midX = Math.max(box.x, best.x) / 2 + Math.min(box.x + box.w, best.x + best.w) / 2;
+      let x1, y1, x2, y2;
+      if (bestSide === 'right') { y1 = y2 = midY; x1 = box.x + box.w; x2 = best.x; }
+      else if (bestSide === 'left') { y1 = y2 = midY; x1 = best.x + best.w; x2 = box.x; }
+      else if (bestSide === 'down') { x1 = x2 = midX; y1 = box.y + box.h; y2 = best.y; }
+      else { x1 = x2 = midX; y1 = best.y + best.h; y2 = box.y; }
+      fpLine(g, x1, y1, x2, y2, 'fp-guide-line');
+      const vertical = bestSide === 'up' || bestSide === 'down';
+      for (const [tx, ty] of [[x1, y1], [x2, y2]]) {
+        fpLine(g, tx - (vertical ? FP_TICK : 0), ty - (vertical ? 0 : FP_TICK),
+                  tx + (vertical ? FP_TICK : 0), ty + (vertical ? 0 : FP_TICK), 'fp-guide-tick');
+      }
+      const gap = Math.hypot(x2 - x1, y2 - y1);
+      fpLabel(g, (x1 + x2) / 2, (y1 + y2) / 2, fpFormatLen(gap), vertical);
+    }
+
+    function updateFpDragGuides(svg, el, tx, ty) {
+      const bb = el.getBBox(); // el already carries the ghost transform
+      const box = { x: bb.x + tx, y: bb.y + ty, w: bb.width, h: bb.height };
+      const obstacles = fpObstacles(svg, el.getAttribute('data-id'));
+      const g = fpGuideGroup(svg);
+      g.textContent = '';
+      fpGuideToNearest(g, box, obstacles, 'y'); // vertical line: nearest above/below
+      fpGuideToNearest(g, box, obstacles, 'x'); // horizontal line: nearest left/right
+    }
+
+    function clearFpDragGuides() {
+      const svg = container.querySelector('svg');
+      const g = svg && svg.querySelector('#fpDragGuides');
+      if (g) g.remove();
     }
 
     // ── Zoom & Pan ─────────────────────────────────────────────────────
@@ -834,6 +989,7 @@ export class SelDiAInteractiveProvider {
 
     // ── Node Dragging ──────────────────────────────────────────────────
     let dragUnitsPerPx = 1; // captured at drag start; scale can't change mid-drag
+    let dragIsFloorplan = false;
 
     container.addEventListener('mousedown', (e) => {
       if (e.button !== 0 || e.shiftKey || isPanning) return;
@@ -845,6 +1001,8 @@ export class SelDiAInteractiveProvider {
       dragStartY = e.clientY;
       dragUnitsPerPx = svgUnitsPerPixel();
       isDragging = false;
+      const svg = container.querySelector('svg');
+      dragIsFloorplan = !!(svg && svg.querySelector('.seldia-floorplan-walls'));
     });
 
     document.addEventListener('mousemove', (e) => {
@@ -865,7 +1023,9 @@ export class SelDiAInteractiveProvider {
         if (el) {
           // The ghost translate is in SVG user units, so it must track the
           // cursor exactly regardless of zoom / CSS scaling.
-          el.setAttribute('transform', 'translate(' + dx * dragUnitsPerPx + ', ' + dy * dragUnitsPerPx + ')');
+          const tx = dx * dragUnitsPerPx, ty = dy * dragUnitsPerPx;
+          el.setAttribute('transform', 'translate(' + tx + ', ' + ty + ')');
+          if (dragIsFloorplan) updateFpDragGuides(svg, el, tx, ty);
         }
       }
     });
@@ -888,6 +1048,7 @@ export class SelDiAInteractiveProvider {
       }
       dragNodeId = null;
       isDragging = false;
+      clearFpDragGuides();
     });
 
     // ── Label Editor ───────────────────────────────────────────────────

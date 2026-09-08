@@ -91,6 +91,30 @@ describe('floorplan diagram', () => {
     expect(f.label).toBe('unobtainium-gizmo');
   });
 
+  it('resolves radiator and floor-heating catalog items and renders them as furniture', () => {
+    const svg = renderOf(`
+      floorplan "T" {
+        R "Room" { type: "room", at: "0,0", size: "3x3" }
+        f1 "rad" { type: "furniture", item: "radiator", in: "R", at: "0.1,0.1" }
+        f2 "ufh" { type: "furniture", item: "floor-heating", in: "R", at: "0.5,0.5", size: "2x2" }
+      }
+    `);
+    const ir = irOf(`
+      floorplan "T" {
+        R "Room" { type: "room", at: "0,0", size: "3x3" }
+        f1 "rad" { type: "furniture", item: "radiator", in: "R", at: "0.1,0.1" }
+        f2 "ufh" { type: "furniture", item: "floor-heating", in: "R", at: "0.5,0.5", size: "2x2" }
+      }
+    `);
+    const furniture = ir.nodes.filter((n) => (n.data as any)?.fpKind === 'furniture');
+    const rad = furniture.find((f) => f.id === 'f1')!;
+    expect(rad.size).toEqual({ width: 0.8, height: 0.12 }); // catalog default
+    expect((rad.data as any).symbol).toBe('radiator');
+    const ufh = furniture.find((f) => f.id === 'f2')!;
+    expect((ufh.data as any).symbol).toBe('floor-heating');
+    expect(svg).toContain('seldia-node');
+  });
+
   it('derives walls (exterior vs interior) and openings at layout time', () => {
     const parsed = engine.parse(SAMPLE);
     expect(parsed.ok).toBe(true);

@@ -40,13 +40,16 @@ describe('renderSelDiABlock', () => {
     expect(html).not.toContain('data-seldia-target-mode="edit"');
   });
 
-  // revealSource is one-shot navigation and is the only action the preview may
-  // invoke; anything that mutates the document must not be reachable from here.
-  it('deep-links to revealSource only', () => {
+  // revealSource is one-shot navigation, and editBlockVisually only opens the
+  // block in the custom editor's own owned webview (never edits in place
+  // through this channel) — those are the only two actions the preview may
+  // invoke; anything that mutates the document directly must not be reachable
+  // from here.
+  it('deep-links to revealSource and editBlockVisually only', () => {
     const html = renderSelDiABlock(engine, SRC, 'file:///w/demo.md');
     const actions = [...html.matchAll(/href="vscode:\/\/seldia\.seldia-vscode\/(\w+)/g)].map((m) => m[1]);
     expect(actions.length).toBeGreaterThan(0);
-    expect(new Set(actions)).toEqual(new Set(['revealSource']));
+    expect(new Set(actions)).toEqual(new Set(['revealSource', 'editBlockVisually']));
   });
 
   it('uses a block id consistent with the editor module', () => {

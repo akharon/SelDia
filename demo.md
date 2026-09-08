@@ -683,7 +683,7 @@ Rough.js style every other type uses.
 
 ```seldia
 fp "Apartment 4B" {
-  meta [sheet] { type: sheet, scale: "1:100", author: "M. Kaya", date: "2026-09-08" }
+  meta [sheet] { type: sheet, scale: "1:100", author: "M. Kiyar", date: "2026-09-08" }
 
   Kitchen "Kitchen" { type: room, at: "0,0", size: "4x3" }
   Living "Living" { type: room, at: "4,0", size: "6x3" }
@@ -702,6 +702,8 @@ fp "Apartment 4B" {
   f4 [counter] { type: furniture, item: counter, in: "Kitchen", at: "1.6,0.2" }
   f5 [island] { type: furniture, item: "dining-table", in: "Kitchen", at: "1.3,1.6", size: "1.4x0.8" }
 
+  kitch "" { type: measure, from: "f5", to: "f4" }
+
   f6 [sofa] { type: furniture, item: sofa, in: "Living", at: "0.4,0.9", size: "2.0x0.9" }
   f7 [coffee-table] { type: furniture, item: "coffee-table", in: "Living", at: "0.6,2.0" }
   f8 [tv-table] { type: furniture, item: "tv-table", in: "Living", at: "0.5,0.15" }
@@ -715,7 +717,6 @@ fp "Apartment 4B" {
   f14 [toilet] { type: furniture, item: toilet, in: "Bathroom", at: "2.5,1.3" }
   f15 [bathtub] { type: furniture, item: bathtub, in: "Bathroom", at: "0.1,1.15" }
 
-  mBathW "" { type: measure, from: "f15", to: "f14" }
-  mBathH "" { type: measure, from: "Bathroom.south", to: "f14" }
+  mBathH "" { type: measure, from: "Bathroom.south", to: "Bathroom.north" }
 }
 ```

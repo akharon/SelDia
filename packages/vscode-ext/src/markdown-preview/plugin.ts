@@ -254,6 +254,7 @@ ${includeSprite ? ICON_SPRITE : ''}
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="preview" title="Show rendered diagram" aria-label="Show rendered diagram">${icon('visibility')}</button>
       <button class="seldia-btn seldia-btn-icon seldia-mode-btn" data-seldia-target-mode="code" title="Show DSL source" aria-label="Show DSL source">${icon('code')}</button>
     </span>
+    <a class="seldia-btn seldia-btn-icon" title="Edit visually" aria-label="Edit visually" href="${deepLink('editBlockVisually', { blockId, doc: docUri })}">${icon('edit-visually')}</a>
     <span class="seldia-toolbar-spacer"></span>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-in" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-out" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>

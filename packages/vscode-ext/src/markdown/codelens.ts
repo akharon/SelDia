@@ -7,11 +7,28 @@ import * as vscode from 'vscode';
 import type { SelDiABlock } from './detector.js';
 import { blockIdForSource } from '../edit/blocks.js';
 import { isMarpDocument } from '../marp/detect.js';
+import { isMermaidExportable, isPlantUmlExportable } from '@seldia/core';
+import type { CoreEngine } from '@seldia/core';
 
 export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
   private blocks: SelDiABlock[] = [];
   private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
+
+  constructor(private readonly engine: CoreEngine) {}
+
+  /** The real diagram type, from a parse — `block.diagramType` is only the
+   *  fence-tag hint (defaults to 'flowchart' for a plain ```seldia fence
+   *  regardless of what the DSL body actually declares, e.g. `fp "..." {}`
+   *  for a floorplan), so it can't be trusted to gate format-specific export
+   *  lenses. `undefined` on any parse failure — callers then show the lens,
+   *  since "can't tell" must not read as "definitely can't export". */
+  private realTypeOf(source: string): any {
+    const r1 = this.engine.parse(source);
+    const r2 = r1.ok ? this.engine.analyze(r1.value) : r1;
+    const r3 = r2.ok ? this.engine.transform(r2.value) : r2;
+    return r3.ok ? r3.value.type : undefined;
+  }
 
   /**
    * Update the block list and fire change event.
@@ -78,21 +95,31 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
         tooltip: 'Export this diagram as SVG',
       }));
 
-      // "Export to Mermaid" lens
-      lenses.push(new vscode.CodeLens(startRange, {
-        title: '$(arrow-swap) Export to Mermaid',
-        command: 'seldia.exportToMermaid',
-        arguments: [block.source],
-        tooltip: 'Export this diagram to Mermaid (.mmd) syntax',
-      }));
-
-      // "Export to PlantUML" lens
-      lenses.push(new vscode.CodeLens(startRange, {
-        title: '$(arrow-swap) Export to PlantUML',
-        command: 'seldia.exportToPlantUml',
-        arguments: [block.source],
-        tooltip: 'Export this diagram to PlantUML (.puml) syntax',
-      }));
+      // "Export to Mermaid" / "Export to PlantUML" — only offered when the
+      // diagram's actual type (not the fence-tag hint) has a mapping in the
+      // corresponding exporter. Most of SelDiA's types (floorplan, form,
+      // sankey, wireframe, cloud, network, workitem, bpmn, dmn, the c4/chart
+      // variants, …) have no Mermaid/PlantUML equivalent — exportMermaid /
+      // exportPlantUml already return null for those rather than emitting
+      // degraded output, but leaving the lens up regardless just turns every
+      // click on an unsupported block into an error-message dead end.
+      const realType = this.realTypeOf(block.source);
+      if (realType === undefined || isMermaidExportable(realType)) {
+        lenses.push(new vscode.CodeLens(startRange, {
+          title: '$(arrow-swap) Export to Mermaid',
+          command: 'seldia.exportToMermaid',
+          arguments: [block.source],
+          tooltip: 'Export this diagram to Mermaid (.mmd) syntax',
+        }));
+      }
+      if (realType === undefined || isPlantUmlExportable(realType)) {
+        lenses.push(new vscode.CodeLens(startRange, {
+          title: '$(arrow-swap) Export to PlantUML',
+          command: 'seldia.exportToPlantUml',
+          arguments: [block.source],
+          tooltip: 'Export this diagram to PlantUML (.puml) syntax',
+        }));
+      }
     }
 
     return lenses;

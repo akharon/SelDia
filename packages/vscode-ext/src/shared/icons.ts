@@ -38,6 +38,7 @@ export const ICON_SPRITE = `
   <symbol id="seldia-icon-delete" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="seldia-icon-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.3A4.2 4.2 0 0 0 21 12a9 9 0 0 0-9-9Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor"/><circle cx="12" cy="7.5" r="1.2" fill="currentColor"/><circle cx="16.5" cy="10.5" r="1.2" fill="currentColor"/></symbol>
   <symbol id="seldia-icon-shape" viewBox="0 0 24 24"><path d="M12 3 3 21h18L12 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="seldia-icon-edit-visually" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="0.5" fill="currentColor"/></symbol>
 </svg>`;
 
 /** Render one Material Symbols icon reference (a small inline `<svg><use>`).

@@ -572,6 +572,40 @@ function renderFurnitureSymbol(node: IRNode): string {
       svg += `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="none" stroke="${MUTED}" stroke-width="1" stroke-dasharray="5,4"/>\n`;
       labelSlot = 'none';
       break;
+    case 'radiator': {
+      // A thin wall-mounted panel: the standard fin-lines symbol, ribs running
+      // across the short axis so it reads correctly whether the radiator sits
+      // along a horizontal or vertical wall.
+      svg += box(x, y, w, h, INK_SOFT, PAPER, 1);
+      const vertical = h > w;
+      const fins = Math.max(4, Math.round((vertical ? h : w) / 6));
+      for (let i = 1; i < fins; i++) {
+        svg += vertical
+          ? `    <line x1="${x + 1}" y1="${y + (h / fins) * i}" x2="${x + w - 1}" y2="${y + (h / fins) * i}" stroke="${MUTED}" stroke-width="0.8"/>\n`
+          : `    <line x1="${x + (w / fins) * i}" y1="${y + 1}" x2="${x + (w / fins) * i}" y2="${y + h - 1}" stroke="${MUTED}" stroke-width="0.8"/>\n`;
+      }
+      labelSlot = 'none';
+      break;
+    }
+    case 'floor-heating': {
+      // Underfloor heating: a zone fill, not an object — drawn as a serpentine
+      // pipe run (the real installation pattern) inside a dashed zone outline,
+      // matching the rug's "sits under everything, outline only" treatment.
+      svg += `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="none" stroke="${MUTED}" stroke-width="1" stroke-dasharray="3,3"/>\n`;
+      const rows = Math.max(2, Math.round(h / (Math.min(w, h) * 0.22)));
+      const rowH = h / rows;
+      const inset = Math.min(w, h) * 0.12;
+      let path = `M ${x + inset} ${y + rowH / 2}`;
+      for (let i = 0; i < rows; i++) {
+        const yMid = y + rowH * i + rowH / 2;
+        const goingRight = i % 2 === 0;
+        path += ` L ${goingRight ? x + w - inset : x + inset} ${yMid}`;
+        if (i < rows - 1) path += ` L ${goingRight ? x + w - inset : x + inset} ${yMid + rowH}`;
+      }
+      svg += `    <path d="${path}" fill="none" stroke="${MUTED}" stroke-width="1"/>\n`;
+      labelSlot = 'none';
+      break;
+    }
     default:
       svg += box(x, y, w, h, INK_SOFT);
   }

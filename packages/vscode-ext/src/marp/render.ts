@@ -15,8 +15,94 @@
 // markdown-preview/plugin.ts, just chained one level deeper.
 // =============================================================================
 
-import type { CoreEngine } from '@seldia/core';
+import { Direction, type CoreEngine } from '@seldia/core';
 import { renderSelDiABlock, renderMermaidBlock, renderPlantUmlBlock } from '../markdown-preview/plugin.js';
+
+/** Pull the diagram's own bounds out of the SVG `viewBox` a render call just
+ *  produced. There's no bounds-returning API on the shared render helpers
+ *  (they're also the regular Markdown preview's renderer, so their return
+ *  type can't grow a Marp-only field) — the viewBox is the one place layout
+ *  size survives into the HTML string those helpers hand back. */
+function viewBoxSize(html: string): { w: number; h: number } | null {
+  // The rendered block also carries the once-per-document icon sprite, whose
+  // <symbol> defs each have their own tiny viewBox (e.g. "0 0 24 24") ahead of
+  // the actual diagram markup — matching the first viewBox in the whole
+  // string picks up an icon, not the diagram, and (being roughly square)
+  // reads as "not tall", silently defeating this whole check. The diagram's
+  // own <svg> is the one tagged seldia-diagram-svg-el, so anchor there.
+  const m = html.match(/class="seldia-diagram-svg-el[^"]*"[^>]*viewBox="0 0 ([0-9.]+) ([0-9.]+)"/);
+  if (!m) return null;
+  const w = parseFloat(m[1]);
+  const h = parseFloat(m[2]);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
+/** Slides are landscape (1280x720-ish), so a diagram that is itself taller
+ *  than it is wide is the one shape that fights the slide instead of fitting
+ *  it — dagre's default top-to-bottom layout draws it as a narrow column that
+ *  wastes almost all the slide's width (see [[marp-diagram-fit]]). Re-running
+ *  the same diagram left-to-right turns that column into a row, trading the
+ *  slide's abundant width for its scarce height. A diagram that is already
+ *  wide (fat) has no such problem — forcing it to LR as well would just make
+ *  an already-wide diagram wider for no benefit, so only portrait-oriented
+ *  results get the swap. */
+function isTall(size: { w: number; h: number }): boolean {
+  return size.h > size.w;
+}
+
+/** Render with `renderFn`, forcing left-to-right layout only if the diagram
+ *  would otherwise come out portrait-shaped and forcing LR actually fixes
+ *  that. Uses `engine.config.layout.forceDirection`, not `.direction`: most
+ *  SelDiA diagram *types* declare their own default direction (a sequence
+ *  diagram is TB, a timeline is LR, …) and that type default wins over plain
+ *  `.direction` in `resolvedLayoutOptions` — so setting `.direction` here
+ *  would silently do nothing for the majority of diagram types. Only
+ *  `forceDirection` overrides the type default too, which is the whole point
+ *  for a diagram whose *type* default drew it portrait-shaped on a landscape
+ *  slide. `forceDirection` is mutated only for the probe/final calls in this
+ *  function and always restored in a `finally`, immediately, since rendering
+ *  is synchronous — it never leaks into the regular Markdown preview or
+ *  another block's render sharing the same engine.
+ *
+ *  `renderFn` takes the `env` to render with, not a plain thunk: the shared
+ *  render helpers stamp document-order diagram numbering and a TOC-entry
+ *  list onto `env` as a side effect of being called. Deciding the direction
+ *  needs up to two throwaway renders (normal, then forced-LR) purely to read
+ *  their SVG dimensions — calling `renderFn` against the *real* env for those
+ *  would burn a diagram number and register a duplicate TOC entry for HTML
+ *  that gets discarded. Every probe therefore renders into a fresh shallow
+ *  clone of `env`, and the real `env` is only ever passed to the one final
+ *  render whose HTML is actually kept. */
+function renderPreferringLandscape(
+  engine: CoreEngine,
+  env: any,
+  renderFn: (env: any) => string | null,
+): string | null {
+  const cloneEnv = () => (env && typeof env === 'object' ? { ...env } : env);
+  const renderWithForce = (forceDirection: Direction | undefined, targetEnv: any): string | null => {
+    const previous = engine.config.layout.forceDirection;
+    engine.config.layout.forceDirection = forceDirection;
+    try {
+      return renderFn(targetEnv);
+    } finally {
+      engine.config.layout.forceDirection = previous;
+    }
+  };
+
+  const normalProbe = renderWithForce(undefined, cloneEnv());
+  if (normalProbe === null) return null;
+  const normalSize = viewBoxSize(normalProbe);
+  if (!normalSize || !isTall(normalSize)) return renderWithForce(undefined, env);
+
+  const landscapeProbe = renderWithForce(Direction.LEFT_TO_RIGHT, cloneEnv());
+  const landscapeSize = landscapeProbe && viewBoxSize(landscapeProbe);
+  // Only switch if forcing LR actually produced a wider-than-tall result —
+  // some topologies (a single long chain, a deeply nested tree) stay tall
+  // either way, and the original direction is no worse a fallback than a
+  // forced attempt that didn't help.
+  const useUnchanged = !landscapeSize || isTall(landscapeSize);
+  return renderWithForce(useUnchanged ? undefined : Direction.LEFT_TO_RIGHT, env);
+}
 
 export interface MarpRenderResult {
   html: string;
@@ -43,13 +129,13 @@ export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRender
     const lang = token.info?.trim().split(/\s+/)[0] || '';
 
     if (lang === 'seldia' || lang.startsWith('seldia-')) {
-      return renderSelDiABlock(engine, token.content, '', true, env);
+      return renderPreferringLandscape(engine, env, (e) => renderSelDiABlock(engine, token.content, '', true, e));
     }
     if (lang === 'mermaid') {
-      return renderMermaidBlock(engine, token.content, '', true, env);
+      return renderPreferringLandscape(engine, env, (e) => renderMermaidBlock(engine, token.content, '', true, e));
     }
     if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
-      return renderPlantUmlBlock(engine, token.content, '', true, env);
+      return renderPreferringLandscape(engine, env, (e) => renderPlantUmlBlock(engine, token.content, '', true, e));
     }
 
     return defaultFence
@@ -105,11 +191,39 @@ function shrinkDiagramsToFit(root) {
     var section = box.closest('section');
     var svg = box.querySelector('svg');
     if (!section || !svg) return;
-    var sectionRect = section.getBoundingClientRect();
+    // Measure in the section's own *layout* coordinate space, never with
+    // getBoundingClientRect(): the live preview panel scales the whole slide
+    // with a CSS transform to fit the panel, and getBoundingClientRect()
+    // reports post-transform (screen) pixels. Writing such a value back as a
+    // plain CSS height — which is interpreted in the untransformed 1280x720
+    // slide space, then scaled again for display — shrinks the diagram by the
+    // scale factor twice over, so in a small panel a diagram collapses to a
+    // few dozen pixels. offsetTop/offsetHeight are unaffected by transforms.
+    var offsetTopInSection = 0;
+    for (var node = box; node && node !== section; node = node.offsetParent) {
+      offsetTopInSection += node.offsetTop;
+    }
     var style = getComputedStyle(section);
     var bottomPad = parseFloat(style.paddingBottom) || 0;
-    var boxRect = box.getBoundingClientRect();
-    var available = (sectionRect.bottom - bottomPad) - boxRect.top;
+    // Anything laid out *after* the diagram box still needs its own room: the
+    // caption ("Diagram 3 — Foo") is a sibling below the box, and a slide can
+    // continue with more prose after the diagram. Without this the box claims
+    // every remaining pixel and pushes that content off the bottom of the
+    // slide (section is overflow:hidden, so it silently disappears).
+    var trailing = 0;
+    for (var node = box; node && node !== section; node = node.parentElement) {
+      for (var sib = node.nextElementSibling; sib; sib = sib.nextElementSibling) {
+        // Skip out-of-flow siblings: Marp positions the slide's <footer> and
+        // page number absolutely, so they occupy no space in the flow below
+        // the diagram and must not be deducted from it.
+        var sibPos = getComputedStyle(sib).position;
+        if (sibPos === 'absolute' || sibPos === 'fixed') continue;
+        trailing += sib.offsetHeight || 0;
+      }
+    }
+    // section.clientHeight excludes its border but includes padding, matching
+    // the box's offsetTop origin (the section's padding edge).
+    var available = section.clientHeight - bottomPad - offsetTopInSection - trailing;
     if (available > 0) box.style.height = available + 'px';
   });
 }

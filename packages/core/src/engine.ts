@@ -277,7 +277,10 @@ class SelDiAEngine implements CoreEngine {
       TB: Direction.TOP_TO_BOTTOM, LR: Direction.LEFT_TO_RIGHT, BT: Direction.BOTTOM_TO_TOP, RL: Direction.RIGHT_TO_LEFT,
     };
     return {
-      direction: (typeDefaults.direction && dirMap[typeDefaults.direction]) || this.config.layout.direction || Direction.TOP_TO_BOTTOM,
+      direction: this.config.layout.forceDirection
+        || (typeDefaults.direction && dirMap[typeDefaults.direction])
+        || this.config.layout.direction
+        || Direction.TOP_TO_BOTTOM,
       nodeSpacing: typeDefaults.nodeSpacing?.[0] ?? this.config.layout.nodeSpacing?.[0] ?? 80,
       rankSpacing: typeDefaults.rankSpacing ?? this.config.layout.rankSpacing ?? 80,
       edgeSpacing: this.config.layout.edgeSpacing ?? 20,

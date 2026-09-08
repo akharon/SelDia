@@ -81,6 +81,15 @@ export interface LayoutConfig {
   /** Default layout direction */
   direction: Direction;
 
+  /** When set, overrides *every* diagram type's own default direction for
+   *  the next layout pass — unlike `direction` above, which only fills in
+   *  when a type has no opinion of its own (see `resolvedLayoutOptions` in
+   *  engine.ts). Meant to be set transiently by a caller that needs to force
+   *  an orientation regardless of what the diagram's author or type default
+   *  declared (e.g. Marp forcing landscape diagrams to fit a slide), then
+   *  cleared immediately after — it is not a persistent config value. */
+  forceDirection?: Direction;
+
   /** Node spacing (horizontal, vertical) */
   nodeSpacing: [number, number];
 

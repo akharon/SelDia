@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { createEngine } from '@seldia/core';
 import { isMarpDocument } from '../src/marp/detect.js';
-import { renderMarpDeck, assembleMarpDocument } from '../src/marp/render.js';
+import { renderMarpDeck, assembleMarpDocument, SHRINK_DIAGRAMS_TO_FIT_JS } from '../src/marp/render.js';
 import { readSlideSize, exportMarpToPptx } from '../src/marp/pptx.js';
 
 const engine = createEngine();
@@ -100,6 +100,93 @@ diagram flowchart "T" {
       await browser.close();
     }
   }, 30000);
+
+  it('sizes a diagram independently of the preview panel scale', async () => {
+    // The live preview panel fits a slide to the panel by CSS-transforming the
+    // whole 1280x720 <section> (scale(0.3) in a small panel). The fit routine
+    // must therefore measure in *layout* space: measuring with
+    // getBoundingClientRect() returns post-transform pixels, and writing those
+    // back as a CSS height — which is then scaled for display a second time —
+    // collapses the diagram to a sliver, worse the smaller the panel. That was
+    // the "diagrams are extremely small in Marp view" bug. The invariant that
+    // catches it: the computed box height must not depend on the scale.
+    const deck = `---\nmarp: true\n---\n\n# Heading\n\n\`\`\`seldia\ndiagram flowchart "T" {\n  a: (Start)\n  b: [Middle]\n  c: (End)\n  a --> b --> c\n}\n\`\`\`\n`;
+    const { html, css } = renderMarpDeck(engine, deck);
+
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 720 });
+      await page.setContent(
+        `<style>${css}\n.seldia-diagram-source,.seldia-diagram-toolbar{display:none}\n` +
+          `.seldia-diagram-svg{box-sizing:border-box;display:flex;overflow:hidden}\n` +
+          `.seldia-diagram-svg svg{display:block;width:100%;height:100%;object-fit:contain}</style>` +
+          `<div id="wrap">${html}</div><script>${SHRINK_DIAGRAMS_TO_FIT_JS}</script>`,
+        { waitUntil: 'networkidle0', timeout: 60000 },
+      );
+
+      const heightAtScale = async (scale: number) =>
+        page.evaluate((s) => {
+          const outer = document.querySelector('svg[data-marpit-svg]') as HTMLElement;
+          const box = document.querySelector('.seldia-diagram-svg') as HTMLElement;
+          box.style.height = '';
+          outer.style.transformOrigin = 'top left';
+          outer.style.transform = 'scale(' + s + ')';
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).shrinkDiagramsToFit(document);
+          return box.offsetHeight;
+        }, scale);
+
+      const full = await heightAtScale(1);
+      const small = await heightAtScale(0.3);
+
+      expect(full).toBeGreaterThan(100);
+      expect(small).toBe(full);
+    } finally {
+      await browser.close();
+    }
+  }, 30000);
+
+  it('forces a portrait diagram to landscape, but leaves an already-wide diagram alone', () => {
+    // The "deployment" diagram type's own default direction is top-to-bottom
+    // (see getDefaultLayoutOptions in diagrams/misc.ts), which draws a linear
+    // pipeline as a tall single column — the worst possible shape for a
+    // 1280x720 slide. Marp should override that default (not just
+    // config.layout.direction, which a type default already wins over — see
+    // forceDirection in engine.ts) and lay it out left-to-right instead.
+    const tallDeck = `---\nmarp: true\n---\n\n# Pipeline\n\n\`\`\`seldia\ndiagram deployment "T" {\n  a: (Dev)\n  b: [Build]\n  c: [Test]\n  d: [Deploy]\n  a --> b --> c --> d\n}\n\`\`\`\n`;
+    const { html: tallHtml } = renderMarpDeck(engine, tallDeck);
+    const tallMatch = tallHtml.match(/class="seldia-diagram-svg-el[^"]*"[^>]*viewBox="0 0 ([0-9.]+) ([0-9.]+)"/);
+    expect(tallMatch).not.toBeNull();
+    const [, tw, th] = tallMatch!.map(Number) as unknown as [number, number, number];
+    expect(tw).toBeGreaterThan(th); // forced to landscape
+
+    // A flowchart laid out with a wide fan-out is already landscape-shaped at
+    // its type default (TB, but wide because siblings share a rank) — it must
+    // come out exactly as it would without this feature, not get forced to LR
+    // and made wider still for no reason.
+    const fatDeck = `---\nmarp: true\n---\n\n# Fanout\n\n\`\`\`seldia\ndiagram flowchart "T" {\n  a: (Start)\n  b: [One]\n  c: [Two]\n  d: [Three]\n  e: [Four]\n  a --> b\n  a --> c\n  a --> d\n  a --> e\n}\n\`\`\`\n`;
+    const previousDirection = engine.config.layout.forceDirection;
+    const { html: fatHtmlWithFeature } = renderMarpDeck(engine, fatDeck);
+    expect(engine.config.layout.forceDirection).toBe(previousDirection); // restored, doesn't leak
+
+    engine.config.layout.forceDirection = undefined;
+    const { html: fatHtmlPlain } = renderMarpDeck(engine, fatDeck);
+    const vb = (h: string) => h.match(/class="seldia-diagram-svg-el[^"]*"[^>]*viewBox="0 0 ([0-9.]+) ([0-9.]+)"/);
+    expect(vb(fatHtmlWithFeature)?.[0]).toBe(vb(fatHtmlPlain)?.[0]);
+  });
+
+  it('does not duplicate diagram numbering or TOC entries for the discarded probe render', () => {
+    // sizing the direction requires rendering the same block up to twice
+    // before committing to one HTML string — each throwaway attempt must not
+    // advance the shared diagram counter or register a second TOC entry.
+    const deck = `---\nmarp: true\n---\n\n# One\n\n\`\`\`seldia\ndiagram deployment "T" {\n  a: (Dev)\n  b: [Build]\n  c: [Test]\n  d: [Deploy]\n  a --> b --> c --> d\n}\n\`\`\`\n\n---\n\n# Two\n\n\`\`\`seldia\ndiagram flowchart "T" {\n  x: (Start)\n  y: [Do]\n  x --> y\n}\n\`\`\`\n`;
+    const { html } = renderMarpDeck(engine, deck);
+    expect(html).toContain('Diagram 1');
+    expect(html).toContain('Diagram 2');
+    expect(html).not.toContain('Diagram 3');
+  });
 });
 
 describe('readSlideSize', () => {

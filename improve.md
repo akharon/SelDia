@@ -1,416 +1,427 @@
-# Implementation Plan — Auto Table of Contents, Numbered Captions & Stable IDs
+# Marp → PPTX Export
 
-**Status:** plan only, nothing implemented.
-**Scope:** VS Code built-in Markdown preview (primary), plus numbering parity in
-the Marp preview and the MD→PDF pipeline.
-
-> **Revision note.** An earlier draft of this plan covered diagrams, tables and
-> images with equal weight. After verifying the code, three items were **cut**
-> and one was **narrowed** — see [What was cut, and why](#what-was-cut-and-why)
-> at the end. The cuts are the point of this revision, not an afterthought; read
-> that section first if you are deciding scope.
-
-## Goal
-
-1. **Stable, citable IDs** on every diagram in a Markdown document — SelDiA,
-   Mermaid and PlantUML alike.
-2. **Auto-numbered captions** — `Diagram 1`, `Diagram 2` — using the diagram's
-   own declared `title` when the DSL has one.
-3. **An automatic Table of Contents** at the top of the preview: headings plus a
-   "Diagrams" list, each entry linking to the ID from step 1.
-
-Tables and images are **deliberately out of scope**. They were in the first
-draft; the verification below is why they are not here.
+Implementation plan. Every step is concrete; follow them in order.
 
 ---
 
-## What already exists (reuse, don't rebuild)
+## 1. Background — why not just shell out to `marp-cli`
 
-| Thing | Where | Notes |
-|---|---|---|
-| Per-block stable id (`seldia-<hash>`) | [blocks.ts:38](packages/vscode-ext/src/edit/blocks.ts#L38) `blockIdForSource` | Stamped as `id=` **and** `data-seldia-block=` on every container. Content-derived, so it changes when the block's own source changes. |
-| Fence interception for all three formats | [plugin.ts:60](packages/vscode-ext/src/markdown-preview/plugin.ts#L60) | One place where seldia/mermaid/plantuml render. |
-| Per-document render `env` | [plugin.ts:71-80](packages/vscode-ext/src/markdown-preview/plugin.ts#L71-L80) | Already the once-per-document flag for `ICON_SPRITE`. This is the counter carrier. |
-| Diagram `title` in the IR | [types.ts:61](packages/core/src/ir/types.ts#L61), parsed at [parser.ts:656](packages/core/src/parser/parser.ts#L656) | `diagram flowchart "Payment flow" { … }` already parses. **This is the "diagram name" the request asks for.** |
-| A title-extraction regex + `Fig. N:` caption | [diagram-injector.ts:50-51,71](packages/vscode-ext/src/md2pdf/diagram-injector.ts#L50-L71) | **The PDF path already does exactly this feature**, via regex on the DSL source. Precedent and a warning both — see Phase 2a. |
-| A TOC generator | [toc-generator.ts](packages/vscode-ext/src/md2pdf/toc-generator.ts) | PDF-only, regex-over-HTML, `seldia-diagram-<index>` anchors. |
-| Preview script + style contribution points | [package.json:115-120](packages/vscode-ext/package.json#L115-L120) | New CSS/behavior land in `media/seldia-preview.css` and `markdown-preview/index.ts`. |
+The obvious idea is `npx @marp-team/marp-cli --pptx slides.md -o out.pptx`. It was
+investigated and rejected. Findings, all verified against `@marp-team/marp-cli@4.5.1`:
+
+**Marp CLI's default `--pptx` is *not* a native PowerPoint export.** Its bundle
+(`package/lib/pptxgen.es-*.js`) uses `pptxgenjs` to build a deck where **each slide is one
+full-slide PNG screenshot** taken with Puppeteer. There is no text, no shapes — just a
+picture per slide. So the "gap" is not that marp-cli loses our diagrams and we would gain
+something by pre-rasterizing them; **marp-cli rasterizes everything anyway.**
+
+**`--pptx-editable` exists but is worse for us.** It is flagged `[EXPERIMENTAL]`, and it
+works by rendering to PDF and shelling out to a **local LibreOffice install** (`soffice`)
+to convert PDF→PPTX. marp-cli's own warning string says "slide reproducibility is not
+fully guaranteed." Requiring users to install LibreOffice is a non-starter for a VS Code
+extension.
+
+**Shelling out to marp-cli would also break diagrams.** marp-cli runs its *own* Marp Core
+instance in its own process. It has no knowledge of SelDiA's fence renderer, so
+` ```seldia `/` ```mermaid `/` ```plantuml ` fences would render as **plain code blocks**.
+Recovering them would require the "pre-render diagrams to PNG + write a temp deck" dance
+from the original idea — plus a new ~250MB `puppeteer-core`+CLI dependency, a subprocess,
+and a temp-file lifecycle.
+
+### Decision: do it in-process
+
+We already have every piece:
+
+| Piece | Where it already lives |
+| --- | --- |
+| Marp render + SelDiA/Mermaid/PlantUML fences | `src/marp/render.ts` → `renderMarpDeck()` |
+| Full standalone HTML doc | `src/marp/render.ts` → `assembleMarpDocument()` |
+| Headless Chrome | `puppeteer`, already a dependency, used by `src/md2pdf/pdf-renderer.ts` |
+| Per-slide speaker notes | `renderMarpDeck()` already returns `notes: string[]` |
+| Slide pixel size | Marp's own emitted CSS: `@page {size:1280px 720px;margin:0}` |
+
+So: render the deck exactly as the preview already does, screenshot each `<section>`, and
+place one image per slide with `pptxgenjs`. This is **the same output shape marp-cli's
+default `--pptx` produces**, but with our diagrams rendered and with zero new heavy deps
+(`pptxgenjs` is ~3MB, pure JS, no binaries) and no subprocess.
+
+**This approach is verified working.** A probe rendered a 2-slide deck, read `1280x720`
+out of the `@page` rule, screenshotted both top-level slide elements at
+`deviceScaleFactor: 2`, and produced valid PNGs; a slide containing an inline `<svg>`
+rasterized correctly with Marp theme typography intact.
+
+Two known, accepted limitations — state them in the docs, do not try to solve them:
+- Text in the PPTX is not selectable/editable (each slide is an image). Identical to
+  marp-cli's default behavior.
+- Speaker notes *are* carried over as real notes (step 5), so the deck is still useful.
 
 ---
 
-## The architectural constraint
+## 2. Add the dependency
 
-`extendMarkdownIt` gives us **markdown-it renderer rules**. They fire per token,
-in document order, and **cannot see the whole document** or run a pass first.
+In `packages/vscode-ext/package.json`, add to `dependencies` (keep alphabetical order,
+so it goes after `marked`):
 
-- **Numbering is a counter on `env`,** incremented as tokens render. `env` is
-  per-document-render and already used this way for the icon sprite — a proven
-  channel, not a new mechanism. Document order comes for free.
-- **The TOC cannot be emitted by a renderer rule** — when the first token
-  renders, nothing downstream has been counted. It is injected by the **preview
-  script** after the DOM exists. That is also the only approach that survives the
-  preview's full-DOM re-render on every keystroke.
+```json
+"pptxgenjs": "^4.0.1"
+```
 
-Secondary: `blockIdForSource` hashes the block *source*, so editing a diagram
-changes its id. The plan adds a **positional** id (`#diagram-3`) as the citable
-anchor and keeps the hash id for the existing edit deep links.
+Then from the repo root run `npm install`.
+
+**Do not** add it to the esbuild `external` list. Unlike `marp-core`/`puppeteer` it is
+small and pure-JS, so it should be bundled straight into `extension.cjs`. Confirm
+`packages/vscode-ext/scripts/build.mjs` does not need editing — only touch it if
+`pptxgenjs` appears in an `external:` array, which it should not.
 
 ---
 
-## Phase 1 — Numbering module
+## 3. New file: `packages/vscode-ext/src/marp/pptx.ts`
 
-**New file:** `packages/vscode-ext/src/markdown-preview/numbering.ts` — pure, no
-`vscode` import, unit-testable, matching the convention of `edit/blocks.ts`.
+Create this file. It is pure except for `writeFile`, so it is unit-testable without
+VS Code.
 
 ```ts
-export interface NumberedDiagram {
-  /** 1-based ordinal in document order. */
-  n: number;
-  /** Citable anchor, e.g. "diagram-3". */
-  anchor: string;
-  /** Declared name, when the DSL/import provides one. */
-  title?: string;
-  /** Content-hash id — kept for the existing edit deep links. */
-  blockId: string;
-  /** True for a block that failed to compile. */
-  hasError?: boolean;
+// =============================================================================
+// SelDiA — Marp Deck Export (PPTX)
+// =============================================================================
+// One slide-sized PNG per slide, placed edge-to-edge in a pptxgenjs deck.
+//
+// This mirrors what `marp-cli --pptx` does by default (it also screenshots each
+// slide with Puppeteer and lays the images out with pptxgenjs), with one
+// difference that is the whole point: we render through SelDiA's own Marp
+// pipeline, so ```seldia / ```mermaid / ```plantuml fences come out as real
+// diagrams instead of code blocks. marp-cli runs its own Marp Core in a
+// separate process and has never heard of our fence renderer.
+//
+// marp-cli's `--pptx-editable` produces text-based slides, but only by shelling
+// out to a local LibreOffice install, which we can't require of users.
+// =============================================================================
+
+import type { CoreEngine } from '@seldia/core';
+import { renderMarpDeck, assembleMarpDocument } from './render.js';
+
+export interface MarpPptxResult {
+  success: boolean;
+  outputPath?: string;
+  slideCount?: number;
+  errorMessage?: string;
+}
+
+export interface MarpPptxOptions {
+  /** Rasterization scale. 2 = retina-sharp on projectors. */
+  scale?: number;
+  /** Include per-slide speaker notes. Default true. */
+  includeNotes?: boolean;
+  timeout?: number;
+}
+
+/** Marp writes its slide size into its own stylesheet as
+ *  `@page {size:1280px 720px;margin:0}`. Read it rather than hardcoding, so
+ *  4:3 decks and `size: 4K` directives produce correctly-shaped PPTX slides. */
+export function readSlideSize(css: string): { width: number; height: number } {
+  const m = /@page\s*{[^}]*\bsize:\s*([0-9.]+)px\s+([0-9.]+)px/.exec(css);
+  if (!m) return { width: 1280, height: 720 };
+  return { width: Number(m[1]), height: Number(m[2]) };
 }
 ```
 
-Exports:
+Then add the main function in the same file:
 
-- `nextDiagramNumber(env): number` — reads/increments `env.__seldiaDiagramCount`,
-  wrapped in try/catch exactly like the sprite flag, falling back to a
-  module-local counter if `env` is unusable.
-- `anchorForDiagram(n)` → `` `diagram-${n}` ``.
-- `captionFor(n, title?)` → `"Diagram 3"` or `"Diagram 3 — Payment flow"`.
-- `registerDiagram(env, item)` — appends to `env.__seldiaDiagrams`, the list the
-  **Marp/PDF** TOC builders read. The built-in preview ignores it and reads the
-  DOM (Phase 4a).
+```ts
+export async function exportMarpToPptx(
+  engine: CoreEngine,
+  markdown: string,
+  outputPath: string,
+  title?: string,
+  options: MarpPptxOptions = {}
+): Promise<MarpPptxResult> {
+  let rendered;
+  try {
+    rendered = renderMarpDeck(engine, markdown);
+  } catch (err: any) {
+    return { success: false, errorMessage: err?.message || String(err) };
+  }
 
-**One counter for all three formats.** To a reader, a Mermaid block and a SelDiA
-block are both just diagrams; do not give Mermaid its own sequence.
+  const { width, height } = readSlideSize(rendered.css);
+  const doc = assembleMarpDocument(rendered.html, rendered.css, title);
 
-**Tests:** `packages/vscode-ext/test/numbering.test.ts` — counter isolation
-between two `env` objects, caption formatting with and without a title, the
-`env`-throws fallback path.
+  let shots: string[];
+  try {
+    shots = await captureSlides(doc, width, height, options);
+  } catch (err: any) {
+    return { success: false, errorMessage: err?.message || String(err) };
+  }
 
----
+  if (shots.length === 0) {
+    return { success: false, errorMessage: 'No slides were found in this deck.' };
+  }
 
-## Phase 2 — IDs and captions for diagrams
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const PptxGenJS = require('pptxgenjs');
+    const pptx = new PptxGenJS();
 
-**File:** `packages/vscode-ext/src/markdown-preview/plugin.ts`
+    // PPTX geometry is in inches. Pin a custom layout matching the deck's own
+    // aspect ratio at 96dpi so images fill the slide with no letterboxing.
+    const wIn = width / 96;
+    const hIn = height / 96;
+    pptx.defineLayout({ name: 'SELDIA', width: wIn, height: hIn });
+    pptx.layout = 'SELDIA';
+    if (title) pptx.title = title;
 
-### 2a. Getting the diagram's declared name
+    const includeNotes = options.includeNotes !== false;
+    shots.forEach((data, i) => {
+      const slide = pptx.addSlide();
+      slide.addImage({ data, x: 0, y: 0, w: wIn, h: hIn });
+      const note = includeNotes ? rendered.notes[i] : '';
+      if (note) slide.addNotes(note);
+    });
 
-**Verified:** `compileSync` returns `Result<RenderResult>`, and `RenderResult`
-carries `svg` and `stats` — **it does not expose the IR or the title.** So the
-name has to come from somewhere. Three options, and the choice matters:
-
-| Option | Cost | Verdict |
-|---|---|---|
-| Add `title?: string` to `RenderResult` in `packages/core/` | Touches core; additive; correct | **Do this** |
-| Regex the DSL source: `/^\s*diagram\s+\S+\s+"([^"]+)"/` | Zero core change | **Do this first** |
-| Re-parse the source a second time just for the title | Doubles parse cost per block, per keystroke | No |
-
-Take the **regex** for the first increment and the **core field** as a
-follow-up. Rationale: [diagram-injector.ts:50-51](packages/vscode-ext/src/md2pdf/diagram-injector.ts#L50-L51)
-**already ships that exact regex** on the PDF path. Reusing it keeps the two
-paths consistent and unblocks Phase 2 without a cross-package change; promoting
-it to a real `RenderResult.title` later fixes both call sites at once. Put the
-regex in `numbering.ts` as `titleFromDsl(source)` so there is one copy, not two.
-
-For **Mermaid/PlantUML**, `renderImportedBlock` already holds the `ir` — use
-`ir.title` directly. No regex, no core change.
-
-Fallback chain, first hit wins: `ir.title` (imports) → `titleFromDsl(source)` →
-no name, caption is a bare `Diagram 3`.
-
-**Cut:** a caption on the fence info string (```` ```seldia "Payment flow" ````).
-See the cut list.
-
-### 2b. Emit the anchor and caption
-
-After computing `blockId` in `renderSelDiABlock` and `renderImportedBlock`:
-
-```
-const n = nextDiagramNumber(env);
-const anchor = anchorForDiagram(n);   // "diagram-3"
-```
-
-**Verified — the `id` swap is safe.** A grep of `edit/` and
-`markdown-preview/index.ts` found **no reader of the container's DOM `id`**: the
-preview script reads `container.dataset.seldiaBlock || container.id` (dataset
-wins, and it is always present), and the `revealSource` handler at
-[commands.ts:65](packages/vscode-ext/src/edit/commands.ts#L65) resolves blocks
-from the deep-link **query string**, never from the DOM. The only
-`getElementById` calls in the extension are in `marp/preview-panel.ts` and
-target its own chrome (`#slides`, `#notes`), not diagram containers.
-
-So: make the **positional anchor** the element `id`, keep the hash on
-`data-seldia-block`. **The alias span from the first draft is unnecessary** —
-dropped.
-
-```html
-<div class="seldia-diagram" id="diagram-3"
-     data-seldia-block="seldia-1x9k2"
-     data-seldia-number="3"
-     data-seldia-title="Payment flow" …>
+    await pptx.writeFile({ fileName: outputPath });
+    return { success: true, outputPath, slideCount: shots.length };
+  } catch (err: any) {
+    return { success: false, errorMessage: err?.message || String(err) };
+  }
+}
 ```
 
-Caption element, **after** the SVG box and inside the container:
+And the Puppeteer capture helper, also in the same file:
 
-```html
-<div class="seldia-caption">
-  <span class="seldia-caption-label">Diagram 3</span>
-  <span class="seldia-caption-title">Payment flow</span>
-</div>
+```ts
+/** Screenshot each top-level slide, returning base64 PNG data URIs. */
+async function captureSlides(
+  html: string,
+  width: number,
+  height: number,
+  options: MarpPptxOptions
+): Promise<string[]> {
+  let puppeteer: any;
+  try {
+    puppeteer = await import('puppeteer');
+  } catch {
+    throw new Error('Puppeteer is not installed. Run: npm install puppeteer');
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({
+      width,
+      height,
+      deviceScaleFactor: options.scale ?? 2,
+    });
+    await page.setContent(html, {
+      waitUntil: 'networkidle0',
+      timeout: options.timeout ?? 60000,
+    });
+
+    // Marp emits either <svg data-marpit-svg> wrappers or bare <section>s
+    // depending on the `inlineSVG` setting, always as direct children of the
+    // single outer div.marpit. Selecting on those direct children avoids
+    // counting <svg>/<section> markup *inside* a rendered diagram.
+    const slides = await page.$$(
+      'div.marpit > svg[data-marpit-svg], div.marpit > section'
+    );
+
+    const out: string[] = [];
+    for (const el of slides) {
+      const buf = await el.screenshot({ type: 'png' });
+      out.push(`image/png;base64,${Buffer.from(buf).toString('base64')}`);
+    }
+    return out;
+  } finally {
+    await browser.close();
+  }
+}
 ```
 
-It sits outside `.seldia-diagram-svg`, so `exportSvg` (which clones only the
-`svg` node) is unaffected, as are zoom and pan.
-
-### 2c. Mode switch
-
-The caption stays visible in **both** preview and code mode — it identifies the
-block, not the rendering. One CSS rule; easy to miss.
-
-### 2d. Error blocks
-
-- `renderFatalErrorBlock` — **no number.** It has no block id by design, and a
-  block that did not render is not a figure.
-- `renderSelDiABlock`'s compile-error box — **number it**, and mark
-  `data-seldia-error="1"`. Ordinals then stay stable while the author is
-  mid-edit, and the TOC can show the warning icon `toc-generator.ts` already has.
-
-**Tests:** two seldia blocks in one `env` → `diagram-1`, `diagram-2`; a mermaid
-block between them takes `diagram-2` (shared counter); a fatal error block does
-not increment; `ir.title` beats `titleFromDsl`.
+Note on the `data` string: pptxgenjs expects the `image/png;base64,<...>` form
+**without** a leading `data:`. Do not add one.
 
 ---
 
-## Phase 3 — The Table of Contents
+## 4. Wire the command
 
-### 3a. Built-in preview — inject from the preview script
+### 4a. `packages/vscode-ext/src/extension.ts`
 
-**File:** `packages/vscode-ext/src/markdown-preview/index.ts`
+Line ~21 currently reads:
 
-A `buildToc()` that runs on load and on the existing
-`vscode.markdown.updateContent` event — **reuse that hook** (the script already
-listens on it for zoom re-application); do not add a MutationObserver.
+```ts
+import { exportMarpToHtml, exportMarpToPdf } from './marp/export.js';
+```
 
-It walks the rendered DOM:
+Add below it:
 
-- `document.querySelectorAll('h1, h2, h3, h4, h5, h6')` for headings.
-  **Verify VS Code's preview assigns heading ids** before relying on it — if any
-  heading lacks one, synthesize a slug and set it, since a TOC entry without a
-  target is worse than no entry. This is a five-minute check in a running
-  preview and should happen before the phase starts, not during.
-- `document.querySelectorAll('.seldia-diagram[data-seldia-number]')` for the
-  diagram list.
+```ts
+import { exportMarpToPptx } from './marp/pptx.js';
+```
 
-Then inject `<nav class="seldia-toc">` as the first child of `<body>`, **removing
-any previously injected one first** — the preview rebuilds the DOM constantly,
-so injection must be idempotent.
+Then in the `seldia.exportMarp` command (~line 299), change the save dialog filters to
+offer PPTX, and branch on the chosen extension. Replace:
 
-**Behavior:**
+```ts
+    const uri = await vscode.window.showSaveDialog({
+      filters: { 'PDF': ['pdf'], 'HTML': ['html'] },
+      defaultUri: vscode.Uri.file(editor.document.fileName.replace(/\.(md|mdx)$/, '.pdf')),
+    });
+    if (!uri) return;
 
-- A `<details>`, open by default. **Cut:** `sessionStorage` persistence of its
-  open/closed state — see the cut list.
-- Suppressed when the document has fewer than 3 headings **and** fewer than 2
-  diagrams. A short note should not grow a TOC.
-- Sections: Contents (headings) → Diagrams. Empty sections omitted.
-- Native `href="#diagram-3"` anchors; no JS scroll handling.
+    const asPdf = uri.fsPath.endsWith('.pdf');
+    const result = asPdf
+      ? await exportMarpToPdf(engine, markdown, uri.fsPath, title)
+      : exportMarpToHtml(engine, markdown, uri.fsPath, title);
+```
 
-### 3b. Marp and PDF — numbering parity only
+with:
 
-Neither host gets a new TOC in this plan; both get **correct numbering**.
+```ts
+    const uri = await vscode.window.showSaveDialog({
+      filters: { 'PDF': ['pdf'], 'PowerPoint': ['pptx'], 'HTML': ['html'] },
+      defaultUri: vscode.Uri.file(editor.document.fileName.replace(/\.(md|mdx)$/, '.pdf')),
+    });
+    if (!uri) return;
 
-- **Marp** — [render.ts:47-55](packages/vscode-ext/src/marp/render.ts#L47-L55)
-  calls `renderSelDiABlock(engine, token.content)` with **no `env` argument**.
-  Thread `env` through all three calls, or every slide's diagram is "Diagram 1".
-  Cheap, and it fails silently if forgotten.
-- **PDF** — the pipeline uses **`marked`, not markdown-it**
-  ([markdown-parser.ts](packages/vscode-ext/src/md2pdf/markdown-parser.ts)), so
-  it shares **no** renderer-rule code with the preview. It already emits its own
-  `Fig. N:` caption from its own regex. The only work here is **alignment, not
-  rewriting**: switch its caption wording and anchors to match the preview
-  (`Diagram N`, `id="diagram-N"`, 1-based) so a document reads the same in both.
-  **Note the off-by-one:** `DetectedBlock.index` is 0-based.
-  **Cut:** rewriting `toc-generator.ts` onto the shared registry.
+    // PPTX and PDF both drive headless Chrome and can take a while on a long
+    // deck, so they run under a progress notification; HTML is a direct write.
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Exporting Marp deck…',
+        cancellable: false,
+      },
+      async () => {
+        if (uri.fsPath.endsWith('.pptx')) {
+          return exportMarpToPptx(engine, markdown, uri.fsPath, title);
+        }
+        if (uri.fsPath.endsWith('.pdf')) {
+          return exportMarpToPdf(engine, markdown, uri.fsPath, title);
+        }
+        return exportMarpToHtml(engine, markdown, uri.fsPath, title);
+      }
+    );
+```
 
-### 3c. Shared TOC markup
+Leave the `if (!result.success)` / success-message block below it unchanged — it already
+reports `result.slideCount` and `uri.fsPath`.
 
-`renderTocHtml(headings, diagrams): string`, pure, in `numbering.ts`. Only the
-preview script consumes it in this plan. **Verified buildable:**
-`scripts/build.mjs` bundles `markdown-preview/index.ts` with esbuild
-(`platform: browser`, `bundle: true`), so a cross-directory import resolves —
-the same way the script already imports `blockIdForSource`.
+### 4b. `packages/vscode-ext/package.json`
 
----
+Update the command title so the new format is discoverable. Find:
 
-## Phase 4 — Styles
+```json
+        "command": "seldia.exportMarp",
+        "title": "SelDiA: Export Marp Deck (PDF/HTML)"
+```
 
-**File:** `packages/vscode-ext/media/seldia-preview.css` (append two commented
-sections; the file is 332 lines and organized by concern).
+and change the title to:
 
-- `.seldia-toc` — bordered card on `var(--vscode-editorWidget-background)`, plain
-  block at the top. **Not** `position: sticky` — it would eat vertical space on
-  every scroll. Nested `ul` indent per heading level.
-- `.seldia-caption` — smaller than body text,
-  `var(--vscode-descriptionForeground)`, centered under the figure.
-  `.seldia-caption-label` at `font-weight: 600`; put the em-dash separator in a
-  `::after` on the label so it vanishes cleanly when there is no title.
-- `@media print` — `break-inside: avoid` to keep a caption with its figure.
-- **VS Code CSS variables only, never literal colors** — this must read correctly
-  in light and dark. The PDF path is standalone HTML; its equivalents go in
-  `md2pdf/print-css.ts`.
+```json
+        "title": "SelDiA: Export Marp Deck (PDF/PPTX/HTML)"
+```
 
----
+Leave the `menus` entry (`when: editorLangId == markdown`) alone.
 
-## Phase 5 — Settings
+### 4c. `packages/vscode-ext/src/markdown/codelens.ts`
 
-Add to `contributes.configuration.properties`
-([package.json:390](packages/vscode-ext/package.json#L390)):
-
-| Setting | Type | Default | Meaning |
-|---|---|---|---|
-| `seldia.markdown.toc.enabled` | boolean | `true` | Inject the auto-TOC. |
-| `seldia.markdown.captions.enabled` | boolean | `true` | Render numbered captions. |
-
-Two settings, not six. **Cut:** `minEntries`, `includeFigureLists`,
-`captions.kinds`, `captions.labels` — see the cut list.
-
-**Reading config from a hot renderer rule is the trap.** The plugin is built once
-at activation ([extension.ts:596](packages/vscode-ext/src/extension.ts#L596)).
-Read config **once in the plugin factory**, pass it as a second argument to
-`createSelDiAMarkdownItPlugin`, and register an `onDidChangeConfiguration`
-listener that fires `markdown.preview.refresh`. Never call
-`workspace.getConfiguration()` per token.
+Search for the CodeLens whose title mentions exporting the Marp deck. If its title
+string says `PDF/HTML`, update it to `PDF/PPTX/HTML`. If it is just
+`"Export Marp Deck"`, leave it as is. Change nothing else in this file.
 
 ---
 
-## Phase 6 — Documentation
+## 5. Tests
 
-- `docs/` — a short "Diagram numbering and cross-references" page: naming a
-  diagram (`diagram flowchart "Name"`), linking to one
-  (`[see Diagram 3](#diagram-3)`), and the renumbering caveat below.
-- The `seldia-dsl` skill (canonical copy in `packages/vscode-ext/resources/`) —
-  note that a diagram's title becomes its caption. Per the convention there, any
-  added example must be compile-tested.
-- `README.md` — one bullet under Markdown integration.
+Append to `packages/vscode-ext/test/marp.test.ts`. Import `readSlideSize` and
+`exportMarpToPptx` from `../src/marp/pptx.js`.
 
----
+Add these three tests. **Do not** write a test that launches Puppeteer — the existing
+suite is Chrome-free and must stay fast.
 
-## What was cut, and why
+```ts
+describe('readSlideSize', () => {
+  it('reads the slide size out of Marp @page CSS', () => {
+    expect(readSlideSize('@page {size:1280px 720px;margin:0}'))
+      .toEqual({ width: 1280, height: 720 });
+  });
 
-Each of these was in the first draft. Each is cut because verifying the code
-showed the cost was real and the payoff was not.
+  it('reads a 4:3 deck size', () => {
+    expect(readSlideSize('@page {size:960px 720px;margin:0}'))
+      .toEqual({ width: 960, height: 720 });
+  });
 
-### Cut 1 — Numbered tables (`Table 1`, `Table 2`)
+  it('falls back to 16:9 when no @page rule is present', () => {
+    expect(readSlideSize('section { color: red }'))
+      .toEqual({ width: 1280, height: 720 });
+  });
+});
+```
 
-**Why cut.** GFM has no table-caption syntax, so a name has to be *inferred*.
-The draft proposed scanning backwards through the token stream for a
-`Table: …` paragraph and then suppressing that paragraph from the output. That
-is an invented, undocumented convention that no other Markdown renderer honors —
-so a document authored for SelDiA renders with a stray "Table: Foo" line
-everywhere else, and the suppression rule silently eats a paragraph an author
-might have meant literally. Wrapping every table in a div also changes the DOM
-shape for a common element in **every** Markdown file the user opens, which is a
-large blast radius for a feature nobody asked to have applied universally.
+Also add one failure-path test that needs no browser:
 
-**Revisit when** there is a concrete request for it, ideally alongside a
-caption syntax that already exists in the wild.
+```ts
+it('reports an error for markdown that cannot be rendered', async () => {
+  const result = await exportMarpToPptx(
+    null as any, // engine is only touched by fence rendering
+    '---\nmarp: true\n---\n\n# Hi\n',
+    '/nonexistent-dir-xyz/out.pptx'
+  );
+  expect(result.success).toBe(false);
+  expect(result.errorMessage).toBeTruthy();
+});
+```
 
-### Cut 2 — Numbered figures/images (`Figure 1`, `Figure 2`)
-
-**Why cut.** The whole feature rests on `isBlockLevelImage()` — telling a
-standalone figure from an inline badge. Get it wrong and every CI shield and
-emoji-sized icon at the top of a README acquires a "Figure 4" caption. The
-draft already flagged this as the most likely source of "why does my README look
-like that" reports; on reflection, a heuristic that is *usually* right is not a
-good foundation for something that rewrites every image in every open Markdown
-file. There is no way to be sure without a whole-document pass, which the
-renderer-rule API does not give us.
-
-**Revisit when** a `core.ruler` pre-pass is being added for another reason, since
-that is where the classification could be done reliably.
-
-**Consequence of Cuts 1 & 2:** the entire `figure-rules.ts` module disappears,
-`CaptionKind` collapses to just diagrams, and the three-list TOC becomes one
-list. This is most of the plan's complexity, removed.
-
-### Cut 3 — Rewriting the PDF TOC onto the shared registry
-
-**Why cut.** The PDF pipeline uses **`marked`**, not markdown-it. It shares no
-renderer-rule machinery with the preview, so "reuse the registry" was never as
-cheap as it sounded — it means rewriting `toc-generator.ts` **and**
-`diagram-injector.ts`, and the anchor rename breaks the PDF TOC's links if only
-one lands (nothing currently tests this). Meanwhile the PDF path **already
-produces numbered captions** (`Fig. N:` at
-[diagram-injector.ts:71](packages/vscode-ext/src/md2pdf/diagram-injector.ts#L71))
-and a working TOC. Rewriting shipped, working code to share an abstraction with
-a different renderer is the expensive half of this plan for the smallest gain.
-
-**Kept instead:** align the PDF's caption wording and anchor format with the
-preview's. Same reading experience, a fraction of the risk.
-
-### Cut 4 — Fence-info captions (```` ```seldia "My title" ````)
-
-**Why cut.** A second way to name a diagram, when `diagram flowchart "Name"`
-already exists and is the documented one. Two mechanisms means a precedence rule
-to specify, document and test, for no capability the first one lacks. The only
-real gap is naming a Mermaid block that has no title of its own — a narrow case
-that does not justify a parallel syntax.
-
-### Cut 5 — TOC collapse-state persistence in `sessionStorage`
-
-**Why cut.** Keying per-document state in a webview that VS Code tears down and
-rebuilds constantly is fiddly, and the payoff is remembering one boolean. Ship
-the `<details>` open by default; add persistence only if someone complains.
-
-### Cut 6 — Four of the six settings
-
-`minEntries`, `includeFigureLists`, `captions.kinds` and `captions.labels` are
-cut. Two of them (`includeFigureLists`, `captions.kinds`) existed only to
-configure the tables and images that Cuts 1–2 removed. The other two are
-configuration written before a single user has seen the default — the threshold
-becomes a constant, and the caption words stay `Diagram N` until someone asks to
-change them. Settings are permanent API; adding one later is easy, removing one
-is not.
-
-### Narrowed — the DOM `id` swap
-
-Not cut, but **de-risked by verification**. The draft called this the top risk
-and proposed a zero-height alias span to protect any existing `#seldia-<hash>`
-links. A grep found no reader of the container's DOM `id` anywhere in `edit/` or
-the preview script — the script prefers `dataset.seldiaBlock`, and `revealSource`
-resolves from the deep-link query string. **The alias span is dropped** and this
-comes off the risk list.
+Run: `cd packages/vscode-ext && npm test`. All previously-passing tests must still pass.
 
 ---
 
-## Sequencing and remaining risk
+## 6. Manual verification
 
-Each step leaves the extension shippable:
+```bash
+cd packages/vscode-ext && npm run build
+```
 
-1. **Phase 1** — numbering module + tests. No user-visible change.
-2. **Phase 2** — diagram ids + captions. The highest-value slice standalone, and
-   it exercises the `env` counter before anything depends on it.
-3. **Phase 3a** — the preview TOC.
-4. **Phase 3b** — Marp `env` threading and PDF caption alignment.
-5. **Phases 4–6** land alongside 2–3, not after.
+Then in the Extension Development Host:
 
-**Risks that remain:**
+1. Open `demo_marp.md` (repo root — it has real ` ```seldia ` fences).
+2. Run **SelDiA: Export Marp Deck (PDF/PPTX/HTML)** from the command palette.
+3. Save as `demo_marp.pptx`.
+4. Open the result. Check, in order:
+   - slide count matches the deck;
+   - **the SelDiA diagram slides show rendered diagrams, not code blocks** — this is the
+     entire reason for the feature, so verify it explicitly;
+   - slides are 16:9 with no letterboxing or white margin;
+   - speaker notes appear in the notes pane on slides that have `<!-- ... -->` comments.
 
-- **Renumbering churn.** Ordinals are positional, so inserting a diagram at the
-  top renumbers everything below — correct behavior, but `#diagram-3` links in
-  prose can silently retarget. **Document it; do not try to solve it.** The right
-  eventual fix is an explicit `id:` in the DSL header, deliberately out of scope.
-- **Heading ids in the preview.** Phase 3a assumes VS Code assigns them.
-  Unverified — check it before starting that phase, and be ready to synthesize.
-- **Marp's missing `env`** — one-line fix, fails quietly if forgotten, and no
-  test would currently catch every diagram being numbered 1.
-- **Caption regression in the SVG export.** The caption lives inside
-  `.seldia-diagram`; `exportSvg` clones only the `svg` node, so it should be
-  excluded. Confirm with an actual export once the caption exists.
+If LibreOffice is available, `soffice --headless --convert-to pdf demo_marp.pptx` is a
+quick way to eyeball every slide at once without PowerPoint.
+
+---
+
+## 7. Docs
+
+- `README.md` and `docs/user_guide.md`: wherever Marp export is described as PDF/HTML,
+  add PPTX. State plainly that **slides are exported as high-resolution images, so text
+  is not editable in PowerPoint, but speaker notes are preserved** — and that this
+  matches the behavior of `marp-cli --pptx`.
+- `packages/vscode-ext/package.json` `description`: optional; only touch it if it
+  enumerates export formats.
+
+---
+
+## Files touched
+
+| File | Change |
+| --- | --- |
+| `packages/vscode-ext/package.json` | add `pptxgenjs` dep; command title |
+| `packages/vscode-ext/src/marp/pptx.ts` | **new** — the whole feature |
+| `packages/vscode-ext/src/extension.ts` | import + save-dialog/branch in `seldia.exportMarp` |
+| `packages/vscode-ext/src/markdown/codelens.ts` | CodeLens title only, if it lists formats |
+| `packages/vscode-ext/test/marp.test.ts` | 4 new tests |
+| `README.md`, `docs/user_guide.md` | document PPTX + its image-based caveat |
+
+No changes to `render.ts`, `export.ts`, `preview-panel.ts`, `detect.ts`, or the build and
+vendor scripts.

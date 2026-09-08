@@ -79,14 +79,26 @@ function hashSource(source: string): string {
 }
 
 // Marp's <section> is a fixed-size (from the deck's @page size), padded,
-// overflow:hidden block box — plain CSS percentage/max-height rules on a
-// diagram inside it can't account for space already taken by a heading or
-// other slide content above it (percentages resolve against the section's
-// own box, not the room actually left after prior siblings), so an oversized
-// diagram would be silently clipped with no scrollbar. This measures the
-// real remaining space after layout and caps the SVG in pixels — exported
-// once so both the headless-export document and the live preview panel (see
-// preview-panel.ts's fit()) apply the identical fit logic.
+// overflow:hidden block box. The preview's own diagram CSS (seldia-preview.css)
+// only ever *caps* an SVG at its container's width via max-width — it never
+// grows a small diagram to fill available room, because in the normal
+// Markdown preview column that's the right call (a small flowchart should
+// stay small, not balloon to column width). On a slide that logic backfires:
+// diagrams are typically drawn at a few hundred px while a slide is
+// 1280x720, so a "small" diagram renders as a tiny island in a sea of empty
+// slide. Slides want the opposite default — scale the diagram to *fill* the
+// space left after other slide content, in both directions, like
+// object-fit:contain on a sized box.
+//
+// This measures the real remaining space after layout (percentages can't:
+// they resolve against the section's own box, not the room actually left
+// after prior siblings like a heading) and gives the *container* — not the
+// svg — a definite pixel height. Paired with `width/height:100%;
+// object-fit:contain` on the svg (see the CSS below and preview-panel.ts),
+// that lets the diagram scale up to fill the box, not just shrink to avoid
+// overflowing it. Exported once so both the headless-export document and the
+// live preview panel (see preview-panel.ts's fit()) apply the identical fit
+// logic.
 export const SHRINK_DIAGRAMS_TO_FIT_JS = `
 function shrinkDiagramsToFit(root) {
   (root || document).querySelectorAll('.seldia-diagram-svg').forEach(function (box) {
@@ -98,7 +110,7 @@ function shrinkDiagramsToFit(root) {
     var bottomPad = parseFloat(style.paddingBottom) || 0;
     var boxRect = box.getBoundingClientRect();
     var available = (sectionRect.bottom - bottomPad) - boxRect.top;
-    if (available > 0) svg.style.maxHeight = available + 'px';
+    if (available > 0) box.style.height = available + 'px';
   });
 }
 `;
@@ -115,7 +127,8 @@ export function assembleMarpDocument(html: string, css: string, title = 'Marp Sl
 ${css}
 .seldia-diagram { background: transparent; }
 .seldia-diagram-source, .seldia-diagram-toolbar { display: none; }
-.seldia-diagram-svg svg { max-width: 100%; height: auto; object-fit: contain; }
+.seldia-diagram-svg { box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.seldia-diagram-svg svg { display: block; width: 100%; height: 100%; max-width: 100%; object-fit: contain; }
 </style>
 </head>
 <body>

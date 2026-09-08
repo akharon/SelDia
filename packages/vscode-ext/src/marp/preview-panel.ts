@@ -150,7 +150,8 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
   body.presenting #toolbar, body.presenting #notes { display: none !important; }
   body.presenting #slides { background: #000; }
   .seldia-diagram-source, .seldia-diagram-toolbar { display: none; }
-  .seldia-diagram-svg svg { max-width: 100%; height: auto; }
+  .seldia-diagram-svg { box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .seldia-diagram-svg svg { display: block; width: 100%; height: 100%; max-width: 100%; object-fit: contain; }
   ${css}
 </style>
 </head>

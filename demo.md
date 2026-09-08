@@ -691,15 +691,31 @@ fp "Apartment 4B" {
   Bathroom "Bathroom" { type: room, at: "4,3", size: "3x2" }
 
   d1 [door] { type: door, at: "Kitchen.east", offset: 1.5, width: 0.9 }
-  d2 [door] { type: door, at: "Living.south", offset: 2, width: 0.9 }
+  d2 [door] { type: door, at: "Living.south", offset: 5.2, width: 0.9 }
+  d3 [door] { type: door, at: "Bathroom.west", offset: 0.3, width: 0.8 }
   w1 [window] { type: window, at: "Bedroom.west", offset: 2, width: 1.2 }
   w2 [window] { type: window, at: "Living.north", offset: 3, width: 1.5 }
 
-  f1 [sink] { type: furniture, item: sink, in: "Kitchen", at: "0.3,0.3" }
-  f2 [stove] { type: furniture, item: stove, in: "Kitchen", at: "2.5,0.3" }
-  f3 [bed] { type: furniture, item: "bed-queen", in: "Bedroom", at: "1,1" }
-  f4 [sofa] { type: furniture, item: sofa, in: "Living", at: "1,1", size: "2.4x0.9" }
-  f5 [toilet] { type: furniture, item: toilet, in: "Bathroom", at: "0.3,0.3" }
-  f6 [bathtub] { type: furniture, item: bathtub, in: "Bathroom", at: "1.1,0.2" }
+  f1 [sink] { type: furniture, item: sink, in: "Kitchen", at: "0.2,0.2" }
+  f2 [stove] { type: furniture, item: stove, in: "Kitchen", at: "0.9,0.2" }
+  f3 [fridge] { type: furniture, item: fridge, in: "Kitchen", at: "3.1,0.2" }
+  f4 [counter] { type: furniture, item: counter, in: "Kitchen", at: "1.6,0.2" }
+  f5 [island] { type: furniture, item: "dining-table", in: "Kitchen", at: "1.3,1.6", size: "1.4x0.8" }
+
+  f6 [sofa] { type: furniture, item: sofa, in: "Living", at: "0.4,0.9", size: "2.0x0.9" }
+  f7 [coffee-table] { type: furniture, item: "coffee-table", in: "Living", at: "0.6,2.0" }
+  f8 [tv-table] { type: furniture, item: "tv-table", in: "Living", at: "0.5,0.15" }
+  f9 [rug] { type: furniture, item: "carpet-small", in: "Living", at: "2.6,0.5" }
+
+  f10 [bed] { type: furniture, item: "bed-queen", in: "Bedroom", at: "0.3,0.3" }
+  f11 [wardrobe] { type: furniture, item: wardrobe, in: "Bedroom", at: "2.7,0.3" }
+  f12 [dresser] { type: furniture, item: wardrobe, in: "Bedroom", at: "0.3,3.9", size: "1.4x0.5" }
+
+  f13 [sink-bath] { type: furniture, item: "sink-bath", in: "Bathroom", at: "2.4,0.25" }
+  f14 [toilet] { type: furniture, item: toilet, in: "Bathroom", at: "2.5,1.3" }
+  f15 [bathtub] { type: furniture, item: bathtub, in: "Bathroom", at: "0.1,1.15" }
+
+  mBathW "" { type: measure, from: "f15", to: "f14" }
+  mBathH "" { type: measure, from: "Bathroom.south", to: "f14" }
 }
 ```

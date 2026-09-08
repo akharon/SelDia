@@ -463,6 +463,7 @@ class SelDiAEngine implements CoreEngine {
         ok: true,
         value: {
           svg,
+          diagramType: layoutResult.diagram.type,
           width: finalBounds.width,
           height: finalBounds.height,
           stats: { nodeCount: nodes.length, edgeCount: edges.length, groupCount: layoutResult.diagram.groups.length, renderTimeMs: 0 },

@@ -269,6 +269,9 @@ export interface RenderResult {
   /** SVG markup string */
   svg: string;
 
+  /** The diagram type actually resolved by the parser (e.g. "floorplan") */
+  diagramType: DiagramType;
+
   /** Diagram dimensions */
   width: number;
   height: number;

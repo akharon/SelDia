@@ -63,6 +63,12 @@ export class SelDiADecorator {
       let statusIcon: string;
       let statsLine: string;
 
+      // The fence's declared type (e.g. plain ```seldia defaults to
+      // "flowchart") is only a guess used before the source is parsed;
+      // once compiled, the parser's resolved type (handles `fp` →
+      // "floorplan" and all other TYPE_ALIASES) is authoritative.
+      const diagramType = result.ok ? result.value.diagramType : block.diagramType;
+
       if (result.ok) {
         svgContent = result.value.svg;
         // `contentText` on a TextEditorDecorationType only supports plain
@@ -101,7 +107,7 @@ export class SelDiADecorator {
       hoverMd.value = [
         `<div style="min-width:480px;max-width:800px;padding:12px">`,
         `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12px;color:#666;border-bottom:1px solid #e2e8f0;padding-bottom:8px">`,
-        `<span><b>$(type-hierarchy) ${block.diagramType}</b> · #${block.index + 1}</span>`,
+        `<span><b>$(type-hierarchy) ${diagramType}</b> · #${block.index + 1}</span>`,
         `<span>${statsLine}</span>`,
         `</div>`,
         `<div style="background:#fff;border-radius:6px;overflow:auto;text-align:center">`,
@@ -129,7 +135,7 @@ export class SelDiADecorator {
         renderOptions: {
           before: {
             contentText: [
-              `┌─ ${statusIcon} ${block.diagramType} — ${statsLine} ─────────────────────────────┐`,
+              `┌─ ${statusIcon} ${diagramType} — ${statsLine} ─────────────────────────────┐`,
               `│  Hover to preview · Ctrl+click to open                  │`,
               `└──────────────────────────────────────────────────────────┘`,
             ].join('\n'),

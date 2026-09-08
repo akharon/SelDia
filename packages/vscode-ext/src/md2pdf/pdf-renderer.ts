@@ -1,7 +1,10 @@
 // =============================================================================
 // SelDiA — MD→PDF Puppeteer Renderer
 // =============================================================================
-// Wraps Puppeteer (headless Chrome) for HTML → PDF conversion.
+// Wraps Puppeteer (headless Chrome) for HTML → PDF conversion. Browser
+// acquisition (including the first-run download) lives in marp/browser.ts.
+
+import { ensureBrowser, launchOptions, type ProgressReporter } from '../marp/browser.js';
 
 export interface PdfRendererOptions {
   format?: string;
@@ -13,6 +16,8 @@ export interface PdfRendererOptions {
   footerTemplate?: string;
   timeout?: number;
   showPageNumbers?: boolean;
+  /** Surfaces the one-time Chrome download progress to the caller's UI. */
+  onProgress?: ProgressReporter;
 }
 
 export interface PdfRendererResult {
@@ -31,21 +36,18 @@ export async function renderPdf(
   options: PdfRendererOptions = {}
 ): Promise<PdfRendererResult> {
   try {
-    let puppeteer: any;
+    let acquired;
     try {
-      puppeteer = await import('puppeteer');
-    } catch {
+      acquired = await ensureBrowser(options.onProgress);
+    } catch (err: any) {
       return {
         success: false,
         outputPath: '',
-        errorMessage: 'Puppeteer is not installed. Run: npm install puppeteer',
+        errorMessage: err?.message || String(err),
       };
     }
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await acquired.puppeteer.launch(launchOptions(acquired));
 
     try {
       const page = await browser.newPage();

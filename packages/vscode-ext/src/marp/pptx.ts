@@ -18,6 +18,7 @@ import PptxGenJS from 'pptxgenjs';
 import type { CoreEngine } from '@seldia/core';
 import { renderMarpDeck, assembleMarpDocument } from './render.js';
 import type { MarpExportResult } from './export.js';
+import { ensureBrowser, launchOptions, type ProgressReporter } from './browser.js';
 
 /** PPTX export reports the same shape as the HTML/PDF exporters, so the
  *  `seldia.exportMarp` command can treat all three results identically. */
@@ -29,6 +30,8 @@ export interface MarpPptxOptions {
   /** Include per-slide speaker notes. Default true. */
   includeNotes?: boolean;
   timeout?: number;
+  /** Surfaces the one-time Chrome download progress to the caller's UI. */
+  onProgress?: ProgressReporter;
 }
 
 /** Marp writes its slide size into its own stylesheet as
@@ -108,17 +111,8 @@ async function captureSlides(
   height: number,
   options: MarpPptxOptions
 ): Promise<string[]> {
-  let puppeteer: any;
-  try {
-    puppeteer = await import('puppeteer');
-  } catch {
-    throw new Error('Puppeteer is not installed. Run: npm install puppeteer');
-  }
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const acquired = await ensureBrowser(options.onProgress);
+  const browser = await acquired.puppeteer.launch(launchOptions(acquired));
 
   try {
     const page = await browser.newPage();

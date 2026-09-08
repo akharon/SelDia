@@ -926,21 +926,29 @@ class Parser {
       if (next.type === TokenType.ARROW) {
         return this.parseEdgeDecl();
       }
-      // id shape "Label" — keyword shape node
-      if (next.type === TokenType.IDENT && isShapeKeyword(next.value) &&
-          (next2.type === TokenType.STRING || next2.type === TokenType.SHAPE || next2.type === TokenType.LBRACE)) {
-        return this.parseNodeDecl();
-      }
       // shape id "Label" — typed node (C4-style: rectangle server "Web Server")
       // The COLON variant (`person customer: "Bank Customer"`, `participant
       // user: "User"`) is the spelling examples/ actually uses; it reads as a
       // separate keyword form but is the same declaration, so it routes here
       // and parseTypedNodeDecl() eats the optional colon before the label.
+      //
+      // Checked before the "id shape" form below: when both `tok` (e.g.
+      // "database") and `next` (e.g. "db") are shape keywords — `db` doubles
+      // as a cylinder-shape alias — the id-shape check would otherwise win
+      // and misparse `database db "Database" "..."` as a plain node named
+      // "database" with a "db" shape, leaving the id "db" undeclared. Any
+      // edge referencing "db" then resolves to an implicit placeholder node
+      // instead of this one, producing two boxes for one declaration.
       if (isShapeKeyword(tok.value) && next.type === TokenType.IDENT &&
           (next2.type === TokenType.STRING || next2.type === TokenType.SHAPE ||
            next2.type === TokenType.LBRACE || next2.type === TokenType.ARROW ||
            next2.type === TokenType.COLON)) {
         return this.parseTypedNodeDecl();
+      }
+      // id shape "Label" — keyword shape node
+      if (next.type === TokenType.IDENT && isShapeKeyword(next.value) &&
+          (next2.type === TokenType.STRING || next2.type === TokenType.SHAPE || next2.type === TokenType.LBRACE)) {
+        return this.parseNodeDecl();
       }
       // id <-- or id -- or id <-> — reverse/undirected/bidirectional edge
       // (these need a separate check since next is ARROW, already handled above)

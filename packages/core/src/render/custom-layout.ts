@@ -138,10 +138,18 @@ function monthIndex(s: string): number { return MONTHS.indexOf(s.slice(0, 3).toL
  *  calendar parseGanttLabel encodes dates into) back into a "Mon D" tick
  *  label for the time-axis gridlines. */
 export function ganttDayLabel(day: number, unit: 'day' | 'week' | 'month' | 'quarter' | 'year' = 'week'): string {
-  const m = Math.max(0, Math.min(11, Math.floor(day / 30)));
-  const d = Math.round(day - m * 30);
-  if (unit === 'quarter') return `Q${Math.floor(m / 3) + 1} '${Math.floor(day / 360) + 1}`;
+  if (unit === 'quarter') {
+    const m = Math.max(0, Math.min(11, Math.floor(day / 30)));
+    return `Q${Math.floor(m / 3) + 1} '${Math.floor(day / 360) + 1}`;
+  }
   if (unit === 'year') return `Year ${Math.floor(day / 360) + 1}`;
+  // Months are flat 30-day buckets with 1-indexed dates (day 1..30), so a
+  // day count that's an exact multiple of 30 is the 30th of the *previous*
+  // month, not day 0 of the next one — roll it back or "Apr 0" shows up on
+  // the axis instead of "Mar 30".
+  let m = Math.max(0, Math.min(11, Math.floor(day / 30)));
+  let d = Math.round(day - m * 30);
+  if (d === 0 && m > 0) { m -= 1; d = 30; }
   if (unit === 'month') return MONTH_LABELS[m];
   return `${MONTH_LABELS[m]} ${d}`;
 }

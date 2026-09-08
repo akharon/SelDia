@@ -213,7 +213,7 @@ export function renderSelDiABlock(engine: CoreEngine, code: string, docUri = '',
   const captionHtml = captionsEnabled
     ? `
   <div class="seldia-caption">
-    <span class="seldia-caption-label">Diagram ${n}</span>${title ? `<span class="seldia-caption-title">${escapeHtml(title)}</span>` : ''}
+    <span class="seldia-caption-label">Diagram ${n}</span>${title ? ` — <span class="seldia-caption-title">${escapeHtml(title)}</span>` : ''}
   </div>`
     : '';
   // Synchronous compile — the markdown-it fence renderer cannot await.
@@ -331,7 +331,7 @@ function renderImportedBlock(
   const captionHtml = captionsEnabled
     ? `
   <div class="seldia-caption">
-    <span class="seldia-caption-label">Diagram ${n}</span>${title ? `<span class="seldia-caption-title">${escapeHtml(title)}</span>` : ''}
+    <span class="seldia-caption-label">Diagram ${n}</span>${title ? ` — <span class="seldia-caption-title">${escapeHtml(title)}</span>` : ''}
   </div>`
     : '';
 

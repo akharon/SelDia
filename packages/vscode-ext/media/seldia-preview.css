@@ -395,12 +395,6 @@
 .seldia-caption-label {
   font-weight: 600;
 }
-.seldia-caption-label::after {
-  content: '';
-}
-.seldia-caption-title::before {
-  content: ' — ';
-}
 
 @media print {
   .seldia-diagram {

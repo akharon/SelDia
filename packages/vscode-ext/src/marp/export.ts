@@ -11,6 +11,7 @@ import { writeFileSync } from 'fs';
 import type { CoreEngine } from '@seldia/core';
 import { renderMarpDeck, assembleMarpDocument } from './render.js';
 import { renderPdf } from '../md2pdf/pdf-renderer.js';
+import type { ProgressReporter } from './browser.js';
 
 export interface MarpExportResult {
   success: boolean;
@@ -34,7 +35,8 @@ export async function exportMarpToPdf(
   engine: CoreEngine,
   markdown: string,
   outputPath: string,
-  title?: string
+  title?: string,
+  onProgress?: ProgressReporter
 ): Promise<MarpExportResult> {
   let rendered;
   try {
@@ -51,6 +53,7 @@ export async function exportMarpToPdf(
     headerTemplate: '<span></span>',
     footerTemplate: '<span></span>',
     margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    onProgress,
   });
 
   if (!pdfResult.success) {

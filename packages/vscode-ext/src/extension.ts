@@ -324,12 +324,15 @@ export function activate(context: vscode.ExtensionContext) {
         title: 'Exporting Marp deck…',
         cancellable: false,
       },
-      async () => {
+      async (progress) => {
+        // The first export on a fresh install downloads Chrome, which takes
+        // minutes; without this the notification sits on its generic title.
+        const onProgress = (message: string) => progress.report({ message });
         if (uri.fsPath.endsWith('.pptx')) {
-          return exportMarpToPptx(engine, markdown, uri.fsPath, title);
+          return exportMarpToPptx(engine, markdown, uri.fsPath, title, { onProgress });
         }
         if (uri.fsPath.endsWith('.pdf')) {
-          return exportMarpToPdf(engine, markdown, uri.fsPath, title);
+          return exportMarpToPdf(engine, markdown, uri.fsPath, title, onProgress);
         }
         return exportMarpToHtml(engine, markdown, uri.fsPath, title);
       }

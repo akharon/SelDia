@@ -84,7 +84,7 @@ footer: "SelDiA + Marp Presentation"
   .two-cols > div {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
   }
   
   /* Feature cards */
@@ -167,16 +167,17 @@ Great for title pages and speaker notes. -->
 ## System Architecture
 
 ```seldia
-diagram c4 "System Overview" {
-  person: (User)
-  web: [Web App]
-  api: [API Server]
-  db: [(Database)]
-  cache: [(Redis)]
-  person --|uses| web
-  web --|calls| api
-  api --|reads/writes| db
-  api --|caches| cache
+diagram c4c "System Overview" {
+  person user "User" "Interacts with the web app"
+  system web "Web App" "Front-end application"
+  system api "API Server" "Backend service"
+  database db "Database" "Stores persistent data"
+  system cache "Redis" "Caches hot data"
+
+  user -> web: "Uses"
+  web -> api: "Calls"
+  api -> db: "Reads/writes"
+  api -> cache: "Caches"
 }
 ```
 
@@ -244,17 +245,17 @@ selects the best layout algorithm per diagram type. -->
 
 ```seldia
 diagram er "Database Schema" {
-  users: [Users | id | name | email]
-  orders: [Orders | id | user_id | total]
-  items: [Items | id | order_id | product | qty]
-  
-  orders ||--|| users: placed_by
-  items }o--|| orders: contains
+  users: "Users\nid\nname\nemail"
+  orders: "Orders\nid\nuser_id\ntotal"
+  items: "Items\nid\norder_id\nproduct\nqty"
+
+  users -> orders: "places"
+  orders -> items: "contains"
 }
 ```
 
-<!-- ER diagrams render with proper crow's-foot notation for relationships.
-The label syntax (fields separated by pipes) is the same as in the regular preview. -->
+<!-- ER diagrams render entity attributes from \n-separated rows in the label.
+Cardinality follows the arrow direction: A -> B reads as one A, many B. -->
 
 ---
 
@@ -502,29 +503,40 @@ fl "Supported Types" {
 - `Esc` — Exit fullscreen
 - `?` — Show all keyboard shortcuts
 
-**In Slide Editor:**
+<!-- Speaker notes here. These tips help presenters navigate Marp effectively.
+The shortcuts are standard Marp behavior — all work in our slide panel too. -->
+
+---
+
+## Working in the Slide Editor
+
 - Auto-save on file changes
 - Live diagram updates
 - Speaker notes visible in Notes panel
 - Export from CodeLens or Command Palette
 
-<!-- Speaker notes here. These tips help presenters navigate Marp effectively.
-The shortcuts are standard Marp behavior — all work in our slide panel too. -->
+---
 
-**One file, multiple formats:**
+## One File, Multiple Formats
+
 - Slides + diagrams in a single `.md` file
 - No separate diagramming tools or external references
 - `marp: true` front-matter opts into slide mode
 
-**Universal rendering:**
+---
+
+## Universal Rendering
+
 - Every fence SelDiA understands — `seldia`, `mermaid`, `plantuml` — 
   renders the same way inside slides and in the regular preview
 - Diagram syntax is identical across both contexts
 
-**Export options:**
-- Export to PDF with **SelDiA: Export Marp Deck** (CodeLens or command palette)
-- Export to HTML for web sharing
-- Both use the same rendering pipeline
+---
+
+## Export Options
+
+- Export to PDF, PPTX, or HTML with **SelDiA: Export Marp Deck** (CodeLens, command palette, or the toolbar's Export button)
+- All three use the same rendering pipeline
 
 <!-- The export command lives in the same CodeLens entry point as the
 preview opener. Keyboard shortcut: check the command palette. -->

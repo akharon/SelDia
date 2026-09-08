@@ -54,6 +54,12 @@ export class MarpPreviewProvider implements vscode.CustomTextEditorProvider {
 
     updatePanel(panel, this.engine, doc);
 
+    const messageSub = panel.webview.onDidReceiveMessage((msg) => {
+      if (msg?.type === 'export') {
+        vscode.commands.executeCommand('seldia.exportMarp', doc.uri);
+      }
+    });
+
     // Re-rendering a deck means a full Marp render plus a compile of every
     // fenced diagram in it, and reassigning webview.html rebuilds the whole
     // DOM (losing the current slide). Debounce so that only lands once the
@@ -71,6 +77,7 @@ export class MarpPreviewProvider implements vscode.CustomTextEditorProvider {
     panel.onDidDispose(() => {
       if (timer) clearTimeout(timer);
       changeSub.dispose();
+      messageSub.dispose();
       panels.delete(doc.uri.toString());
     });
   }
@@ -164,10 +171,12 @@ function shellHtml(slidesHtml: string, css: string, slideCount: number, notes: s
   <button id="notesToggle">Notes</button>
   <button id="present">Present &#9654;</button>
   <span id="counter"></span>
+  <button id="export">Export&hellip;</button>
 </div>
 <script>
 ${SHRINK_DIAGRAMS_TO_FIT_JS}
 (function() {
+  const vscode = acquireVsCodeApi();
   const container = document.getElementById('slides');
   const notes = ${notesJson};
 
@@ -244,6 +253,9 @@ ${SHRINK_DIAGRAMS_TO_FIT_JS}
     if (document.body.classList.contains('presenting')) exitPresent(); else enterPresent();
   }
   presentBtn.addEventListener('click', togglePresent);
+  document.getElementById('export').addEventListener('click', () => {
+    vscode.postMessage({ type: 'export' });
+  });
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && document.body.classList.contains('presenting')) exitPresent();
   });

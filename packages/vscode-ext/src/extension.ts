@@ -297,21 +297,22 @@ export function activate(context: vscode.ExtensionContext) {
   // extension activates, so sweep the current editors once on startup.
   for (const editor of vscode.window.visibleTextEditors) autoOpenMarp(editor.document);
 
-  const exportMarpDeck = vscode.commands.registerCommand('seldia.exportMarp', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !editor.document.fileName.match(/\.(md|mdx)$/)) {
+  const exportMarpDeck = vscode.commands.registerCommand('seldia.exportMarp', async (target?: vscode.Uri) => {
+    const docUri = target ?? vscode.window.activeTextEditor?.document.uri;
+    if (!docUri || !docUri.fsPath.match(/\.(md|mdx)$/)) {
       vscode.window.showWarningMessage('Open a Marp Markdown file first');
       return;
     }
-    const markdown = editor.document.getText();
+    const document = await vscode.workspace.openTextDocument(docUri);
+    const markdown = document.getText();
     if (!isMarpDocument(markdown)) {
       vscode.window.showWarningMessage('This file is not a Marp deck — add "marp: true" to its YAML front-matter.');
       return;
     }
-    const title = editor.document.fileName.split('/').pop()?.replace(/\.(md|mdx)$/, '');
+    const title = docUri.fsPath.split('/').pop()?.replace(/\.(md|mdx)$/, '');
     const uri = await vscode.window.showSaveDialog({
       filters: { 'PDF': ['pdf'], 'PowerPoint': ['pptx'], 'HTML': ['html'] },
-      defaultUri: vscode.Uri.file(editor.document.fileName.replace(/\.(md|mdx)$/, '.pdf')),
+      defaultUri: vscode.Uri.file(docUri.fsPath.replace(/\.(md|mdx)$/, '.pdf')),
     });
     if (!uri) return;
 

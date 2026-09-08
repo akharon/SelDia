@@ -224,7 +224,32 @@ function shrinkDiagramsToFit(root) {
     // section.clientHeight excludes its border but includes padding, matching
     // the box's offsetTop origin (the section's padding edge).
     var available = section.clientHeight - bottomPad - offsetTopInSection - trailing;
-    if (available > 0) box.style.height = available + 'px';
+    if (available <= 0) return;
+    // A box that's full section width but only just tall enough leaves
+    // object-fit:contain free to shrink the SVG on whichever axis doesn't
+    // match its native aspect ratio, padding the *other* axis with empty
+    // space (see [[marp-diagram-fit]] follow-up: a portrait class diagram in
+    // a wide box, or a wide-but-short sequence diagram in a tall box, both
+    // read as "tiny diagram, huge margins"). Shrink-wrapping the box itself
+    // to the SVG's own aspect ratio — capped by the width/height actually
+    // available — removes that slack: contain then has nothing left to
+    // letterbox, and the box's own flex centering (justify-content/
+    // align-items: center, set in the CSS below) places the tightened box
+    // in the middle of the leftover room.
+    var availableWidth = box.parentElement ? box.parentElement.clientWidth : box.offsetWidth;
+    var vb = (svg.getAttribute('viewBox') || '').trim().split(/\\s+/);
+    var ratio = vb.length === 4 ? (parseFloat(vb[2]) / parseFloat(vb[3])) : NaN;
+    if (availableWidth > 0 && ratio > 0 && isFinite(ratio)) {
+      var w = available * ratio;
+      var h = available;
+      if (w > availableWidth) { w = availableWidth; h = w / ratio; }
+      box.style.width = w + 'px';
+      box.style.height = h + 'px';
+      box.style.marginLeft = 'auto';
+      box.style.marginRight = 'auto';
+    } else {
+      box.style.height = available + 'px';
+    }
   });
 }
 `;
@@ -239,9 +264,9 @@ export function assembleMarpDocument(html: string, css: string, title = 'Marp Sl
 <title>${escapeHtml(title)}</title>
 <style>
 ${css}
-.seldia-diagram { background: transparent; }
+.seldia-diagram { background: transparent; margin: 0; }
 .seldia-diagram-source, .seldia-diagram-toolbar { display: none; }
-.seldia-diagram-svg { box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.seldia-diagram-svg { box-sizing: border-box; padding: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .seldia-diagram-svg svg { display: block; width: 100%; height: 100%; max-width: 100%; object-fit: contain; }
 </style>
 </head>

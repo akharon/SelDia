@@ -26,7 +26,7 @@ import { ShapeType } from '../types/shapes.js';
 import { catalogItem, DEFAULT_DOOR_WIDTH, DEFAULT_WINDOW_WIDTH } from '../floorplan/catalog.js';
 import { renderFloorplanNode } from '../render/floorplan-render.js';
 
-export type FloorplanStmtType = 'room' | 'door' | 'window' | 'furniture' | 'sheet';
+export type FloorplanStmtType = 'room' | 'door' | 'window' | 'furniture' | 'sheet' | 'measure';
 
 const STMT_KEYWORDS: Record<string, FloorplanStmtType> = {
   room: 'room', r: 'room',
@@ -34,7 +34,13 @@ const STMT_KEYWORDS: Record<string, FloorplanStmtType> = {
   window: 'window', win: 'window', w: 'window',
   furniture: 'furniture', item: 'furniture', fixture: 'furniture',
   sheet: 'sheet', titleblock: 'sheet',
+  measure: 'measure', dim: 'measure', dimension: 'measure', ruler: 'measure',
 };
+
+/** A `measure` endpoint: either a bare entity id (`Sofa`) or a room wall
+ *  (`Living.north`) — the same `Room.edge` spelling doors and windows use, so
+ *  wall-to-object and wall-to-wall measurements need no extra syntax. */
+export interface MeasureRef { id: string; edge?: 'north' | 'south' | 'east' | 'west' }
 
 /** `"4x3"` / `"4 x 3"` → { width: 4, height: 3 }. */
 function parseSize(raw: unknown): { width: number; height: number } | undefined {
@@ -87,6 +93,9 @@ export const floorplanPlugin: DiagramPlugin = {
     // parse time (this DSL has no `key: value` diagram-header syntax), so the
     // sheet block is the only way to carry this beyond the title string.
     const titleBlock: { title?: string; scale?: string; author?: string; date?: string } = { title: ast.title };
+    // Sheet-level drawing options. Automatic exterior dimensioning is on by
+    // default — a floor plan without measurements is a sketch, not a plan.
+    const sheetOpts: { autoDimensions: boolean } = { autoDimensions: true };
 
     for (const stmt of ast.body) {
       if (stmt.kind !== 'NodeDecl') continue;
@@ -98,6 +107,12 @@ export const floorplanPlugin: DiagramPlugin = {
         if (attrs.scale) titleBlock.scale = String(attrs.scale);
         if (attrs.author) titleBlock.author = String(attrs.author);
         if (attrs.date) titleBlock.date = String(attrs.date);
+        // `dimensions: "off"` suppresses the automatic exterior wall strings
+        // for authors who only want their own explicit `measure` annotations.
+        if (attrs.dimensions !== undefined) {
+          const v = String(attrs.dimensions).toLowerCase();
+          sheetOpts.autoDimensions = !(v === 'off' || v === 'false' || v === 'none' || v === 'no');
+        }
         continue;
       }
 
@@ -130,7 +145,32 @@ export const floorplanPlugin: DiagramPlugin = {
           ports: [],
           classList: nd.classList || [],
           collapsed: false,
-          data: { fpKind: kind, roomId: ref.room, edge: ref.edge, offset, width },
+          data: { fpKind: kind, roomId: ref.room, edge: ref.edge, offset, width, swing: attrs.swing ? String(attrs.swing) : undefined },
+        });
+      } else if (kind === 'measure') {
+        // `measure m1 { from: "Sofa", to: "Living.north" }` — endpoints stay
+        // symbolic here; layoutFloorplan resolves them to boxes and computes
+        // the clear gap, because only layout knows the pixel geometry.
+        const from = parseRoomRef(attrs.from);
+        const to = parseRoomRef(attrs.to);
+        nodes.push({
+          id: nd.id,
+          label: nd.label === nd.id ? '' : (nd.label || ''),
+          shape: ShapeType.NONE,
+          position: { x: 0, y: 0 },
+          size: { width: 0, height: 0 },
+          style: {},
+          ports: [],
+          classList: nd.classList || [],
+          collapsed: false,
+          data: {
+            fpKind: 'measure',
+            from: { id: from.room, edge: from.edge },
+            to: { id: to.room, edge: to.edge },
+            // An explicit label overrides the computed length — for a
+            // "min. 90" clearance note rather than the as-drawn figure.
+            labelOverride: attrs.label ? String(attrs.label) : undefined,
+          },
         });
       } else if (kind === 'furniture') {
         const roomRef = String(attrs.in ?? '').trim();
@@ -159,17 +199,24 @@ export const floorplanPlugin: DiagramPlugin = {
       type: DiagramType.FLOORPLAN,
       title: ast.title || 'Floor Plan',
       nodes, edges: [], groups: [], layers: [],
-      metadata: { titleBlock: { ...titleBlock, title: titleBlock.title || 'Floor Plan' } },
+      metadata: {
+        titleBlock: { ...titleBlock, title: titleBlock.title || 'Floor Plan' },
+        floorplanOptions: sheetOpts,
+      },
     };
   },
 
   validate(ast: DiagramAST): PluginDiagnostic[] {
     const out: PluginDiagnostic[] = [];
     const roomIds = new Set<string>();
+    // A `measure` endpoint may name any drawn entity, not just a room.
+    const allIds = new Set<string>();
     for (const stmt of ast.body) {
       if (stmt.kind !== 'NodeDecl') continue;
       const nd = stmt as ASTNodeDecl;
-      if (stmtTypeOf(nd) === 'room') roomIds.add(nd.id);
+      const k = stmtTypeOf(nd);
+      if (k === 'room') roomIds.add(nd.id);
+      if (k === 'room' || k === 'furniture' || k === 'door' || k === 'window') allIds.add(nd.id);
     }
     for (const stmt of ast.body) {
       if (stmt.kind !== 'NodeDecl') continue;
@@ -196,6 +243,22 @@ export const floorplanPlugin: DiagramPlugin = {
             severity: 'warning', nodeId: nd.id, line: nd.loc?.startLine, column: nd.loc?.startColumn,
             message: `${kind} "${nd.id}" needs at: "Room.edge" (edge is one of north, south, east, west).`,
           });
+        }
+      }
+      if (kind === 'measure') {
+        for (const end of ['from', 'to'] as const) {
+          const ref = parseRoomRef(attrs[end]);
+          if (!ref.room) {
+            out.push({
+              severity: 'warning', nodeId: nd.id, line: nd.loc?.startLine, column: nd.loc?.startColumn,
+              message: `measure "${nd.id}" needs ${end}: "<id>" or "<Room>.<edge>".`,
+            });
+          } else if (!allIds.has(ref.room)) {
+            out.push({
+              severity: 'warning', nodeId: nd.id, line: nd.loc?.startLine, column: nd.loc?.startColumn,
+              message: `measure "${nd.id}" references unknown ${end} "${ref.room}".`,
+            });
+          }
         }
       }
       if (kind === 'furniture') {

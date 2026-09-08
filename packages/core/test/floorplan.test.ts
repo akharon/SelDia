@@ -17,6 +17,21 @@ function irOf(src: string): DiagramIR {
   return ir.value;
 }
 
+function layoutOf(src: string) {
+  const ir = irOf(src);
+  const layout = engine.layout(ir);
+  expect(layout.ok, layout.ok ? '' : JSON.stringify(layout.errors).slice(0, 300)).toBe(true);
+  if (!layout.ok) throw new Error('unreachable');
+  return layout.value;
+}
+
+function renderOf(src: string): string {
+  const rendered = engine.render(layoutOf(src));
+  expect(rendered.ok).toBe(true);
+  if (!rendered.ok) throw new Error('unreachable');
+  return rendered.value.svg;
+}
+
 function warningsOf(src: string): string[] {
   const parsed = engine.parse(src);
   expect(parsed.ok).toBe(true);
@@ -123,6 +138,102 @@ describe('floorplan diagram', () => {
     expect(rendered.value.svg).toContain('M. Kaya');
     // No rough.js path jitter markers — plain <line>/<rect> geometry.
     expect(rendered.value.svg).toContain('<line');
+  });
+
+  it('renders automatic exterior wall dimensions, outside the building only', () => {
+    const layout = layoutOf(SAMPLE);
+    const meta = layout.diagram.metadata as any;
+    const dims = meta.floorplanDimensions as any[];
+    expect(dims.length).toBeGreaterThan(0);
+
+    // Every automatic dimension must sit outside the walls it measures.
+    const walls = meta.floorplanWalls as any[];
+    const minX = Math.min(...walls.flatMap((w) => [w.x1, w.x2]));
+    const maxX = Math.max(...walls.flatMap((w) => [w.x1, w.x2]));
+    const minY = Math.min(...walls.flatMap((w) => [w.y1, w.y2]));
+    const maxY = Math.max(...walls.flatMap((w) => [w.y1, w.y2]));
+    for (const d of dims) {
+      const outside = d.side === 'top' ? d.y1 < minY : d.side === 'bottom' ? d.y1 > maxY
+        : d.side === 'left' ? d.x1 < minX : d.x1 > maxX;
+      expect(outside, `${d.side} dimension is inside the plan`).toBe(true);
+    }
+  });
+
+  it('sheet dimensions:"off" suppresses the automatic wall strings', () => {
+    const layout = layoutOf(`
+      fp "T" {
+        meta [sheet] { type: "sheet", dimensions: "off" }
+        R "Room" { type: "room", at: "0,0", size: "3x3" }
+      }
+    `);
+    expect((layout.diagram.metadata as any).floorplanDimensions).toEqual([]);
+  });
+
+  it('resolves a measure between two furniture items to their clear gap', () => {
+    // Two 1x1 boxes at x=0 and x=2 inside a 5x3 room: a 1 m clear gap.
+    const layout = layoutOf(`
+      fp "T" {
+        R "Room" { type: "room", at: "0,0", size: "5x3" }
+        a "boxa" { type: "furniture", item: "unknown-a", in: "R", at: "0,0" }
+        b "boxb" { type: "furniture", item: "unknown-b", in: "R", at: "2,0" }
+        m1 "gap" { type: "measure", from: "a", to: "b" }
+      }
+    `);
+    const measures = (layout.diagram.metadata as any).floorplanMeasures as any[];
+    expect(measures).toHaveLength(1);
+    expect(measures[0].text).toBe('1.00 m');
+  });
+
+  it('measures from a room wall to an object, using the Room.edge spelling', () => {
+    const layout = layoutOf(`
+      fp "T" {
+        R "Room" { type: "room", at: "0,0", size: "5x4" }
+        a "boxa" { type: "furniture", item: "unknown-a", in: "R", at: "1,2" }
+        m1 "setback" { type: "measure", from: "R.north", to: "a" }
+      }
+    `);
+    const measures = (layout.diagram.metadata as any).floorplanMeasures as any[];
+    expect(measures).toHaveLength(1);
+    expect(measures[0].text).toBe('2.00 m'); // north wall at y=0 down to the box at y=2
+  });
+
+  it('an explicit label overrides the computed measure length', () => {
+    const layout = layoutOf(`
+      fp "T" {
+        R "Room" { type: "room", at: "0,0", size: "5x3" }
+        a "boxa" { type: "furniture", item: "unknown-a", in: "R", at: "0,0" }
+        b "boxb" { type: "furniture", item: "unknown-b", in: "R", at: "2,0" }
+        m1 "gap" { type: "measure", from: "a", to: "b", label: "min. 90" }
+      }
+    `);
+    const measures = (layout.diagram.metadata as any).floorplanMeasures as any[];
+    expect(measures[0].text).toBe('min. 90');
+  });
+
+  it('warns on a measure referencing an unknown entity', () => {
+    const msgs = warningsOf(`
+      fp "T" {
+        R "Room" { type: "room", at: "0,0", size: "3x3" }
+        m1 "gap" { type: "measure", from: "R", to: "nope" }
+      }
+    `);
+    expect(msgs.some((m) => m.includes('unknown to "nope"'))).toBe(true);
+  });
+
+  it('renders dimension and measure layers into the SVG', () => {
+    const svg = renderOf(`
+      fp "T" {
+        R "Room" { type: "room", at: "0,0", size: "4x3" }
+        a "boxa" { type: "furniture", item: "unknown-a", in: "R", at: "0,0" }
+        b "boxb" { type: "furniture", item: "unknown-b", in: "R", at: "2,0" }
+        m1 "gap" { type: "measure", from: "a", to: "b" }
+      }
+    `);
+    expect(svg).toContain('seldia-floorplan-dimensions');
+    expect(svg).toContain('seldia-floorplan-measures');
+    expect(svg).toContain('seldia-floorplan-scalebar');
+    expect(svg).toContain('seldia-floorplan-floors');
+    expect(svg).toContain('4.00 m'); // the room's own wall length
   });
 
   it('warns on a door referencing an unknown room', () => {

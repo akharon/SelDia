@@ -33,7 +33,7 @@ import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughSt
 import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
 import { escapeXml } from './render/escape.js';
-import { renderFloorplanWalls, renderFloorplanFrame, renderFloorplanTitleBlock } from './render/floorplan-render.js';
+import { renderFloorplanWalls, renderFloorplanFrame, renderFloorplanTitleBlock, renderFloorplanFloors, renderFloorplanDimensions, renderFloorplanMeasures, renderFloorplanScaleBar, renderFloorplanRoomLabels } from './render/floorplan-render.js';
 import { expandIncludes } from './macro/include.js';
 // Per-type NODE rendering now dispatches through each plugin's renderNode
 // hook (see plugin/types.ts) — only whole-canvas grammars (charts, sankey,
@@ -614,13 +614,43 @@ class SelDiAEngine implements CoreEngine {
     // Rough.js. Frame chrome first (background), then derived walls/openings,
     // then room/furniture symbols, then the title-block stamp on top.
     if (diagramType === DiagramType.FLOORPLAN) {
-      svg += renderFloorplanFrame(bw, bh);
       const walls = (metadata?.floorplanWalls as any[]) ?? [];
       const openings = (metadata?.floorplanOpenings as any[]) ?? [];
+      const dims = (metadata?.floorplanDimensions as any[]) ?? [];
+      const measures = (metadata?.floorplanMeasures as any[]) ?? [];
+      const fpScale = (metadata?.floorplanScale as number) ?? 60;
+      const kindOf = (n: IRNode) => String((n.data as any)?.fpKind || '');
+      const roomNodes = nodes.filter((n) => kindOf(n) === 'room');
+      const furnNodes = nodes.filter((n) => kindOf(n) === 'furniture');
+
+      svg += renderFloorplanFrame(bw, bh);
+      // Painter's order, bottom to top: floor tint, then rugs (which lie under
+      // the furniture standing on them), then walls, then the furniture, then
+      // all text. Room names go last of the plan content so no symbol can be
+      // drawn over a label — the overlap the old single-pass loop allowed.
+      svg += renderFloorplanFloors(roomNodes);
+      const isRug = (n: IRNode) => String((n.data as any)?.symbol || '') === 'carpet';
+      for (const n of furnNodes.filter(isRug)) {
+        svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
+      }
       svg += renderFloorplanWalls(walls, openings);
-      for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
+      for (const n of furnNodes.filter((n) => !isRug(n))) {
+        svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
+      }
+      svg += renderFloorplanRoomLabels(roomNodes, furnNodes);
+      svg += renderFloorplanDimensions(dims);
+      svg += renderFloorplanMeasures(measures);
+      // Sheet chrome on top: it is opaque and must win over any linework that
+      // happens to reach the corner it occupies.
+      svg += renderFloorplanScaleBar(bh, fpScale);
       const titleBlock = (metadata?.titleBlock as any) ?? {};
-      svg += renderFloorplanTitleBlock(bw, bh, titleBlock);
+      // Total floor area — a headline figure for the whole plan, summed from
+      // the same room rectangles the per-room labels report.
+      const totalM2 = roomNodes.reduce((sum, n) => sum + (n.size.width / fpScale) * (n.size.height / fpScale), 0);
+      svg += renderFloorplanTitleBlock(bw, bh, {
+        ...titleBlock,
+        area: totalM2 > 0 ? `${totalM2.toFixed(1)} m²` : undefined,
+      });
       svg += '</svg>';
       return svg;
     }

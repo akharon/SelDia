@@ -18,6 +18,8 @@
 
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { Point, Rect } from '../types/common.js';
+import type { FpDimension, FpMeasure, FpBox, FpWallSeg } from '../floorplan/dimensions.js';
+import { wallDimensionStrings, clearGap, formatLength } from '../floorplan/dimensions.js';
 
 export interface CustomLayoutResult {
   nodes: IRNode[];
@@ -467,8 +469,15 @@ const FP_SCALE = 60; // px per metre
 const FP_PAD = 80; // room for the blueprint title-block + ruler margins
 const FP_SNAP = 0.05; // metres; adjacent-edge detection tolerance
 
-interface FpWallSeg { x1: number; y1: number; x2: number; y2: number; kind: 'exterior' | 'interior' }
-interface FpOpening { x1: number; y1: number; x2: number; y2: number; kind: 'door' | 'window' }
+interface FpOpening {
+  x1: number; y1: number; x2: number; y2: number;
+  kind: 'door' | 'window';
+  swing?: number;
+  /** Thickness class of the wall this opening is cut into. The renderer erases
+   *  the wall under the opening, and erasing at the exterior thickness on an
+   *  interior wall punches a visibly over-wide hole through it. */
+  wall?: 'exterior' | 'interior';
+}
 
 function fpRoomEdges(r: { x: number; y: number; w: number; h: number }) {
   return {
@@ -486,6 +495,7 @@ export function layoutFloorplan(ir: DiagramIR): CustomLayoutResult {
     return k === 'door' || k === 'window';
   });
   const furnitureNodes = ir.nodes.filter((n) => (n.data as any)?.fpKind === 'furniture');
+  const measureNodes = ir.nodes.filter((n) => (n.data as any)?.fpKind === 'measure');
 
   // Rooms: metres -> pixels, 1:1 with their authored coordinates (no packing).
   const rooms = new Map<string, { x: number; y: number; w: number; h: number }>();
@@ -497,7 +507,10 @@ export function layoutFloorplan(ir: DiagramIR): CustomLayoutResult {
       h: n.size.height * FP_SCALE,
     };
     rooms.set(n.id, r);
-    return { ...n, position: { x: r.x, y: r.y }, size: { width: r.w, height: r.h } };
+    // fpScale rides along on the node so renderRoomSymbol can turn its pixel
+    // size back into m² without the plugin renderNode hook needing access to
+    // diagram metadata (which its context does not carry).
+    return { ...n, position: { x: r.x, y: r.y }, size: { width: r.w, height: r.h }, data: { ...n.data, fpScale: FP_SCALE } };
   });
 
   // Wall derivation: every room edge starts exterior; if another room has a
@@ -556,11 +569,34 @@ export function layoutFloorplan(ir: DiagramIR): CustomLayoutResult {
     if (!r || !d.edge) return { ...n, position: { x: 0, y: 0 }, size: { width: 0, height: 0 } };
     const offsetPx = (d.offset as number) * FP_SCALE;
     const widthPx = (d.width as number) * FP_SCALE;
+    // `swing` points from the wall INTO the room the door was declared on, so
+    // the leaf and arc are drawn inside that room. North/west walls have the
+    // room on their positive side, south/east on their negative side.
     let seg: FpOpening;
-    if (d.edge === 'north') seg = { x1: r.x + offsetPx, y1: r.y, x2: r.x + offsetPx + widthPx, y2: r.y, kind };
-    else if (d.edge === 'south') seg = { x1: r.x + offsetPx, y1: r.y + r.h, x2: r.x + offsetPx + widthPx, y2: r.y + r.h, kind };
-    else if (d.edge === 'west') seg = { x1: r.x, y1: r.y + offsetPx, x2: r.x, y2: r.y + offsetPx + widthPx, kind };
-    else seg = { x1: r.x + r.w, y1: r.y + offsetPx, x2: r.x + r.w, y2: r.y + offsetPx + widthPx, kind };
+    let swing: number;
+    if (d.edge === 'north') { seg = { x1: r.x + offsetPx, y1: r.y, x2: r.x + offsetPx + widthPx, y2: r.y, kind }; swing = 1; }
+    else if (d.edge === 'south') { seg = { x1: r.x + offsetPx, y1: r.y + r.h, x2: r.x + offsetPx + widthPx, y2: r.y + r.h, kind }; swing = -1; }
+    else if (d.edge === 'west') { seg = { x1: r.x, y1: r.y + offsetPx, x2: r.x, y2: r.y + offsetPx + widthPx, kind }; swing = 1; }
+    else { seg = { x1: r.x + r.w, y1: r.y + offsetPx, x2: r.x + r.w, y2: r.y + offsetPx + widthPx, kind }; swing = -1; }
+    // An explicit `swing: "out"` flips it, for a door opening onto a hallway
+    // or the exterior rather than into its own room.
+    if (String(d.swing ?? '').toLowerCase() === 'out') swing = -swing;
+    seg.swing = swing;
+    // Which derived wall does this opening sit on? Find the segment that is
+    // collinear with it and contains it; interior walls are drawn thinner, so
+    // the renderer must erase a correspondingly narrower gap.
+    const horiz = Math.abs(seg.y2 - seg.y1) < 0.5;
+    const covering = walls.find((wl) => {
+      if (horiz) {
+        return Math.abs(wl.y1 - wl.y2) < 0.5 && Math.abs(wl.y1 - seg.y1) < snapPx + 1
+          && Math.min(wl.x1, wl.x2) <= Math.min(seg.x1, seg.x2) + 1
+          && Math.max(wl.x1, wl.x2) >= Math.max(seg.x1, seg.x2) - 1;
+      }
+      return Math.abs(wl.x1 - wl.x2) < 0.5 && Math.abs(wl.x1 - seg.x1) < snapPx + 1
+        && Math.min(wl.y1, wl.y2) <= Math.min(seg.y1, seg.y2) + 1
+        && Math.max(wl.y1, wl.y2) >= Math.max(seg.y1, seg.y2) - 1;
+    });
+    seg.wall = covering?.kind ?? 'exterior';
     openings.push(seg);
     return {
       ...n,
@@ -582,15 +618,83 @@ export function layoutFloorplan(ir: DiagramIR): CustomLayoutResult {
     };
   });
 
+  // ── Measurements ───────────────────────────────────────────────────────
+  // Automatic exterior wall lengths first (each wall dimensioned once, outside
+  // the envelope — see floorplan/dimensions.ts for the drafting rules), then
+  // the author's explicit `measure` statements resolved to clear gaps.
+  const autoDims = ((ir.metadata?.floorplanOptions as any)?.autoDimensions ?? true)
+    ? wallDimensionStrings(walls, FP_SCALE)
+    : [];
+
+  // Every measurable entity as a box, so a `measure` endpoint can name a room,
+  // a piece of furniture, or a door/window opening interchangeably.
+  const boxOf = new Map<string, FpBox>();
+  for (const n of [...positionedRooms, ...positionedOpenings, ...positionedFurniture]) {
+    boxOf.set(n.id, { x: n.position.x, y: n.position.y, w: n.size.width, h: n.size.height });
+  }
+  /** `Living.north` resolves to that wall as a zero-thickness box, which makes
+   *  wall-to-object and wall-to-wall fall out of the same clearGap() call as
+   *  object-to-object — no separate code path per measurement kind. */
+  const resolveRef = (ref: { id: string; edge?: string }): FpBox | undefined => {
+    const base = boxOf.get(ref.id);
+    if (!base) return undefined;
+    if (!ref.edge) return base;
+    if (ref.edge === 'north') return { x: base.x, y: base.y, w: base.w, h: 0 };
+    if (ref.edge === 'south') return { x: base.x, y: base.y + base.h, w: base.w, h: 0 };
+    if (ref.edge === 'west') return { x: base.x, y: base.y, w: 0, h: base.h };
+    return { x: base.x + base.w, y: base.y, w: 0, h: base.h };
+  };
+
+  const measures: FpMeasure[] = [];
+  for (const n of measureNodes) {
+    const d = n.data as any;
+    const a = resolveRef(d.from), b = resolveRef(d.to);
+    if (!a || !b) continue;
+    const gap = clearGap(a, b);
+    if (!gap) continue;
+    measures.push({
+      x1: gap.x1, y1: gap.y1, x2: gap.x2, y2: gap.y2,
+      text: d.labelOverride || formatLength(gap.px / FP_SCALE),
+      kind: 'measure',
+    });
+  }
+
   const nodes = [...positionedRooms, ...positionedOpenings, ...positionedFurniture];
   const bounds = computeBounds(nodes, 0, 0);
-  const width = bounds.width + FP_PAD;
-  const height = bounds.height + FP_PAD;
+  // The canvas must grow to hold the dimension strings, which by design sit
+  // OUTSIDE the building — sizing to the rooms alone clipped them off-sheet.
+  const dimPts = autoDims.flatMap((d) => [{ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }]);
+  const dimMaxX = dimPts.length ? Math.max(...dimPts.map((p) => p.x)) : 0;
+  const dimMaxY = dimPts.length ? Math.max(...dimPts.map((p) => p.y)) : 0;
+  const dimMinX = dimPts.length ? Math.min(...dimPts.map((p) => p.x)) : Infinity;
+  const dimMinY = dimPts.length ? Math.min(...dimPts.map((p) => p.y)) : Infinity;
+  // A dimension string that runs off the top/left would land at a negative
+  // coordinate; shift the whole drawing right/down by that much instead.
+  const shiftX = dimMinX < FP_PAD ? FP_PAD - Math.min(dimMinX, FP_PAD) : 0;
+  const shiftY = dimMinY < FP_PAD ? FP_PAD - Math.min(dimMinY, FP_PAD) : 0;
+  const shifted = shiftX || shiftY
+    ? nodes.map((n) => ({ ...n, position: { x: n.position.x + shiftX, y: n.position.y + shiftY } }))
+    : nodes;
+  const shiftSeg = <T extends { x1: number; y1: number; x2: number; y2: number }>(s: T): T =>
+    (shiftX || shiftY) ? { ...s, x1: s.x1 + shiftX, y1: s.y1 + shiftY, x2: s.x2 + shiftX, y2: s.y2 + shiftY } : s;
+  const shiftDim = (d: FpDimension): FpDimension => (shiftX || shiftY)
+    ? { ...shiftSeg(d), ex1: d.ex1 + shiftX, ey1: d.ey1 + shiftY, ex2: d.ex2 + shiftX, ey2: d.ey2 + shiftY }
+    : d;
+
+  const width = Math.max(bounds.width, dimMaxX + shiftX) + FP_PAD;
+  const height = Math.max(bounds.height, dimMaxY + shiftY) + FP_PAD;
 
   return {
-    nodes, edges: [],
+    nodes: shifted,
+    edges: [],
     bounds: { x: 0, y: 0, width, height },
-    metadataPatch: { floorplanWalls: walls, floorplanOpenings: openings, floorplanScale: FP_SCALE },
+    metadataPatch: {
+      floorplanWalls: walls.map(shiftSeg),
+      floorplanOpenings: openings.map(shiftSeg),
+      floorplanDimensions: autoDims.map(shiftDim),
+      floorplanMeasures: measures.map(shiftSeg),
+      floorplanScale: FP_SCALE,
+    },
   };
 }
 

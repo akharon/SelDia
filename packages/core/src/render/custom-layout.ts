@@ -453,6 +453,147 @@ export function layoutChart(ir: DiagramIR): CustomLayoutResult {
   return { nodes, edges, bounds: { x: 0, y: 0, width, height } };
 }
 
+// ── Floorplan ────────────────────────────────────────────────────────────
+// Rooms are placed at their author-given metre coordinates, scaled to pixels.
+// Walls are NOT authored — they're derived here from room-rectangle adjacency:
+// an edge shared with another room's opposite edge (within a snap tolerance)
+// is an interior wall; every other room-boundary edge is exterior. Doors and
+// windows are resolved from "room + wall side + offset" into a pixel gap on
+// that wall, and furniture positions from "room + room-relative at" into
+// absolute pixel coordinates. The renderer (floorplan-render.ts) reads the
+// wall segments and openings back out of the returned metadataPatch — they
+// aren't IR nodes themselves, since a wall isn't a thing anyone links to.
+const FP_SCALE = 60; // px per metre
+const FP_PAD = 80; // room for the blueprint title-block + ruler margins
+const FP_SNAP = 0.05; // metres; adjacent-edge detection tolerance
+
+interface FpWallSeg { x1: number; y1: number; x2: number; y2: number; kind: 'exterior' | 'interior' }
+interface FpOpening { x1: number; y1: number; x2: number; y2: number; kind: 'door' | 'window' }
+
+function fpRoomEdges(r: { x: number; y: number; w: number; h: number }) {
+  return {
+    north: { x1: r.x, y1: r.y, x2: r.x + r.w, y2: r.y },
+    south: { x1: r.x, y1: r.y + r.h, x2: r.x + r.w, y2: r.y + r.h },
+    west: { x1: r.x, y1: r.y, x2: r.x, y2: r.y + r.h },
+    east: { x1: r.x + r.w, y1: r.y, x2: r.x + r.w, y2: r.y + r.h },
+  } as const;
+}
+
+export function layoutFloorplan(ir: DiagramIR): CustomLayoutResult {
+  const roomNodes = ir.nodes.filter((n) => (n.data as any)?.fpKind === 'room');
+  const openingNodes = ir.nodes.filter((n) => {
+    const k = (n.data as any)?.fpKind;
+    return k === 'door' || k === 'window';
+  });
+  const furnitureNodes = ir.nodes.filter((n) => (n.data as any)?.fpKind === 'furniture');
+
+  // Rooms: metres -> pixels, 1:1 with their authored coordinates (no packing).
+  const rooms = new Map<string, { x: number; y: number; w: number; h: number }>();
+  const positionedRooms: IRNode[] = roomNodes.map((n) => {
+    const r = {
+      x: n.position.x * FP_SCALE + FP_PAD,
+      y: n.position.y * FP_SCALE + FP_PAD,
+      w: n.size.width * FP_SCALE,
+      h: n.size.height * FP_SCALE,
+    };
+    rooms.set(n.id, r);
+    return { ...n, position: { x: r.x, y: r.y }, size: { width: r.w, height: r.h } };
+  });
+
+  // Wall derivation: every room edge starts exterior; if another room has a
+  // matching opposite edge (touching within FP_SNAP metres), both segments
+  // covering the overlap become interior instead. Non-overlapping remainders
+  // of a partially-shared edge stay exterior.
+  const snapPx = FP_SNAP * FP_SCALE;
+  const walls: FpWallSeg[] = [];
+  const roomList = [...rooms.entries()];
+  for (const [id, r] of roomList) {
+    const edges = fpRoomEdges(r);
+    for (const side of ['north', 'south', 'east', 'west'] as const) {
+      const e = edges[side];
+      const horizontal = side === 'north' || side === 'south';
+      let sharedRanges: [number, number][] = [];
+      for (const [otherId, other] of roomList) {
+        if (otherId === id) continue;
+        const oe = fpRoomEdges(other);
+        const opposite = side === 'north' ? oe.south : side === 'south' ? oe.north : side === 'east' ? oe.west : oe.east;
+        if (horizontal) {
+          if (Math.abs(opposite.y1 - e.y1) > snapPx) continue;
+          const lo = Math.max(e.x1, opposite.x1), hi = Math.min(e.x2, opposite.x2);
+          if (hi > lo) sharedRanges.push([lo, hi]);
+        } else {
+          if (Math.abs(opposite.x1 - e.x1) > snapPx) continue;
+          const lo = Math.max(e.y1, opposite.y1), hi = Math.min(e.y2, opposite.y2);
+          if (hi > lo) sharedRanges.push([lo, hi]);
+        }
+      }
+      // Merge overlapping shared ranges, then emit interior segs for them and
+      // exterior segs for the gaps.
+      sharedRanges.sort((a, b) => a[0] - b[0]);
+      const full: [number, number] = horizontal ? [e.x1, e.x2] : [e.y1, e.y2];
+      let cursor = full[0];
+      for (const [lo, hi] of sharedRanges) {
+        if (lo > cursor) pushSeg(cursor, lo, 'exterior');
+        pushSeg(Math.max(lo, cursor), hi, 'interior');
+        cursor = Math.max(cursor, hi);
+      }
+      if (cursor < full[1]) pushSeg(cursor, full[1], 'exterior');
+
+      function pushSeg(a: number, b: number, kind: 'interior' | 'exterior') {
+        if (b <= a) return;
+        if (horizontal) walls.push({ x1: a, y1: e.y1, x2: b, y2: e.y1, kind });
+        else walls.push({ x1: e.x1, y1: a, x2: e.x1, y2: b, kind });
+      }
+    }
+  }
+
+  // Openings: resolve room+edge+offset(m)+width(m) to a pixel gap on that wall.
+  const openings: FpOpening[] = [];
+  const positionedOpenings: IRNode[] = openingNodes.map((n) => {
+    const d = n.data as any;
+    const r = rooms.get(d.roomId);
+    const kind: 'door' | 'window' = d.fpKind;
+    if (!r || !d.edge) return { ...n, position: { x: 0, y: 0 }, size: { width: 0, height: 0 } };
+    const offsetPx = (d.offset as number) * FP_SCALE;
+    const widthPx = (d.width as number) * FP_SCALE;
+    let seg: FpOpening;
+    if (d.edge === 'north') seg = { x1: r.x + offsetPx, y1: r.y, x2: r.x + offsetPx + widthPx, y2: r.y, kind };
+    else if (d.edge === 'south') seg = { x1: r.x + offsetPx, y1: r.y + r.h, x2: r.x + offsetPx + widthPx, y2: r.y + r.h, kind };
+    else if (d.edge === 'west') seg = { x1: r.x, y1: r.y + offsetPx, x2: r.x, y2: r.y + offsetPx + widthPx, kind };
+    else seg = { x1: r.x + r.w, y1: r.y + offsetPx, x2: r.x + r.w, y2: r.y + offsetPx + widthPx, kind };
+    openings.push(seg);
+    return {
+      ...n,
+      position: { x: Math.min(seg.x1, seg.x2), y: Math.min(seg.y1, seg.y2) },
+      size: { width: Math.abs(seg.x2 - seg.x1) || 4, height: Math.abs(seg.y2 - seg.y1) || 4 },
+    };
+  });
+
+  // Furniture: room-relative metres -> absolute pixels.
+  const positionedFurniture: IRNode[] = furnitureNodes.map((n) => {
+    const d = n.data as any;
+    const r = rooms.get(d.roomId);
+    const at = d.at as { x: number; y: number };
+    const ox = r ? r.x : FP_PAD, oy = r ? r.y : FP_PAD;
+    return {
+      ...n,
+      position: { x: ox + (at?.x ?? 0) * FP_SCALE, y: oy + (at?.y ?? 0) * FP_SCALE },
+      size: { width: n.size.width * FP_SCALE, height: n.size.height * FP_SCALE },
+    };
+  });
+
+  const nodes = [...positionedRooms, ...positionedOpenings, ...positionedFurniture];
+  const bounds = computeBounds(nodes, 0, 0);
+  const width = bounds.width + FP_PAD;
+  const height = bounds.height + FP_PAD;
+
+  return {
+    nodes, edges: [],
+    bounds: { x: 0, y: 0, width, height },
+    metadataPatch: { floorplanWalls: walls, floorplanOpenings: openings, floorplanScale: FP_SCALE },
+  };
+}
+
 export function customLayoutFor(type: string): ((ir: DiagramIR) => CustomLayoutResult) | undefined {
   switch (type) {
     case 'sequence': return layoutSequence;
@@ -461,6 +602,7 @@ export function customLayoutFor(type: string): ((ir: DiagramIR) => CustomLayoutR
     case 'sankey': return layoutSankey;
     case 'gitgraph': return layoutGitgraph;
     case 'chart-bar': case 'chart-line': case 'chart-pie': case 'chart-radar': case 'chart-scatter': return layoutChart;
+    case 'floorplan': return layoutFloorplan;
     default: return undefined;
   }
 }

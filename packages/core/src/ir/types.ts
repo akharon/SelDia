@@ -44,6 +44,7 @@ export enum DiagramType {
   WIREFRAME = 'wireframe',
   CLOUD = 'cloud',
   WORKITEM = 'workitem',
+  FLOORPLAN = 'floorplan',
 }
 
 // -----------------------------------------------------------------------------

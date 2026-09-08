@@ -667,3 +667,39 @@ wi "Checkout traceability" {
   STORY1 -> ADR1: derives
 }
 ```
+
+---
+
+## Floorplan — 2D architectural layout
+
+A precise technical drawing, not a graph: rooms are placed at explicit metre
+coordinates, **walls are never authored** — they're derived automatically
+wherever room rectangles touch (interior) or don't (exterior) — and doors,
+windows and furniture are cut into or dropped onto a room by name. Furniture
+items pull default sizes from a built-in catalog (`sink`, `bed-queen`, `sofa`,
+`stairs-turn`, …) unless a `size` override is given. Renders with crisp lines
+inside a bordered blueprint frame with a title-block stamp, not the hand-drawn
+Rough.js style every other type uses.
+
+```seldia
+fp "Apartment 4B" {
+  meta [sheet] { type: sheet, scale: "1:100", author: "M. Kaya", date: "2026-09-08" }
+
+  Kitchen "Kitchen" { type: room, at: "0,0", size: "4x3" }
+  Living "Living" { type: room, at: "4,0", size: "6x3" }
+  Bedroom "Bedroom" { type: room, at: "0,3", size: "4x5" }
+  Bathroom "Bathroom" { type: room, at: "4,3", size: "3x2" }
+
+  d1 [door] { type: door, at: "Kitchen.east", offset: 1.5, width: 0.9 }
+  d2 [door] { type: door, at: "Living.south", offset: 2, width: 0.9 }
+  w1 [window] { type: window, at: "Bedroom.west", offset: 2, width: 1.2 }
+  w2 [window] { type: window, at: "Living.north", offset: 3, width: 1.5 }
+
+  f1 [sink] { type: furniture, item: sink, in: "Kitchen", at: "0.3,0.3" }
+  f2 [stove] { type: furniture, item: stove, in: "Kitchen", at: "2.5,0.3" }
+  f3 [bed] { type: furniture, item: "bed-queen", in: "Bedroom", at: "1,1" }
+  f4 [sofa] { type: furniture, item: sofa, in: "Living", at: "1,1", size: "2.4x0.9" }
+  f5 [toilet] { type: furniture, item: toilet, in: "Bathroom", at: "0.3,0.3" }
+  f6 [bathtub] { type: furniture, item: bathtub, in: "Bathroom", at: "1.1,0.2" }
+}
+```

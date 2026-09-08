@@ -21,6 +21,7 @@ import { c4Plugin, c4ContainerPlugin, c4ComponentPlugin } from './diagrams/c4.js
 import { statePlugin } from './diagrams/state.js';
 import { erPlugin } from './diagrams/er.js';
 import { workitemPlugin } from './diagrams/workitem.js';
+import { floorplanPlugin } from './diagrams/floorplan.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
@@ -32,6 +33,7 @@ import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughSt
 import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
 import { escapeXml } from './render/escape.js';
+import { renderFloorplanWalls, renderFloorplanFrame, renderFloorplanTitleBlock } from './render/floorplan-render.js';
 import { expandIncludes } from './macro/include.js';
 // Per-type NODE rendering now dispatches through each plugin's renderNode
 // hook (see plugin/types.ts) — only whole-canvas grammars (charts, sankey,
@@ -177,7 +179,7 @@ class SelDiAEngine implements CoreEngine {
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin, floorplanPlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -456,7 +458,7 @@ class SelDiAEngine implements CoreEngine {
     setPaletteOverride(override);
     try {
       const fragmentBoxes = (layoutResult.diagram.metadata?.sequenceFragmentBoxes as any[]) ?? [];
-      const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type, groups, fragmentBoxes);
+      const svg = this.renderToSvg(nodes, edges, finalBounds, layoutResult.diagram.type, groups, fragmentBoxes, layoutResult.diagram.metadata);
       return {
         ok: true,
         value: {
@@ -485,7 +487,7 @@ class SelDiAEngine implements CoreEngine {
     }
   }
 
-  private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = [], fragmentBoxes: any[] = []): string {
+  private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = [], fragmentBoxes: any[] = [], metadata?: Record<string, unknown>): string {
     // Padding must cover both the configured breathing room AND the extra
     // pixels Rough.js's roughness/multi-stroke wobble can push geometry
     // outward, plus the thickest stroke width in use, so nothing gets
@@ -604,6 +606,21 @@ class SelDiAEngine implements CoreEngine {
       const midY = bounds.height / 2 + pad;
       for (const e of edges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}"></g>\n`;
       for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderTimelineNode(n, pad, sketchy, nodeSwatch(n, diagramType), midY)}  </g>\n`;
+      svg += '</svg>';
+      return svg;
+    }
+
+    // Floorplan: a precise technical drawing, not a graph — no edges, no
+    // Rough.js. Frame chrome first (background), then derived walls/openings,
+    // then room/furniture symbols, then the title-block stamp on top.
+    if (diagramType === DiagramType.FLOORPLAN) {
+      svg += renderFloorplanFrame(bw, bh);
+      const walls = (metadata?.floorplanWalls as any[]) ?? [];
+      const openings = (metadata?.floorplanOpenings as any[]) ?? [];
+      svg += renderFloorplanWalls(walls, openings);
+      for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
+      const titleBlock = (metadata?.titleBlock as any) ?? {};
+      svg += renderFloorplanTitleBlock(bw, bh, titleBlock);
       svg += '</svg>';
       return svg;
     }

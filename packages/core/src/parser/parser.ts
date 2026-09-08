@@ -628,6 +628,7 @@ class Parser {
       wireframe: 'wireframe', cloud: 'cloud',
       workitem: 'workitem', wi: 'workitem', work: 'workitem',
       trace: 'workitem', backlog: 'workitem',
+      floorplan: 'floorplan', fp: 'floorplan', floor: 'floorplan',
     };
     type = TYPE_ALIASES[type] || type;
 
@@ -1408,7 +1409,7 @@ export function checkSyntax(source: string, filePath?: string): SyntaxCheckResul
     'c4c','c4con','c4comp','c4code','flowchart','sequence','class','state','usecase',
     'activity','component','deployment','mindmap','network','gitgraph','timeline',
     'wireframe','cloud','wire','chart-bar','chart-line','chart-pie','chart-radar','chart-scatter',
-    'workitem','wi','work','trace','backlog'];
+    'workitem','wi','work','trace','backlog','floorplan','fp','floor'];
   // The tokenizer skips comments and blank lines, so this pre-check has to as
   // well — reading the raw first word made a leading `// ...` banner (which
   // every file in examples/ opens with) look like the diagram declaration and

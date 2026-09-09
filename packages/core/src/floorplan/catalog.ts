@@ -23,37 +23,44 @@ export interface FurnitureSpec {
   symbol: 'rect-label' | 'bed' | 'sink' | 'stove' | 'fridge' | 'toilet' | 'bathtub'
     | 'shower' | 'sofa' | 'chair' | 'table' | 'tv' | 'shelf' | 'stairs-straight'
     | 'stairs-turn' | 'stairs-spiral' | 'carpet' | 'counter' | 'radiator' | 'floor-heating';
+  /** Items drawn with a distinct "back" (the side with no user-facing detail —
+   *  a bed's foot end, a sofa's back cushion, a sink/toilet's supply side)
+   *  default to backing onto the nearest wall when auto-placed, and turning
+   *  them 90° from that still keeps a long side (not the back) against the
+   *  wall — see rotationForWallSide() in diagrams/floorplan.ts. Items without
+   *  this get no default rotation. */
+  backsToWall?: boolean;
 }
 
-const F = (key: string, label: string, width: number, depth: number, symbol: FurnitureSpec['symbol']): FurnitureSpec =>
-  ({ key, label, width, depth, symbol });
+const F = (key: string, label: string, width: number, depth: number, symbol: FurnitureSpec['symbol'], backsToWall?: boolean): FurnitureSpec =>
+  ({ key, label, width, depth, symbol, backsToWall });
 
 /** Closed catalog — same rationale as workitem/schema.ts's closed vocabulary:
  *  an unknown key falls back to a plain labelled rectangle sized 1x1 (see
  *  `catalogItem`) rather than erroring, so a half-known plan still renders. */
 export const FURNITURE_CATALOG: Record<string, FurnitureSpec> = {
   // Kitchen
-  'sink':          F('sink', 'Sink', 0.6, 0.55, 'sink'),
+  'sink':          F('sink', 'Sink', 0.6, 0.55, 'sink', true),
   'stove':         F('stove', 'Stove', 0.6, 0.6, 'stove'),
   'fridge':        F('fridge', 'Fridge', 0.7, 0.7, 'fridge'),
   'counter':       F('counter', 'Counter', 1.2, 0.6, 'counter'),
   'dishwasher':    F('dishwasher', 'D/W', 0.6, 0.6, 'rect-label'),
 
   // Bathroom
-  'toilet':        F('toilet', 'WC', 0.4, 0.6, 'toilet'),
-  'bathtub':       F('bathtub', 'Bath', 1.7, 0.75, 'bathtub'),
+  'toilet':        F('toilet', 'WC', 0.4, 0.6, 'toilet', true),
+  'bathtub':       F('bathtub', 'Bath', 1.7, 0.75, 'bathtub', true),
   'shower-cabin':  F('shower-cabin', 'Shower', 0.9, 0.9, 'shower'),
-  'sink-bath':     F('sink-bath', 'Sink', 0.5, 0.45, 'sink'),
+  'sink-bath':     F('sink-bath', 'Sink', 0.5, 0.45, 'sink', true),
 
   // Bedroom
-  'bed-single':    F('bed-single', 'Single', 0.9, 1.9, 'bed'),
-  'bed-double':    F('bed-double', 'Double', 1.4, 1.9, 'bed'),
-  'bed-queen':     F('bed-queen', 'Queen', 1.5, 2.0, 'bed'),
-  'bed-king':      F('bed-king', 'King', 1.8, 2.0, 'bed'),
+  'bed-single':    F('bed-single', 'Single', 0.9, 1.9, 'bed', true),
+  'bed-double':    F('bed-double', 'Double', 1.4, 1.9, 'bed', true),
+  'bed-queen':     F('bed-queen', 'Queen', 1.5, 2.0, 'bed', true),
+  'bed-king':      F('bed-king', 'King', 1.8, 2.0, 'bed', true),
 
   // Living / dining
-  'sofa':          F('sofa', 'Sofa', 2.0, 0.9, 'sofa'),
-  'sofa-2seat':    F('sofa-2seat', 'Sofa', 1.5, 0.9, 'sofa'),
+  'sofa':          F('sofa', 'Sofa', 2.0, 0.9, 'sofa', true),
+  'sofa-2seat':    F('sofa-2seat', 'Sofa', 1.5, 0.9, 'sofa', true),
   'armchair':      F('armchair', 'Chair', 0.8, 0.8, 'chair'),
   'chair':         F('chair', 'Chair', 0.45, 0.5, 'chair'),
   'dining-table':  F('dining-table', 'Table', 1.6, 0.9, 'table'),

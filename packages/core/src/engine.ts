@@ -636,12 +636,15 @@ class SelDiAEngine implements CoreEngine {
         const sym = String((n.data as any)?.symbol || '');
         return sym === 'carpet' || sym === 'floor-heating';
       };
+      // data-fp-kind/data-fp-rotation ride along on the wrapper so the
+      // interactive webview can scope the rotate action to furniture and read
+      // back the current rotation without needing its own IR projection.
       for (const n of furnNodes.filter(isRug)) {
-        svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
+        svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}" data-fp-kind="furniture" data-fp-rotation="${Number((n.data as any)?.rotation) || 0}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
       }
       svg += renderFloorplanWalls(walls, openings);
       for (const n of furnNodes.filter((n) => !isRug(n))) {
-        svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
+        svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}" data-fp-kind="furniture" data-fp-rotation="${Number((n.data as any)?.rotation) || 0}">\n${this.renderNode(n, pad, false, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
       }
       svg += renderFloorplanRoomLabels(roomNodes, furnNodes);
       svg += renderFloorplanDimensions(dims);

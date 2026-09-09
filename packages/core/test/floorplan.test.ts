@@ -115,6 +115,52 @@ describe('floorplan diagram', () => {
     expect(svg).toContain('seldia-node');
   });
 
+  it('defaults a wall-backing item to face away from the wall it is pushed against', () => {
+    const ir = irOf(`
+      floorplan "T" {
+        R "Room" { type: "room", at: "0,0", size: "4x4" }
+        bedN "bed" { type: "furniture", item: "bed-queen", in: "R", at: "1,0" }
+        bedW "bed" { type: "furniture", item: "bed-queen", in: "R", at: "0,1" }
+        bedMid "bed" { type: "furniture", item: "bed-queen", in: "R", at: "1.5,1.5" }
+      }
+    `);
+    const furniture = ir.nodes.filter((n) => (n.data as any)?.fpKind === 'furniture');
+    // Against the north wall (at.y = 0): back (rotation 0) faces north — the
+    // headboard is at the wall, foot points into the room.
+    expect((furniture.find((f) => f.id === 'bedN')!.data as any).rotation).toBe(0);
+    // Against the west wall (at.x = 0): rotated 270° so the back faces west.
+    expect((furniture.find((f) => f.id === 'bedW')!.data as any).rotation).toBe(270);
+    // Not touching any wall: no default, stays at rotation 0 (unrotated).
+    expect((furniture.find((f) => f.id === 'bedMid')!.data as any).rotation).toBe(0);
+  });
+
+  it('keeps an explicit rotation/facing exactly as authored, even against a different wall', () => {
+    const ir = irOf(`
+      floorplan "T" {
+        R "Room" { type: "room", at: "0,0", size: "4x4" }
+        b1 "bed" { type: "furniture", item: "bed-queen", in: "R", at: "1,0", rotation: 180 }
+        b2 "bed" { type: "furniture", item: "bed-queen", in: "R", at: "0,1", facing: "east" }
+      }
+    `);
+    const furniture = ir.nodes.filter((n) => (n.data as any)?.fpKind === 'furniture');
+    // Explicit rotation: 180 wins over the auto north-wall default of 0.
+    expect((furniture.find((f) => f.id === 'b1')!.data as any).rotation).toBe(180);
+    // facing: "east" (sugar for 90°) wins over the auto west-wall default of 270.
+    expect((furniture.find((f) => f.id === 'b2')!.data as any).rotation).toBe(90);
+  });
+
+  it('renders a rotated furniture symbol wrapped in a rotate() transform', () => {
+    const svg = renderOf(`
+      floorplan "T" {
+        R "Room" { type: "room", at: "0,0", size: "3x3" }
+        f1 "chair" { type: "furniture", item: "chair", in: "R", at: "1,1", rotation: 90 }
+        f2 "chair" { type: "furniture", item: "chair", in: "R", at: "1.5,1", rotation: 0 }
+      }
+    `);
+    expect(svg).toContain('rotate(90');
+    expect(svg).not.toContain('rotate(0');
+  });
+
   it('derives walls (exterior vs interior) and openings at layout time', () => {
     const parsed = engine.parse(SAMPLE);
     expect(parsed.ok).toBe(true);

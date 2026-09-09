@@ -701,6 +701,9 @@ fp "Apartment 4B" {
   f3 [fridge] { type: furniture, item: fridge, in: "Kitchen", at: "3.1,0.2" }
   f4 [counter] { type: furniture, item: counter, in: "Kitchen", at: "1.6,0.2", x: 251, y: 156 }
   f5 [island] { type: furniture, item: "dining-table", in: "Kitchen", at: "1.3,1.6", size: "1.4x0.8", x: 212, y: 289 }
+  f16 [chair1] { type: furniture, item: chair, in: "Kitchen", at: "1.45,2.45", rotation: 0 }
+  f17 [chair2] { type: furniture, item: chair, in: "Kitchen", at: "2.05,2.45", rotation: 0 }
+  f18 [chair3] { type: furniture, item: chair, in: "Kitchen", at: "2.85,1.75", rotation: 90 }
 
   kitch "" { type: measure, from: "f5", to: "f4" }
 
@@ -708,14 +711,17 @@ fp "Apartment 4B" {
   f7 [coffee-table] { type: furniture, item: "coffee-table", in: "Living", at: "0.6,2.0" }
   f8 [tv-table] { type: furniture, item: "tv-table", in: "Living", at: "0.5,0.15" }
   f9 [rug] { type: furniture, item: "carpet-small", in: "Living", at: "2.6,0.5" }
+  f20 [radiator1] { type: furniture, item: radiator, in: "Living", at: "2.6,0.05" }
 
   f10 [bed] { type: furniture, item: "bed-queen", in: "Bedroom", at: "0.3,0.3", x: 177, y: 357 }
-  f11 [wardrobe] { type: furniture, item: wardrobe, in: "Bedroom", at: "2.7,0.3", x: 289, y: 543 }
+  f11 [wardrobe] { type: furniture, item: wardrobe, in: "Bedroom", at: "2.35,3.86", x: 289, y: 543 }
   f12 [dresser] { type: furniture, item: wardrobe, in: "Bedroom", at: "0.3,3.9", size: "1.4x0.5", x: 214, y: 501 }
+  f21 [radiator2] { type: furniture, item: radiator, in: "Bedroom", at: "0,2.4", size: "0.12x1.0" }
 
   f13 [sink-bath] { type: furniture, item: "sink-bath", in: "Bathroom", at: "2.4,0.25" }
   f14 [toilet] { type: furniture, item: toilet, in: "Bathroom", at: "2.5,1.3" }
   f15 [bathtub] { type: furniture, item: bathtub, in: "Bathroom", at: "0.1,1.15" }
+  f22 [ufh-bath] { type: furniture, item: "floor-heating", in: "Bathroom", at: "0.55,0.9", size: "1.9x1" }
 
   mBathH "" { type: measure, from: "Bathroom.south", to: "Bathroom.north" }
     node25: [New Node 25]

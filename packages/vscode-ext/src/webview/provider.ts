@@ -650,6 +650,7 @@ export class SelDiAInteractiveProvider {
     <div class="menu-sep" data-scope="node"></div>
     <div class="menu-item" data-action="add-connected-node" data-scope="node">${icon('add')} Add Connected Node</div>
     <div class="menu-item" data-action="add-edge" data-scope="node">${icon('link')} Add Edge</div>
+    <div class="menu-item" data-action="rotate" data-scope="node" data-fp-only="1">${icon('edit')} Rotate 90°</div>
     <div class="menu-sep" data-scope="node edge"></div>
     <div class="menu-item" data-action="add-node" data-scope="canvas">${icon('add-node')} Add Node</div>
     <div class="menu-item" data-action="delete" data-scope="node edge">${icon('delete')} Delete</div>
@@ -1138,9 +1139,11 @@ export class SelDiAInteractiveProvider {
       }
       // Only show the entries that apply to what was clicked.
       const scope = contextTargetType || 'canvas';
+      const isFurniture = !!(target && target.getAttribute('data-fp-kind') === 'furniture');
       contextMenu.querySelectorAll('[data-scope]').forEach((item) => {
         const scopes = item.getAttribute('data-scope').split(' ');
-        item.style.display = scopes.indexOf(scope) !== -1 ? '' : 'none';
+        const inScope = scopes.indexOf(scope) !== -1;
+        item.style.display = inScope && (!item.hasAttribute('data-fp-only') || isFurniture) ? '' : 'none';
       });
       contextMenu.style.display = 'block';
       contextMenu.style.left = Math.min(e.clientX, window.innerWidth - 180) + 'px';
@@ -1215,7 +1218,22 @@ export class SelDiAInteractiveProvider {
             if (type === 'edge') vscode.postMessage({ type: 'edgeDeleted', edgeId: id });
           }
           break;
+        case 'rotate':
+          if (id) rotateFurniture(id);
+          break;
       }
+    }
+
+    /** Turn a piece of furniture 90° clockwise from its current rotation.
+     *  Reads the current angle off the element's own data-fp-rotation (set by
+     *  the renderer) rather than tracking it separately in webview state,
+     *  since that attribute is always in sync with what's on screen. */
+    function rotateFurniture(id) {
+      const el = container.querySelector('[data-id="' + id + '"]');
+      if (!el || el.getAttribute('data-fp-kind') !== 'furniture') return;
+      const current = Number(el.getAttribute('data-fp-rotation')) || 0;
+      const next = (current + 90) % 360;
+      vscode.postMessage({ type: 'furnitureRotated', nodeId: id, rotation: next });
     }
 
     // ── Toolbar Actions ────────────────────────────────────────────────
@@ -1338,6 +1356,10 @@ export class SelDiAInteractiveProvider {
         if (selectedEdgeId) vscode.postMessage({ type: 'edgeDeleted', edgeId: selectedEdgeId });
         clearSelection();
       }
+      if ((e.key === 'r' || e.key === 'R') && selectedNodeId) {
+        e.preventDefault();
+        rotateFurniture(selectedNodeId);
+      }
     });
 
     // ── Edge draw visual feedback ─────────────────────────────────────
@@ -1448,6 +1470,15 @@ export class SelDiAInteractiveProvider {
 
       case 'nodeDragged':
         void this.applyNodePosition(msg.nodeId, msg.newPosition.x, msg.newPosition.y);
+        break;
+
+      case 'furnitureRotated':
+        // `rotation:` is the explicit-turn write-back: once a user rotates a
+        // piece, the auto wall-facing default in diagrams/floorplan.ts no
+        // longer applies to it (an explicit attribute always wins there), so
+        // this is also how a user overrides an auto-picked default they
+        // disagree with.
+        void this.applyNodeAttrs(msg.nodeId, { rotation: msg.rotation });
         break;
 
       case 'labelEdited':

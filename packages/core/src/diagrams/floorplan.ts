@@ -69,6 +69,53 @@ function parseRoomRef(raw: unknown): { room: string; edge?: 'north' | 'south' | 
   return { room, edge: valid ? (e as 'north' | 'south' | 'east' | 'west') : undefined };
 }
 
+/** `rotation: 90` / `facing: "north"` → degrees clockwise (0/90/180/270).
+ *  `facing` is sugar over `rotation` for the wall-backing items: it names the
+ *  direction the item's FRONT (the open, user-facing side) points, which is
+ *  the intuitive way to describe "toilet facing south" — `rotation` is the
+ *  raw clockwise turn instead, for anyone who'd rather just say "rotate 90".
+ *  Both read the same way a plain 0° symbol is drawn (back at the top). */
+function parseRotation(attrs: Record<string, unknown>): number | undefined {
+  if (attrs.rotation !== undefined) {
+    const n = Number(attrs.rotation);
+    if (Number.isFinite(n)) return ((Math.round(n / 90) * 90) % 360 + 360) % 360;
+  }
+  if (attrs.facing !== undefined) {
+    const f = String(attrs.facing).toLowerCase().trim();
+    const FACING_TO_ROTATION: Record<string, number> = { north: 0, east: 90, south: 180, west: 270 };
+    if (f in FACING_TO_ROTATION) return FACING_TO_ROTATION[f];
+  }
+  return undefined;
+}
+
+/** Default rotation for a `backsToWall` item (sink, bed, sofa, toilet, …)
+ *  placed touching a room wall: back the item onto whichever wall its `at`
+ *  point sits closest to, so a bed's headboard (or a sofa's back, or a
+ *  sink/toilet's supply side) lands against the wall instead of stranded
+ *  mid-room facing it — the "foot of a bed cannot face the wall" rule.
+ *  Only fires when the item is within snapping distance of an edge; further
+ *  from every wall there is no wall to back onto, so it keeps rotation 0
+ *  (the same "no default" behaviour as an item without `backsToWall`). */
+function defaultWallRotation(
+  at: { x: number; y: number },
+  size: { width: number; height: number },
+  room: { width: number; height: number }
+): number | undefined {
+  const SNAP = 0.3; // metres — "touching" the wall for auto-facing purposes
+  const distances: Array<[number, 'north' | 'south' | 'east' | 'west']> = [
+    [at.y, 'north'],
+    [room.height - (at.y + size.height), 'south'],
+    [at.x, 'west'],
+    [room.width - (at.x + size.width), 'east'],
+  ];
+  const [dist, edge] = distances.reduce((a, b) => (b[0] < a[0] ? b : a));
+  if (dist > SNAP) return undefined;
+  // The symbol at rotation 0 is drawn with its back at the TOP (north) — see
+  // renderFurnitureSymbol's bed/sofa/toilet/sink cases. Backing onto a given
+  // wall means rotating that "top" to face that wall.
+  return { north: 0, east: 90, south: 180, west: 270 }[edge];
+}
+
 function stmtTypeOf(nd: ASTNodeDecl): FloorplanStmtType | undefined {
   const attrs = (nd.style || {}) as Record<string, unknown>;
   const declared = String(attrs.type ?? '').toLowerCase();
@@ -86,6 +133,19 @@ export const floorplanPlugin: DiagramPlugin = {
 
   transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR {
     const nodes: IRNode[] = [];
+
+    // Room sizes, gathered up front (a separate pass so furniture can look up
+    // its room's size regardless of authoring order in the DSL) — needed by
+    // defaultWallRotation() to tell which edge an `at:` point is closest to.
+    const roomSizes = new Map<string, { width: number; height: number }>();
+    for (const stmt of ast.body) {
+      if (stmt.kind !== 'NodeDecl') continue;
+      const nd = stmt as ASTNodeDecl;
+      if (stmtTypeOf(nd) !== 'room') continue;
+      const attrs = (nd.style || {}) as Record<string, unknown>;
+      const size = parseSize(attrs.size) || { width: 3, height: 3 };
+      roomSizes.set(nd.id, size);
+    }
 
     // Title-block fields: `sheet { scale: "1:100", author: "...", date: "..." }`
     // is a one-off statement, not a room/door/etc — its attrs are read once,
@@ -177,17 +237,28 @@ export const floorplanPlugin: DiagramPlugin = {
         const at = parsePoint(attrs.at) || { x: 0, y: 0 };
         const spec = catalogItem(String(attrs.item ?? nd.label ?? ''));
         const sizeOverride = parseSize(attrs.size);
+        const size = { width: sizeOverride?.width ?? spec.width, height: sizeOverride?.height ?? spec.depth };
+        // Rotation: an explicit `rotation:`/`facing:` always wins and is kept
+        // as authored — that is the "locked unless explicitly turned" rule.
+        // Otherwise, wall-backing items (bed, sofa, toilet, sink, …) default
+        // to backing onto whichever wall they're placed against, so e.g. a
+        // bed's foot never defaults to facing the wall it's pushed up to.
+        let rotation = parseRotation(attrs);
+        if (rotation === undefined && spec.backsToWall) {
+          const room = roomSizes.get(roomRef);
+          if (room) rotation = defaultWallRotation(at, size, room);
+        }
         nodes.push({
           id: nd.id,
           label: spec.label,
           shape: ShapeType.RECTANGLE,
           position: { x: 0, y: 0 }, // room-relative `at`, resolved by layoutFloorplan
-          size: { width: sizeOverride?.width ?? spec.width, height: sizeOverride?.height ?? spec.depth },
+          size,
           style: {},
           ports: [],
           classList: nd.classList || [],
           collapsed: false,
-          data: { fpKind: 'furniture', roomId: roomRef, at, symbol: spec.symbol, catalogKey: spec.key },
+          data: { fpKind: 'furniture', roomId: roomRef, at, symbol: spec.symbol, catalogKey: spec.key, rotation: rotation ?? 0 },
         });
       }
       // Any node decl without a recognised `type:` is silently skipped rather

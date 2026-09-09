@@ -624,7 +624,18 @@ function renderFurnitureSymbol(node: IRNode): string {
 
 export function renderFloorplanNode(node: IRNode, _pad: number, _swatch: Swatch): string {
   const kind = String((node.data as any)?.fpKind || '');
-  if (kind === 'furniture') return renderFurnitureSymbol(node);
+  if (kind === 'furniture') {
+    const rotation = Number((node.data as any)?.rotation) || 0;
+    const svg = renderFurnitureSymbol(node);
+    if (!rotation || !svg) return svg;
+    // Rotate about the symbol's own centre — every symbol case draws relative
+    // to node.position/size, so a plain rotate() around that centre turns the
+    // whole thing (outline, detail lines, label) together without needing
+    // per-symbol rotation logic.
+    const cx = node.position.x + node.size.width / 2;
+    const cy = node.position.y + node.size.height / 2;
+    return `    <g transform="rotate(${rotation} ${cx} ${cy})">\n${svg}    </g>\n`;
+  }
   // Rooms go through renderFloorplanRoomLabels (it needs every node to place
   // labels clear of furniture), doors/windows through renderFloorplanWalls,
   // and measures through renderFloorplanMeasures — none of them per-node.

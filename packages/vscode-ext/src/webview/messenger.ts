@@ -80,6 +80,10 @@ export class WebviewMessenger {
     this.post({ type: 'syncUndoRedo', canUndo, canRedo });
   }
 
+  sendSyncDirty(dirty: boolean): void {
+    this.post({ type: 'syncDirty', dirty });
+  }
+
   private post(msg: ExtToWebviewMessage): void {
     if (this._webview) {
       this._webview.postMessage(msg);

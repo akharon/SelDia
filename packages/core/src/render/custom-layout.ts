@@ -510,7 +510,10 @@ export function layoutFloorplan(ir: DiagramIR): CustomLayoutResult {
     // fpScale rides along on the node so renderRoomSymbol can turn its pixel
     // size back into m² without the plugin renderNode hook needing access to
     // diagram metadata (which its context does not carry).
-    return { ...n, position: { x: r.x, y: r.y }, size: { width: r.w, height: r.h }, data: { ...n.data, fpScale: FP_SCALE } };
+    // fpAt preserves the authored metre coordinate alongside the pixel one, so
+    // a drag write-back can recover the pixel->metre origin (padding + the
+    // dimension-string shift applied below) without re-deriving it.
+    return { ...n, position: { x: r.x, y: r.y }, size: { width: r.w, height: r.h }, data: { ...n.data, fpScale: FP_SCALE, fpAt: { x: n.position.x, y: n.position.y } } };
   });
 
   // Wall derivation: every room edge starts exterior; if another room has a

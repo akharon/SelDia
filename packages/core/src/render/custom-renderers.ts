@@ -234,7 +234,8 @@ export function renderErRelationship(
   pad: number,
   sketchy: boolean,
   stroke: string,
-  routed?: Point[]
+  routed?: Point[],
+  labelPos?: { x: number; y: number }
 ): string {
   // `routed` is the clipped/fanned polyline from the generic router; fall back
   // to the layout engine's raw points only if the caller couldn't resolve the
@@ -256,9 +257,20 @@ export function renderErRelationship(
   el += crowsFoot(pts[0], pts[1], stroke, 'one');
   el += crowsFoot(pts[pts.length - 1], pts[pts.length - 2], stroke, 'many');
   if (edge.label) {
-    const i = Math.floor((pts.length - 1) / 2);
-    const mid = pts[i], next = pts[i + 1] || mid;
-    const lx = (mid.x + next.x) / 2, ly = (mid.y + next.y) / 2;
+    // Prefer the shared anti-overlap placement; its candidates already avoid
+    // other labels and node boxes. The raw midpoint is only a fallback, and
+    // on an orthogonal route it lands on the corner against the target
+    // border, where the node's fill paints over the chip.
+    let lx: number, ly: number;
+    if (labelPos) {
+      lx = labelPos.x;
+      ly = labelPos.y;
+    } else {
+      const i = Math.floor((pts.length - 1) / 2);
+      const mid = pts[i], next = pts[i + 1] || mid;
+      lx = (mid.x + next.x) / 2;
+      ly = (mid.y + next.y) / 2;
+    }
     // Chip behind the label so the relationship line doesn't strike through it.
     const chipW = Math.max(24, edge.label.length * 6.5 + 12);
     el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="4" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${stroke}" stroke-opacity="0.35" stroke-width="1"/>\n`;
@@ -307,7 +319,11 @@ export function renderGanttRow(node: IRNode, pad: number, sketchy: boolean, swat
     ? roughRect(x, y + 4, w, h - 8, style)
     : `    <rect x="${x}" y="${y + 4}" width="${w}" height="${h - 8}" rx="5" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   const days = (node.data as any)?.ganttDuration as number | undefined;
-  if (days && w > 34) {
+  // Fit test against the actual chip text ("8d", "10d"), not a flat 34px:
+  // a 4-day bar is ~32px and easily holds "4d", so the old constant hid the
+  // duration on every short task.
+  const durationText = `${days}d`;
+  if (days && w > durationText.length * DS.fontSize.small * 0.62 + 6) {
     el += `    <text x="${x + w / 2}" y="${y + h / 2 + DS.fontSize.small * 0.35}" text-anchor="middle" fill="${swatch.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="600">${days}d</text>\n`;
   }
   return el;

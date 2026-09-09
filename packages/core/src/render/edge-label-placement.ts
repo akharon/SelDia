@@ -3,11 +3,14 @@
 // =============================================================================
 // After layout and routing have placed every edge's waypoints, this pass
 // assigns each edge label a position along its polyline that avoids:
-//   1. Overlapping other edge labels
+//   1. Overlapping other edge labels (mandatory)
+//   2. Landing on any node box (soft)
 //
-// The chip has fill-opacity:0.95 so node geometry underneath is legibly
-// covered — penalising node overlap forced labels off their edges in dense
-// flowcharts.  The only mandatory constraint is two labels on one spot.
+// The chip's fill-opacity:0.95 only covers geometry drawn underneath it, and
+// edges are painted before nodes — so a chip on a node box is hidden by that
+// node's fill. Hence the soft node penalty. It is weighted below the
+// segment-distance term so a label slides along its own polyline rather than
+// being stranded on a far segment, which is what an earlier hard penalty did.
 //
 // Candidates are sampled from every segment of the polyline at three
 // fractional positions per segment.  The midpoint segment wins by a large
@@ -162,9 +165,9 @@ function sampleCandidates(wps: Point[], pad: number): Candidate[] {
 
 /** Score a candidate label position. Returns -Infinity if the position
  *  overlaps an already-placed label at any t-offset (avoidance is mandatory).
- *  Node overlap is NOT penalised — the chip has `fill-opacity:0.95` so it
- *  legibly covers whatever geometry sits underneath, and penalising node
- *  overlap forced labels off their edges in dense flowcharts.
+ *  Overlapping any node box is penalised softly: nodes paint over
+ *  edge labels, so such a chip is invisible, but the penalty stays below the
+ *  segment-distance cost so the label prefers its own edge to a distant spot.
  *  When no candidate on the identity segment is clean, the algorithm tries
  *  the adjacent segments (which are still on the same edge polyline). */
 function scoreCandidate(
@@ -173,7 +176,8 @@ function scoreCandidate(
   mid: Point,
   placed: Array<{ cx: number; cy: number; label: string }>,
   label: string,
-  foreignSegs: Array<[Point, Point]>
+  foreignSegs: Array<[Point, Point]>,
+  foreignNodes: Rect[]
 ): number {
   // Overlap with an already-placed label is unconditional — two labels
   // piled on one spot is always unreadable.
@@ -188,6 +192,19 @@ function scoreCandidate(
   for (const [sa, sb] of foreignSegs) {
     if (segmentIntersectsRect(sa, sb, cr)) {
       s -= 150;
+      break;
+    }
+  }
+
+  // Penalise a chip that lands on top of a node box. Every edge is painted
+  // before every node, so an overlapping chip is covered by the node's fill
+  // and its text disappears entirely — the 0.95 chip opacity only helps
+  // against geometry drawn *underneath*. Soft, and weaker than the
+  // segment-distance term, so a label still prefers a spot on its own edge
+  // over being stranded; it only slides along the polyline when it can.
+  for (const nr of foreignNodes) {
+    if (rectsOverlap(cr, nr)) {
+      s -= 120;
       break;
     }
   }
@@ -217,7 +234,8 @@ export interface LabelPlacement {
 }
 
 /** Compute an optimal (cx, cy) for every labeled edge's text chip so labels
- *  don't overlap each other or any node box. Edges without a label or with
+ *  don't overlap each other, and stay off node boxes wherever the polyline
+ *  offers another spot. Edges without a label or with
  *  fewer than 2 waypoints are omitted from the result.
  *
  *  `pad` is the diagram-level padding applied to all coordinates. */
@@ -261,6 +279,20 @@ export function computeEdgeLabelPositions(
     for (const [id, segs] of segsByEdge) {
       if (id !== edge.id) foreignSegs.push(...segs);
     }
+    // Node boxes this label must not land on, in the same padded coordinates
+    // as the candidates. The edge's own endpoints are included: a route only
+    // touches them at its very ends, so a chip covering one is a real
+    // collision — and the commonest one, since orthogonal routes turn a
+    // corner right against the target border.
+    const foreignNodes: Rect[] = [];
+    for (const n of nodeById.values()) {
+      foreignNodes.push({
+        x: n.position.x + pad,
+        y: n.position.y + pad,
+        width: n.size.width,
+        height: n.size.height,
+      });
+    }
     const candidates = sampleCandidates(wps, pad);
     if (candidates.length === 0) {
       // No usable segment — fall back to the old midpoint logic.
@@ -283,7 +315,7 @@ export function computeEdgeLabelPositions(
     let bestScore = -Infinity;
 
     for (const c of candidates) {
-      const sc = scoreCandidate(c, midSeg, mid, placed, edge.label!, foreignSegs);
+      const sc = scoreCandidate(c, midSeg, mid, placed, edge.label!, foreignSegs, foreignNodes);
       if (sc > bestScore) {
         bestScore = sc;
         best = c;

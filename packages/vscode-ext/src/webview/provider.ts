@@ -16,6 +16,7 @@ import {
   type TextEdit,
 } from '../edit/position-patch.js';
 import { findBlockById, findSelDiABlocks, type SelDiABlockLoc } from '../edit/blocks.js';
+import { computeFloorplanDragPatch } from '../edit/floorplan-drag.js';
 
 /** Map the toolbar theme picker onto engine render config. The engine's
  *  theme channel is a palette id (`config.render.theme` → BUILTIN_PALETTES)
@@ -196,6 +197,7 @@ export class SelDiAInteractiveProvider {
           this.scheduleRender();
           return;
         }
+        this.syncDirty();
         const text = e.document.getText();
         if (text === this._currentSource) return;
         this._currentSource = text;
@@ -203,8 +205,17 @@ export class SelDiAInteractiveProvider {
       })
     );
 
+    // Keep the Save button's dirty dot honest when the document is saved or
+    // reverted from outside this panel.
+    this._disposables.push(
+      vscode.workspace.onDidSaveTextDocument((d) => {
+        if (this._sourceUri && d.uri.toString() === this._sourceUri.toString()) this.syncDirty();
+      })
+    );
+
     // Initial render
     this.render();
+    this.syncDirty();
   }
 
   private static keyFor(sourceUri?: vscode.Uri): string {
@@ -482,6 +493,10 @@ export class SelDiAInteractiveProvider {
     .toolbar button:hover { background: ${isDark ? '#444' : '#e8e8e8'}; }
     .toolbar button:disabled { opacity: 0.4; cursor: default; }
     .toolbar button.active { background: #0e639c; color: #fff; border-color: #0e639c; }
+    /* Unsaved visual edits: the Save button is the only place the panel can
+       show that the document is dirty (a webview has no editor tab badge). */
+    .toolbar button#btnSave.dirty { color: #e2b93d; border-color: #e2b93d; }
+    .toolbar button#btnSave.dirty::after { content: '\\2022'; margin-left: 2px; font-size: 14px; line-height: 0; }
     /* Icon-only buttons: square hit target, glyph centered, no label gap. */
     .toolbar button.icon-btn {
       display: inline-flex; align-items: center; justify-content: center;
@@ -579,6 +594,9 @@ export class SelDiAInteractiveProvider {
   <div class="toolbar">
     <span class="title">SelDiA Diagram</span>
     <span class="stats">${stats}</span>
+
+    <span class="sep"></span>
+    <button class="icon-btn" id="btnSave" onclick="handleSave()" title="Save (Ctrl+S)" aria-label="Save">${icon('save')}</button>
 
     <span class="sep"></span>
     <button class="icon-btn" id="btnUndo" onclick="handleUndo()" disabled title="Undo (Ctrl+Z)" aria-label="Undo">${icon('undo')}</button>
@@ -1267,6 +1285,21 @@ export class SelDiAInteractiveProvider {
       URL.revokeObjectURL(a.href);
     };
 
+    // ── Save ───────────────────────────────────────────────────────────
+    // Visual edits land in the document as WorkspaceEdits, which leaves it
+    // dirty; nothing in the panel ever wrote it to disk, so closing the panel
+    // (or the untouched-looking tab) lost the work.
+    function handleSave() {
+      vscode.postMessage({ type: 'saveRequested' });
+    }
+
+    function setDirty(dirty) {
+      const btn = document.getElementById('btnSave');
+      if (!btn) return;
+      btn.classList.toggle('dirty', !!dirty);
+      btn.title = dirty ? 'Save (Ctrl+S) — unsaved changes' : 'Save (Ctrl+S)';
+    }
+
     // ── Keyboard shortcuts ─────────────────────────────────────────────
     document.addEventListener('keydown', (e) => {
       // While typing in the label editor, Delete/Backspace/undo belong to
@@ -1281,6 +1314,11 @@ export class SelDiAInteractiveProvider {
         editMode = 'idle';
         clearEdgeDrawSource();
         document.getElementById('btnAddEdge').classList.remove('active');
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        handleSave();
+        return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -1383,6 +1421,9 @@ export class SelDiAInteractiveProvider {
             el.setAttribute('data-selected', 'true');
           }
           break;
+        case 'syncDirty':
+          setDirty(msg.dirty);
+          break;
         case 'syncUndoRedo':
           document.getElementById('btnUndo').disabled = !msg.canUndo;
           document.getElementById('btnRedo').disabled = !msg.canRedo;
@@ -1427,6 +1468,10 @@ export class SelDiAInteractiveProvider {
 
       case 'edgeDeleted':
         void this.handleEdgeDeleted(msg.edgeId);
+        break;
+
+      case 'saveRequested':
+        void this.saveDocument();
         break;
 
       case 'undoRequested':
@@ -1536,12 +1581,49 @@ export class SelDiAInteractiveProvider {
       this._currentSource = gt.document.getText();
     }
     this.syncUndoRedo();
+    this.syncDirty();
+    void this.autoSaveIfEnabled();
   }
 
   // ── Undo / Redo (source snapshots) ────────────────────────────────────
 
   private syncUndoRedo(): void {
     this._messenger.sendSyncUndoRedo(this._undoStack.length > 0, this._redoStack.length > 0);
+  }
+
+  /** Write the edited document to disk. Visual edits are applied as
+   *  WorkspaceEdits, which only make the document dirty — without this the
+   *  panel had no way to persist them at all. */
+  private async saveDocument(): Promise<void> {
+    if (!this._sourceUri) { this.editSkipped('no document to save'); return; }
+    const document = await vscode.workspace.openTextDocument(this._sourceUri);
+    if (!document.isDirty) { this.syncDirty(); return; }
+    const ok = await document.save();
+    this.syncDirty();
+    vscode.window.setStatusBarMessage(
+      ok ? 'SelDiA: diagram saved' : 'SelDiA: save failed',
+      3000
+    );
+  }
+
+  /** Honour the workbench's own `files.autoSave` for visual edits. VS Code's
+   *  autosave only reacts to editor typing, so a WorkspaceEdit from this panel
+   *  would sit dirty forever even for users who asked for autosave. Manual
+   *  ('off'/'onFocusChange') stays manual — that's what the Save button is for. */
+  private async autoSaveIfEnabled(): Promise<void> {
+    const mode = vscode.workspace.getConfiguration('files').get<string>('autoSave');
+    if (mode !== 'afterDelay') return;
+    if (!this._sourceUri) return;
+    const document = await vscode.workspace.openTextDocument(this._sourceUri);
+    if (document.isDirty) { await document.save(); this.syncDirty(); }
+  }
+
+  /** Mirror the document's unsaved state onto the panel's Save button. */
+  private syncDirty(): void {
+    const doc = vscode.workspace.textDocuments.find(
+      (d) => this._sourceUri && d.uri.toString() === this._sourceUri.toString()
+    );
+    this._messenger.sendSyncDirty(!!doc?.isDirty);
   }
 
   /** Replace the edited source (fence contents or whole file) with `text`
@@ -1687,7 +1769,27 @@ export class SelDiAInteractiveProvider {
    *  always reads from the document) regenerated the auto layout and threw
    *  the drag away. */
   private async applyNodePosition(nodeId: string, x: number, y: number): Promise<void> {
+    // Floorplans have their own positional vocabulary (`at:` in metres, plus
+    // `in:` for furniture) and ignore the generic x/y override entirely, so a
+    // generic write-back here silently lost every floorplan drag.
+    const fp = this.floorplanDragPatch(nodeId, x, y);
+    if (fp) {
+      await this.applyNodeAttrs(nodeId, fp.attrs);
+      if (fp.movedToRoom) {
+        vscode.window.setStatusBarMessage(`SelDiA: moved '${nodeId}' into ${fp.movedToRoom}`, 4000);
+      }
+      return;
+    }
     await this.applyNodeAttrs(nodeId, { x: Math.round(x), y: Math.round(y) });
+  }
+
+  /** Floorplan-specific drag mapping, or undefined when this isn't a
+   *  floorplan (or the node has no positional syntax). */
+  private floorplanDragPatch(nodeId: string, x: number, y: number) {
+    const ir = this._positionedIr;
+    const scale = ir?.metadata?.floorplanScale as number | undefined;
+    if (!ir || !scale) return undefined;
+    return computeFloorplanDragPatch(ir.nodes as any, nodeId, x, y, scale);
   }
 
   /** Merge attribute key/values (position, fill/stroke from Edit Style, …)

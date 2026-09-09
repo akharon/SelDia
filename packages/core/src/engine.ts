@@ -839,7 +839,7 @@ class SelDiAEngine implements CoreEngine {
         : (raw.length >= 2
             ? this.routedWaypoints(edge, raw, src, tgt, fan, allNodesIn ?? (byId ? [...byId.values()] : undefined))
             : raw);
-      return renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed);
+      return renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed, labelPos);
     }
     if (diagramType === DiagramType.GANTT) return renderGanttDependency(edge, pad, sketchy, typeAccent.stroke);
     if (diagramType === DiagramType.MINDMAP) {

@@ -109,7 +109,8 @@ export type ExtToWebviewMessage =
   | ExtMsgSelectNode
   | ExtMsgHighlightError
   | ExtMsgSetEditMode
-  | ExtMsgSyncUndoRedo;
+  | ExtMsgSyncUndoRedo
+  | ExtMsgSyncDirty;
 
 export interface ExtMsgRender {
   type: 'render';
@@ -158,6 +159,13 @@ export interface ExtMsgSyncUndoRedo {
   canRedo: boolean;
 }
 
+/** Unsaved-changes state of the underlying document, so the panel's Save
+ *  button can show whether visual edits are still only in memory. */
+export interface ExtMsgSyncDirty {
+  type: 'syncDirty';
+  dirty: boolean;
+}
+
 /** Messages sent from the webview to the extension host */
 export type WebviewToExtMessage =
   | WebviewMsgReady
@@ -177,7 +185,8 @@ export type WebviewToExtMessage =
   | WebviewMsgUndoRequested
   | WebviewMsgRedoRequested
   | WebviewMsgViewModeChanged
-  | WebviewMsgZoomChanged;
+  | WebviewMsgZoomChanged
+  | WebviewMsgSaveRequested;
 
 export interface WebviewMsgReady {
   type: 'ready';
@@ -288,6 +297,10 @@ export interface WebviewMsgViewModeChanged {
 export interface WebviewMsgZoomChanged {
   type: 'zoomChanged';
   scale: number;
+}
+
+export interface WebviewMsgSaveRequested {
+  type: 'saveRequested';
 }
 
 // -----------------------------------------------------------------------------

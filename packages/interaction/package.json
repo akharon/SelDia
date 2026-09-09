@@ -1,6 +1,6 @@
 {
   "name": "@seldia/interaction",
-  "version": "1.61.0",
+  "version": "1.62.0",
   "description": "SelDiA interaction: zoom/pan, drag-drop, selection, collapse/expand, tooltips, ARIA, source maps, undo/redo",
   "type": "module",
   "main": "./dist/index.js",

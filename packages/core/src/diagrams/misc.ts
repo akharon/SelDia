@@ -3,7 +3,7 @@
 // =============================================================================
 
 import type { DiagramPlugin } from '../plugin/types.js';
-import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl } from '../ast/nodes.js';
+import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTSectionDecl, ASTGroupDecl, ASTStatement } from '../ast/nodes.js';
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
@@ -28,16 +28,30 @@ function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, 
     id, name, version: '1.0.0', diagramType: dt, description: desc,
     transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR {
       const nodes: IRNode[] = []; const edges: IREdge[] = [];
-      for (const stmt of ast.body) {
-        if (stmt.kind === 'NodeDecl') {
-          const nd = stmt as ASTNodeDecl;
-          nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 150, 60), style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: nd.data || {} });
+      // Walk statement lists recursively: `section "Planning" { … }` (and
+      // `group { … }`) bodies hold real node declarations, and a flat
+      // top-level-only loop dropped every one of them. For a Gantt chart that
+      // meant a sectioned plan — including the shipped gantt template —
+      // compiled to zero bars and collapsed to a sliver of a chart.
+      // `sectionLabel` rides along on each node's data so a renderer can band
+      // or caption its section without re-walking the AST.
+      const walk = (body: ASTStatement[], sectionLabel?: string) => {
+        for (const stmt of body) {
+          if (stmt.kind === 'NodeDecl') {
+            const nd = stmt as ASTNodeDecl;
+            nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 150, 60), style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: { ...(nd.data || {}), ...(sectionLabel ? { sectionLabel } : {}) } });
+          } else if (stmt.kind === 'EdgeDecl') {
+            const ed = stmt as ASTEdgeDecl;
+            edges.push({ id: `${dt}e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+          } else if (stmt.kind === 'SectionDecl') {
+            const sd = stmt as ASTSectionDecl;
+            walk(sd.body, sd.label || sd.id);
+          } else if (stmt.kind === 'GroupDecl') {
+            walk((stmt as ASTGroupDecl).body, sectionLabel);
+          }
         }
-        if (stmt.kind === 'EdgeDecl') {
-          const ed = stmt as ASTEdgeDecl;
-          edges.push({ id: `${dt}e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
-        }
-      }
+      };
+      walk(ast.body);
       return { id: ast.metadata?.id || `${dt}-1`, type: dt, title: ast.title || name, nodes, edges, groups: [], layers: [], metadata: {} };
     },
     getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [80, 60], rankSpacing: 80 }; },

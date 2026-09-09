@@ -152,6 +152,9 @@ export function ganttDayLabel(day: number, unit: 'day' | 'week' | 'month' | 'qua
   let m = Math.max(0, Math.min(11, Math.floor(day / 30)));
   let d = Math.round(day - m * 30);
   if (d === 0 && m > 0) { m -= 1; d = 30; }
+  // Day 0 has no earlier month to roll back into, but "Jan 0" is not a date —
+  // show the 1st, which is what a reader expects at the origin of the axis.
+  if (d === 0) d = 1;
   if (unit === 'month') return MONTH_LABELS[m];
   return `${MONTH_LABELS[m]} ${d}`;
 }
@@ -164,12 +167,20 @@ function parseGanttLabel(label: string, fallbackDay: number): GanttSpan {
   const title = label.includes(':') ? label.split(':')[0].trim() : label;
   const re = /([A-Za-z]{3,})\s+(\d{1,2})(?:\s*-\s*(?:([A-Za-z]{3,})\s+)?(\d{1,2}))?/;
   const m = body.match(re);
-  if (!m) return { startDay: fallbackDay, endDay: fallbackDay + 5, label: title, milestone: false };
-  const m1 = monthIndex(m[1]);
+  // A label with no date at all ("Sprint 1") still matches the regex — word
+  // then number — and monthIndex() returns -1 for it, which used to place the
+  // task 29 days BEFORE January and mark it a milestone. Require a real month
+  // name before treating the match as a date; otherwise fall through to the
+  // synthetic sequence, same as a label with no match at all.
+  const m1 = m ? monthIndex(m[1]) : -1;
+  if (!m || m1 < 0) return { startDay: fallbackDay, endDay: fallbackDay + 5, label: title, milestone: false };
   const d1 = parseInt(m[2], 10);
   const startDay = m1 * 30 + d1;
   if (m[4]) {
-    const m2 = m[3] ? monthIndex(m[3]) : m1;
+    // Same guard on the range's second month: an unrecognised word must fall
+    // back to the start month, not to -1 (which puts the end before the start).
+    const m2raw = m[3] ? monthIndex(m[3]) : m1;
+    const m2 = m2raw < 0 ? m1 : m2raw;
     const d2 = parseInt(m[4], 10);
     const endDay = m2 * 30 + d2;
     return { startDay, endDay: Math.max(endDay, startDay + 1), label: title, milestone: false };
@@ -177,18 +188,59 @@ function parseGanttLabel(label: string, fallbackDay: number): GanttSpan {
   return { startDay, endDay: startDay, label: title, milestone: true };
 }
 
-/** Ticks per unit and px-per-day chosen from the total project span, so a
- *  2-week sprint gets daily gridlines while a 2-year roadmap gets yearly ones
- *  instead of both rendering the same fixed weekly grid (which either
- *  crowds into unreadable hairlines on long projects or wastes space on
- *  short ones). Picks the coarsest granularity that still yields a
- *  reasonable number of ticks (roughly 6-16) across the span. */
+/** The plot area (everything right of the row-label gutter) a chart aims to
+ *  fill, whatever its span. */
+const GANTT_PLOT_WIDTH = 780;
+/** Bounds on px-per-day, so a single-day chart doesn't stretch one bar across
+ *  the sheet and a decade-long roadmap doesn't collapse to hairlines. */
+const GANTT_MIN_DAY_WIDTH = 0.4;
+const GANTT_MAX_DAY_WIDTH = 56;
+/** Minimum gap between axis gridlines; drives the tick-unit choice. Sized to
+ *  clear a "Jan 27" tick label plus breathing room, since the labels — not the
+ *  lines — are what collide first. */
+const GANTT_MIN_TICK_PX = 48;
+/** Most gridlines a chart should carry before stepping up to a coarser unit. */
+const GANTT_MAX_TICKS = 24;
+
+/** Tick granularity from the total project span, so a 2-week sprint gets daily
+ *  gridlines while a 2-year roadmap gets yearly ones instead of both rendering
+ *  the same fixed weekly grid (which either crowds into unreadable hairlines on
+ *  long projects or wastes space on short ones). Picks the coarsest granularity
+ *  that still yields a reasonable number of ticks (roughly 6-16) across the
+ *  span.
+ *
+ *  `dayWidth` is SOLVED for the target plot width rather than hardcoded per
+ *  bucket. A fixed px-per-day made the rendered width an accident of the span:
+ *  the same plan at 21 days got a 504px timeline and at 22 days a 176px one,
+ *  because it crossed a bucket edge and the scale dropped from 24 to 8. Every
+ *  chart now fills the same plot area, and the bucket only decides where the
+ *  gridlines go. */
 function ganttScaleFor(spanDays: number): { unit: 'day' | 'week' | 'month' | 'quarter' | 'year'; unitDays: number; dayWidth: number } {
-  if (spanDays <= 21) return { unit: 'day', unitDays: 1, dayWidth: 24 };
-  if (spanDays <= 90) return { unit: 'week', unitDays: 7, dayWidth: 8 };
-  if (spanDays <= 240) return { unit: 'month', unitDays: 30, dayWidth: 3 };
-  if (spanDays <= 720) return { unit: 'quarter', unitDays: 90, dayWidth: 1.2 };
-  return { unit: 'year', unitDays: 360, dayWidth: 0.5 };
+  // A zero span (one milestone, or every task on the same day) has no width to
+  // divide by — treat it as a single day so the axis still draws sensibly.
+  const span = spanDays > 0 ? spanDays : 1;
+  const dayWidth = Math.max(GANTT_MIN_DAY_WIDTH, Math.min(GANTT_MAX_DAY_WIDTH, GANTT_PLOT_WIDTH / span));
+
+  // Granularity follows the tick's width ON THE PAGE, not the raw span. With
+  // dayWidth solved for a fixed plot width, a span-threshold table can't know
+  // how wide its ticks land: the old cutoffs left a 22-day chart with 3
+  // gridlines and a 2-year one with 2. Pick the finest unit whose ticks are at
+  // least GANTT_MIN_TICK_PX apart, which keeps every span in a readable band.
+  const units: Array<{ unit: 'day' | 'week' | 'month' | 'quarter' | 'year'; unitDays: number }> = [
+    { unit: 'day', unitDays: 1 },
+    { unit: 'week', unitDays: 7 },
+    { unit: 'month', unitDays: 30 },
+    { unit: 'quarter', unitDays: 90 },
+    { unit: 'year', unitDays: 360 },
+  ];
+  // Also cap the tick COUNT: past the dayWidth floor a very long roadmap's
+  // plot grows beyond the target width, and a "gap is wide enough" test alone
+  // would then draw dozens of gridlines (a 10-year plan got 40).
+  const plotWidth = span * dayWidth;
+  const pick = units.find(
+    (u) => u.unitDays * dayWidth >= GANTT_MIN_TICK_PX && plotWidth / (u.unitDays * dayWidth) <= GANTT_MAX_TICKS
+  ) ?? units[units.length - 1];
+  return { ...pick, dayWidth };
 }
 
 export function layoutGantt(ir: DiagramIR): CustomLayoutResult {

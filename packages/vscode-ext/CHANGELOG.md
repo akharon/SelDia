@@ -1,33 +1,26 @@
 # Changelog
 
-## 1.0.0 (2026-07-13)
+## 1.65.0
 
-### 🎉 Initial Release
+Unified Diagram-as-Code extension for VS Code: parses Mermaid, PlantUML, and
+the SelDiA DSL into a shared IR and renders 31+ diagram types with a
+hand-drawn Rough.js aesthetic.
 
-#### Core Features
-- **21+ diagram types** — Flowchart, Sequence, Class, C4 (Context, Container, Component, Code), BPMN, State, ER, Gantt, Mindmap, Component, Deployment, Network, Use Case, Activity, Chart (Bar/Line/Pie/Radar/Scatter), Sankey, Timeline, Git Graph, Form, Block
-- **Unified DSL** — Single clean syntax for all diagram types
-- **Rough.js rendering** — Hand-drawn sketchy style with 5 built-in themes
-
-#### VS Code Integration
-- **Language Server** — Diagnostics, completion, hover docs, go-to-definition, document symbols
-- **Syntax highlighting** — Full TextMate grammar for `.sld` files
-- **Live preview** — Toggle between code and rendered SVG (Ctrl+Shift+V)
-- **Interactive editing** — Drag-drop, zoom/pan, inline label editing, context menus, undo/redo
-- **Custom editor** — Split-pane code/preview for `.sld` files
-- **Markdown detection** — Auto-detect ` ```seldia ` blocks with inline SVG decoration
-- **Code snippets** — 16+ snippets covering all diagram types
-- **Diagram templates** — 15 scaffold templates (one per diagram type)
-
-#### Advanced Features
-- **Bidirectional sync** — Visual edits round-trip to DSL source, preserving formatting
-- **MD→PDF export** — Convert Markdown with diagrams to professional PDF
-- **Collapse/expand** — Toggle groups and C4 containers
-- **Tooltip system** — Rich HTML tooltips on hover
-- **ARIA accessibility** — Screen reader support, keyboard navigation, live region announcements
-- **Copilot skill** — Deploy SelDiA DSL knowledge to GitHub Copilot
-
-#### Documentation
-- **VitePress docs site** — Full DSL reference, plugin guide, examples
-- **Walkthrough** — 5-step interactive VS Code walkthrough
-- **Extension icon** — Custom icon and Marketplace assets
+- **Diagram types** — flowchart, sequence, class, C4, BPMN, DMN, state, ER,
+  Gantt, mindmap, charts, Sankey, timeline, Git graph, floorplan, work-item,
+  and more, all through one DSL
+- **Language Server** — diagnostics, completion, hover docs, go-to-definition,
+  document symbols
+- **Interactive editing** — drag-drop, zoom/pan, inline label editing,
+  collapse/expand groups, undo/redo, with visual edits round-tripping back to
+  source
+- **Import/export** — Mermaid and PlantUML import to IR; export back to
+  Mermaid, PlantUML, BPMN XML, or SQL DDL
+- **Markdown integration** — auto-detected fenced diagram blocks with inline
+  SVG preview and CodeLens export actions
+- **Marp support** — slide preview and Markdown-to-PDF export with diagrams
+  rendered inline
+- **GitHub Copilot skill** — deploy SelDiA DSL knowledge as a Copilot skill,
+  plus Language Model Tools for render/validate/list-types
+- **Floorplan mode** — auto exterior wall dimensioning, live drag guides,
+  edit-visually toolbar

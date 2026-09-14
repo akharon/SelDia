@@ -34,6 +34,11 @@ const searchRoots = [
 
 const roots = ['@marp-team/marp-core', 'puppeteer'];
 
+// marp-core depends on both math backends (katex and mathjax-full) but
+// render.ts hardcodes `math: 'katex'` — mathjax-full and its speech-output
+// dependency are dead weight (43MB+8MB) that would otherwise ship unused.
+const excluded = new Set(['mathjax-full', 'speech-rule-engine']);
+
 /**
  * Resolve `name` the way Node does: walk up from `fromDir` checking each
  * enclosing node_modules, then fall back to the shared search roots. A
@@ -81,6 +86,7 @@ function collectClosure() {
 
   function visit(name, fromDir, destRel) {
     if (out.has(destRel)) return;
+    if (excluded.has(name)) return;
     const pkgDir = resolvePkgDir(name, fromDir);
     if (!pkgDir) {
       missing.add(name);

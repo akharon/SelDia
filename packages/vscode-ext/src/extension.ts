@@ -63,7 +63,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Register CodeLens provider for markdown files
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(
-      { language: 'markdown', pattern: '**/*.{md,mdx}' },
+      { language: 'markdown', scheme: 'file', pattern: '**/*.{md,mdx}' },
       codeLensProvider
     )
   );

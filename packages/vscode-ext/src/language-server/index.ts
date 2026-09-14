@@ -22,7 +22,7 @@ export function registerLanguageServer(
   // ── Completion ────────────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
-      { language: 'sld', scheme: 'file' },
+      { language: 'seldia', scheme: 'file' },
       new SelDiACompletionProvider(engine),
       '.', ' ', ':', '"', "'", '(', ')', '[', ']', '{', '}', '<', '>', '-'
     )
@@ -31,7 +31,7 @@ export function registerLanguageServer(
   // ── Hover ─────────────────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
-      { language: 'sld', scheme: 'file' },
+      { language: 'seldia', scheme: 'file' },
       new SelDiAHoverProvider(engine)
     )
   );
@@ -39,7 +39,7 @@ export function registerLanguageServer(
   // ── Go-to-Definition ──────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
-      { language: 'sld', scheme: 'file' },
+      { language: 'seldia', scheme: 'file' },
       new SelDiADefinitionProvider(engine)
     )
   );
@@ -47,7 +47,7 @@ export function registerLanguageServer(
   // ── Document Symbols ──────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.languages.registerDocumentSymbolProvider(
-      { language: 'sld', scheme: 'file' },
+      { language: 'seldia', scheme: 'file' },
       new SelDiADocumentSymbolProvider(engine)
     )
   );

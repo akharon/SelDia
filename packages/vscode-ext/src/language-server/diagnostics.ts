@@ -31,7 +31,7 @@ export class SelDiADiagnosticsProvider {
     // Listen for document changes
     context.subscriptions.push(
       vscode.workspace.onDidChangeTextDocument((event) => {
-        if (event.document.languageId !== 'sld') return;
+        if (event.document.languageId !== 'seldia') return;
         this.scheduleValidate(event.document);
       })
     );
@@ -39,14 +39,14 @@ export class SelDiADiagnosticsProvider {
     // Listen for document saves
     context.subscriptions.push(
       vscode.workspace.onDidSaveTextDocument((document) => {
-        if (document.languageId !== 'sld') return;
+        if (document.languageId !== 'seldia') return;
         this.validateDocument(document);
       })
     );
 
     // Validate open .sld documents on activation
     for (const editor of vscode.window.visibleTextEditors) {
-      if (editor.document.languageId === 'sld') {
+      if (editor.document.languageId === 'seldia') {
         this.validateDocument(editor.document);
       }
     }
@@ -54,7 +54,7 @@ export class SelDiADiagnosticsProvider {
     // Also validate when active editor changes to a .sld file
     context.subscriptions.push(
       vscode.window.onDidChangeActiveTextEditor((editor) => {
-        if (editor && editor.document.languageId === 'sld') {
+        if (editor && editor.document.languageId === 'seldia') {
           this.validateDocument(editor.document);
         }
       })

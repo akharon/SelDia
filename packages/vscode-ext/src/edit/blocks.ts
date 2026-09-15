@@ -44,9 +44,9 @@ export function blockIdForSource(source: string): string {
   return `seldia-${Math.abs(hash).toString(36)}`;
 }
 
-const FENCE_RE = /^(\s*)(`{3,}|~{3,})\s*(seldia(?:-[\w-]+)?)\s*$/;
+const FENCE_RE = /^(\s*)(`{3,}|~{3,})\s*(seldia(?:-[\w-]+)?|mermaid|plantuml|puml|uml)\s*$/;
 
-/** Locate every ```seldia fenced block in a Markdown document. */
+/** Locate every ```seldia, ```mermaid, and ```plantuml fenced block in a Markdown document. */
 export function findSelDiABlocks(markdown: string): SelDiABlockLoc[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const blocks: SelDiABlockLoc[] = [];

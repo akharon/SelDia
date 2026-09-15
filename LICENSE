@@ -1,21 +1,104 @@
-MIT License
+SelDiA Dual License Agreement
 
-Copyright (c) 2025 SelDiA Contributors
+This software is available under two distinct licenses:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+================================================================================
+LICENSE OPTION 1: GNU AFFERO GENERAL PUBLIC LICENSE v3 or later (AGPL-3.0+)
+================================================================================
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Copyright (C) 2025 SelDiA Contributors
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Key obligations under AGPL-3.0+:
+- Modifications and derived works must be released under AGPL-3.0+
+- If the software is accessed over a network, all users must have access to
+  the complete corresponding source code
+- No proprietary extensions without releasing source
+
+Full text: https://www.gnu.org/licenses/agpl-3.0.html
+
+================================================================================
+LICENSE OPTION 2: SelDiA Commercial License
+================================================================================
+
+Copyright (C) 2025 SelDiA Contributors
+
+COMMERCIAL LICENSE AGREEMENT
+
+1. GRANT OF LICENSE
+   SelDiA Contributors ("Licensor") grants you ("Licensee") a non-exclusive,
+   non-transferable, revocable license to use the Software in source and/or
+   object code form, subject to the terms and conditions herein.
+
+2. PERMITTED USE
+   - Internal business use (proprietary or closed-source)
+   - Commercial deployment without source code disclosure
+   - Modification and derivative works without public release obligation
+   - Integration into proprietary products
+   - SaaS/hosted deployments without network copyleft obligations
+
+3. RESTRICTIONS
+   - You may not sublicense, sell, or redistribute the Software
+   - You may not remove or alter copyright notices or license terms
+   - You may not use the Software for competitive analysis or reverse engineering
+   - Use is restricted to your organization and authorized personnel only
+
+4. INTELLECTUAL PROPERTY
+   All right, title, and interest in the Software remains with Licensor.
+   You acquire no ownership rights.
+
+5. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS-IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE, OR NONINFRINGEMENT.
+
+6. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+   SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES.
+
+7. TERMINATION
+   This license is effective until terminated. Licensor may terminate
+   immediately upon breach.
+
+8. PAYMENT & TERMS
+   A Commercial License requires explicit agreement with Licensor.
+   Contact: (licensing inquiry details to be added)
+
+9. GOVERNING LAW
+   This agreement is governed by applicable law.
+
+================================================================================
+CHOOSING YOUR LICENSE
+================================================================================
+
+By using this Software, you must comply with ONE of the above licenses:
+
+Option 1 (AGPL-3.0+):
+  - Choose this if you want to use the Software freely with open source terms
+  - Your modifications and uses must disclose source code
+  - No payment required
+
+Option 2 (Commercial License):
+  - Choose this if you want proprietary use, closed-source deployment, or
+    commercial integration without disclosure obligations
+  - Requires explicit licensing agreement and payment
+  - Contact Licensor for terms
+
+If you do not agree to either license, you do not have permission to use
+this Software.
+
+================================================================================
+
+For licensing inquiries, contact: mustafakyr@gmail.com

@@ -19,7 +19,7 @@
     "lint": "echo lint",
     "clean": "rm -rf dist"
   },
-  "license": "MIT",
+  "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",
   "author": "SelDiA",
   "repository": {
     "type": "git",

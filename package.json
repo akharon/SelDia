@@ -1,6 +1,6 @@
 {
   "name": "seldia",
-  "version": "1.66.0",
+  "version": "1.67.0",
   "private": true,
   "description": "Self-Diagramming Architecture — A unified text-based Diagram-as-Code tool",
   "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",

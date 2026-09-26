@@ -8,6 +8,7 @@
 - Trust diffs on edits — never ask to verify changes after Edit tool succeeds.
 - Ask for specific line ranges when reading large files, not whole files.
 - Reference code by `file:line` markdown links instead of quoting content.
+- **Keep test/diagnostic output token-optimized** — run tests/scripts in quiet or summary mode, avoid verbose/debug logging flags, and don't dump full logs into chat; report pass/fail counts and only the relevant failure excerpt.
 - **Save project context to memory** → `/home/mkyr/.claude/projects/-home-mkyr/memory/` (e.g., architectural decisions, common patterns, token optimizations learned).
 
 ---

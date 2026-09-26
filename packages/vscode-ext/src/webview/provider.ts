@@ -17,6 +17,8 @@ import {
 } from '../edit/position-patch.js';
 import { findBlockById, findSelDiABlocks, type SelDiABlockLoc } from '../edit/blocks.js';
 import { computeFloorplanDragPatch } from '../edit/floorplan-drag.js';
+import { EditSession } from '../edit/session.js';
+import { SerialQueue } from '../edit/serial-queue.js';
 
 /** Map the toolbar theme picker onto engine render config. The engine's
  *  theme channel is a palette id (`config.render.theme` → BUILTIN_PALETTES)
@@ -29,6 +31,18 @@ const THEME_RENDER_CONFIG: Record<string, { sketchy: boolean; theme?: string }> 
   'clean-dark': { sketchy: false, theme: 'dark' },
   'mono': { sketchy: false, theme: 'high-contrast' },
 };
+
+/** CSP nonce for the webview's script tags — a fresh one per render so the
+ *  policy can pin `script-src` to exactly the tags we emit instead of
+ *  `'unsafe-inline'`. */
+function getNonce(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = '';
+  for (let i = 0; i < 32; i++) {
+    text += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return text;
+}
 
 // -----------------------------------------------------------------------------
 // Custom text editor registration (.sld files)
@@ -102,12 +116,17 @@ export class SelDiAInteractiveProvider {
   private _positionedIr: DiagramIR | null = null;
 
   /** Snapshot-based undo/redo over the edited source (the fence contents in
-   *  block mode, the whole document otherwise). Every visual write-back
-   *  pushes the pre-edit source; undo restores it with a WorkspaceEdit, so
-   *  the text document stays the single source of truth. VS Code's own
-   *  editor undo stack keeps working independently. */
-  private _undoStack: string[] = [];
-  private _redoStack: string[] = [];
+   *  block mode, the whole document otherwise), plus the document-version
+   *  bookkeeping that invalidates stale entries on a hand edit. Every visual
+   *  write-back records the pre-edit source; undo restores it with a
+   *  WorkspaceEdit, so the text document stays the single source of truth.
+   *  VS Code's own editor undo stack keeps working independently. */
+  private _editSession: EditSession = new EditSession('');
+
+  /** Serializes every edit-producing message so two quick gestures (e.g. two
+   *  fast drags) can't interleave `groundTruth()` reads with `applySourceEdits`
+   *  writes — see docs/next_steps.md §3.2 step 1.1. */
+  private readonly _editQueue = new SerialQueue();
 
   private _currentSource: string = '';
   private _htmlInitialized = false;
@@ -138,6 +157,12 @@ export class SelDiAInteractiveProvider {
    *  output) are dropped instead of forcing a repaint. */
   private _lastSentSig: string | null = null;
   private _disposed = false;
+  /** Set right before this panel applies its own WorkspaceEdit (drag, label
+   *  edit, undo/redo, …) and cleared by the very next `onDidChangeTextDocument`
+   *  for this document. Any OTHER change that arrives while this is false is a
+   *  foreign edit (hand typing, another extension) and invalidates the undo
+   *  session instead of being folded into it — see EditSession.onForeignEdit. */
+  private _expectingOwnEdit = false;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -151,6 +176,7 @@ export class SelDiAInteractiveProvider {
     this._extensionUri = extensionUri;
     this._engine = engine;
     this._currentSource = source;
+    this._editSession = new EditSession(source);
     this._sourceUri = sourceUri || null;
     this._blockId = blockId || null;
 
@@ -184,6 +210,8 @@ export class SelDiAInteractiveProvider {
     this._disposables.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (!this._sourceUri || e.document.uri.toString() !== this._sourceUri.toString()) return;
+        const isOwnEdit = this._expectingOwnEdit;
+        this._expectingOwnEdit = false;
         if (this._blockId) {
           // Block mode: re-locate the fence in the changed Markdown and
           // follow it (id first, fence-line proximity as fallback for hand
@@ -194,6 +222,7 @@ export class SelDiAInteractiveProvider {
           this._blockFenceLine = block.fenceLine;
           if (block.source === this._currentSource) return;
           this._currentSource = block.source;
+          if (!isOwnEdit) this._editSession.onForeignEdit(block.source);
           this.scheduleRender();
           return;
         }
@@ -201,6 +230,7 @@ export class SelDiAInteractiveProvider {
         const text = e.document.getText();
         if (text === this._currentSource) return;
         this._currentSource = text;
+        if (!isOwnEdit) this._editSession.onForeignEdit(text);
         this.scheduleRender();
       })
     );
@@ -448,14 +478,16 @@ export class SelDiAInteractiveProvider {
     const isDark = theme.includes('dark');
 
     // Node id → laid-out position, for drag write-back in the webview.
-    const irJson = JSON.stringify(irPayload).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+    const initJson = JSON.stringify({ ir: irPayload, theme }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+    const nonce = getNonce();
+    const editorJsUri = this._panel.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'editor.js'));
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data:;">
   <title>SelDiA Interactive</title>
   <style>
     :root { --bg-color: ${isDark ? '#1e1e1e' : '#ffffff'}; --fg-color: ${isDark ? '#d4d4d4' : '#333333'}; }
@@ -657,806 +689,8 @@ export class SelDiAInteractiveProvider {
     <div class="menu-item" data-action="delete" data-scope="node edge">${icon('delete')} Delete</div>
   </div>
 
-  <script>
-    // ── State ──────────────────────────────────────────────────────────
-    const vscode = acquireVsCodeApi();
-    let scale = 1;
-    let offsetX = 0, offsetY = 0;
-    let editMode = 'idle';
-    let selectedNodeId = null;
-    let selectedEdgeId = null;
-    let edgeDrawSourceId = null;
-    let dragNodeId = null;
-    let dragStartX = 0, dragStartY = 0;
-    let isDragging = false;
-    let isPanning = false;
-    let panStartX = 0, panStartY = 0;
-    let contextTargetId = null;
-    let contextTargetType = null;
-    let nodePositions = {};
-    let irData = ${irJson};
-
-    // ── Initialize ─────────────────────────────────────────────────────
-    document.addEventListener('DOMContentLoaded', () => {
-      annotateSvg();
-      initFromIR();
-      vscode.postMessage({ type: 'ready' });
-    });
-
-    // The engine emits data-seldia-node-id / data-seldia-edge-id on the
-    // per-element <g> wrappers; the interaction layer here keys everything
-    // (click-select, drag, context menu, label editor) off data-id/data-type.
-    // Bridge the two after every SVG install — without this, clicks find no
-    // [data-id] ancestor and every action silently no-ops.
-    function annotateSvg() {
-      const map = [
-        ['data-seldia-node-id', 'node'],
-        ['data-seldia-edge-id', 'edge'],
-        ['data-seldia-group-id', 'group'],
-      ];
-      for (const [attr, type] of map) {
-        document.querySelectorAll('#container [' + attr + ']').forEach((el) => {
-          el.setAttribute('data-id', el.getAttribute(attr));
-          el.setAttribute('data-type', type);
-        });
-      }
-    }
-
-    function initFromIR() {
-      nodePositions = {};
-      if (!irData || !Array.isArray(irData.nodes)) return;
-      for (const n of irData.nodes) {
-        nodePositions[n.id] = { x: n.x, y: n.y };
-      }
-    }
-
-    // Screen px → SVG user units. Accounts for BOTH the zoom transform and
-    // the CSS max-width scaling (getBoundingClientRect sees the composite).
-    // Without this, drag deltas were written back as raw screen pixels —
-    // off by the scale factor whenever the diagram wasn't at exactly 1:1.
-    function svgUnitsPerPixel() {
-      const svg = container.querySelector('svg');
-      if (!svg) return 1;
-      const vb = svg.viewBox && svg.viewBox.baseVal;
-      const rect = svg.getBoundingClientRect();
-      if (!vb || !vb.width || !rect.width) return 1;
-      return vb.width / rect.width;
-    }
-
-    // ── Floorplan drag guides ────────────────────────────────────────────
-    // While dragging a piece of furniture, show live horizontal and vertical
-    // distance lines from it to the nearest wall or object that shares its
-    // x-range (below/above) or y-range (left/right) — the same "what's my
-    // clearance" question the static dimension strings answer for the plan as
-    // a whole, but live, for the thing actually moving.
-    const FP_TICK = 5;
-
-    /** Every candidate the dragged item can be measured against: wall
-     *  segments (as thin boxes) and every other furniture piece's bbox, all
-     *  in SVG user units. Re-read from the live DOM on every move rather than
-     *  cached, since it's cheap and guarantees it never drifts from what's
-     *  on screen. */
-    function fpObstacles(svg, dragId) {
-      const boxes = [];
-      svg.querySelectorAll('.seldia-floorplan-walls line').forEach((w) => {
-        const x1 = parseFloat(w.getAttribute('x1')), y1 = parseFloat(w.getAttribute('y1'));
-        const x2 = parseFloat(w.getAttribute('x2')), y2 = parseFloat(w.getAttribute('y2'));
-        const t = parseFloat(w.getAttribute('stroke-width')) || 4.5;
-        const half = t / 2;
-        boxes.push({
-          x: Math.min(x1, x2) - half, y: Math.min(y1, y2) - half,
-          w: Math.abs(x2 - x1) + t, h: Math.abs(y2 - y1) + t,
-          kind: 'wall',
-        });
-      });
-      svg.querySelectorAll('[data-id][data-type="node"]').forEach((el) => {
-        if (el.getAttribute('data-id') === dragId) return;
-        const b = el.getBBox();
-        if (b.width <= 0 || b.height <= 0) return;
-        boxes.push({ x: b.x, y: b.y, w: b.width, h: b.height, kind: 'object' });
-      });
-      return boxes;
-    }
-
-    function fpGuideGroup(svg) {
-      let g = svg.querySelector('#fpDragGuides');
-      if (!g) {
-        g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('id', 'fpDragGuides');
-        svg.appendChild(g);
-      }
-      return g;
-    }
-
-    function fpFormatLen(px) {
-      const scale = (irData && irData.fpScale) || 60;
-      const m = px / scale;
-      return m < 1 ? Math.round(m * 100) + ' cm' : m.toFixed(2) + ' m';
-    }
-
-    function fpLine(g, x1, y1, x2, y2, cls) {
-      const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      el.setAttribute('x1', x1); el.setAttribute('y1', y1);
-      el.setAttribute('x2', x2); el.setAttribute('y2', y2);
-      el.setAttribute('class', cls);
-      g.appendChild(el);
-    }
-
-    function fpLabel(g, x, y, text, vertical) {
-      const w = text.length * 10.5 * 0.58 + 8, h = 15;
-      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      rect.setAttribute('class', 'fp-guide-pill');
-      rect.setAttribute('rx', '2');
-      if (vertical) {
-        rect.setAttribute('x', x - h / 2); rect.setAttribute('y', y - w / 2);
-        rect.setAttribute('width', h); rect.setAttribute('height', w);
-      } else {
-        rect.setAttribute('x', x - w / 2); rect.setAttribute('y', y - h / 2);
-        rect.setAttribute('width', w); rect.setAttribute('height', h);
-      }
-      g.appendChild(rect);
-      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      t.setAttribute('x', x); t.setAttribute('y', y);
-      t.setAttribute('text-anchor', 'middle');
-      t.setAttribute('dominant-baseline', 'central');
-      t.setAttribute('class', 'fp-guide-text');
-      if (vertical) t.setAttribute('transform', 'rotate(-90 ' + x + ' ' + y + ')');
-      t.textContent = text;
-      g.appendChild(t);
-    }
-
-    /** Draw a dimension-style line from the dragged box's near edge to the
-     *  nearest obstacle edge that overlaps it on the perpendicular axis —
-     *  i.e. "what's directly above/below/left/right of me right now". */
-    function fpGuideToNearest(g, box, obstacles, axis) {
-      // axis 'y': measure vertically (up/down) to something overlapping in x.
-      // axis 'x': measure horizontally (left/right) to something overlapping in y.
-      const horiz = axis === 'x';
-      let best = null, bestGap = Infinity, bestSide = null;
-      for (const o of obstacles) {
-        const overlaps = horiz
-          ? box.y < o.y + o.h && box.y + box.h > o.y
-          : box.x < o.x + o.w && box.x + box.w > o.x;
-        if (!overlaps) continue;
-        if (horiz) {
-          const gapRight = o.x - (box.x + box.w);
-          const gapLeft = box.x - (o.x + o.w);
-          if (gapRight >= 0 && gapRight < bestGap) { bestGap = gapRight; best = o; bestSide = 'right'; }
-          if (gapLeft >= 0 && gapLeft < bestGap) { bestGap = gapLeft; best = o; bestSide = 'left'; }
-        } else {
-          const gapDown = o.y - (box.y + box.h);
-          const gapUp = box.y - (o.y + o.h);
-          if (gapDown >= 0 && gapDown < bestGap) { bestGap = gapDown; best = o; bestSide = 'down'; }
-          if (gapUp >= 0 && gapUp < bestGap) { bestGap = gapUp; best = o; bestSide = 'up'; }
-        }
-      }
-      if (!best || !isFinite(bestGap)) return;
-      const midY = Math.max(box.y, best.y) / 2 + Math.min(box.y + box.h, best.y + best.h) / 2;
-      const midX = Math.max(box.x, best.x) / 2 + Math.min(box.x + box.w, best.x + best.w) / 2;
-      let x1, y1, x2, y2;
-      if (bestSide === 'right') { y1 = y2 = midY; x1 = box.x + box.w; x2 = best.x; }
-      else if (bestSide === 'left') { y1 = y2 = midY; x1 = best.x + best.w; x2 = box.x; }
-      else if (bestSide === 'down') { x1 = x2 = midX; y1 = box.y + box.h; y2 = best.y; }
-      else { x1 = x2 = midX; y1 = best.y + best.h; y2 = box.y; }
-      fpLine(g, x1, y1, x2, y2, 'fp-guide-line');
-      const vertical = bestSide === 'up' || bestSide === 'down';
-      for (const [tx, ty] of [[x1, y1], [x2, y2]]) {
-        fpLine(g, tx - (vertical ? FP_TICK : 0), ty - (vertical ? 0 : FP_TICK),
-                  tx + (vertical ? FP_TICK : 0), ty + (vertical ? 0 : FP_TICK), 'fp-guide-tick');
-      }
-      const gap = Math.hypot(x2 - x1, y2 - y1);
-      fpLabel(g, (x1 + x2) / 2, (y1 + y2) / 2, fpFormatLen(gap), vertical);
-    }
-
-    function updateFpDragGuides(svg, el, tx, ty) {
-      const bb = el.getBBox(); // el already carries the ghost transform
-      const box = { x: bb.x + tx, y: bb.y + ty, w: bb.width, h: bb.height };
-      const obstacles = fpObstacles(svg, el.getAttribute('data-id'));
-      const g = fpGuideGroup(svg);
-      g.textContent = '';
-      fpGuideToNearest(g, box, obstacles, 'y'); // vertical line: nearest above/below
-      fpGuideToNearest(g, box, obstacles, 'x'); // horizontal line: nearest left/right
-    }
-
-    function clearFpDragGuides() {
-      const svg = container.querySelector('svg');
-      const g = svg && svg.querySelector('#fpDragGuides');
-      if (g) g.remove();
-    }
-
-    // ── Zoom & Pan ─────────────────────────────────────────────────────
-    const container = document.getElementById('container');
-
-    // Upper zoom bound derived from the SVG's natural size, so the scaled
-    // composited layer never exceeds ~8000px on a side. transform:scale
-    // promotes the SVG to its own GPU layer rasterized at full scale — a
-    // 3000px-wide diagram at 5x is a 15000px texture, and layers that size
-    // are exactly what tips Electron's compositor into the blank-webview
-    // state on Linux.
-    function maxScaleFor() {
-      const svg = container.querySelector('svg');
-      const vb = svg && svg.viewBox && svg.viewBox.baseVal;
-      if (!vb || !vb.width || !vb.height) return 5;
-      return Math.max(1, Math.min(5, 8000 / Math.max(vb.width, vb.height)));
-    }
-
-    // Zoom around a fixed point (cx, cy in container coordinates).
-    function zoomAt(cx, cy, factor) {
-      const newScale = Math.max(0.1, Math.min(maxScaleFor(), scale * factor));
-      offsetX = cx - (cx - offsetX) * (newScale / scale);
-      offsetY = cy - (cy - offsetY) * (newScale / scale);
-      scale = newScale;
-      applyTransform();
-    }
-
-    container.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const rect = container.getBoundingClientRect();
-      zoomAt(e.clientX - rect.left, e.clientY - rect.top, e.deltaY > 0 ? 0.9 : 1.1);
-    });
-
-    container.addEventListener('mousedown', (e) => {
-      if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-        isPanning = true;
-        panStartX = e.clientX - offsetX;
-        panStartY = e.clientY - offsetY;
-        e.preventDefault();
-        return;
-      }
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (isPanning) {
-        offsetX = e.clientX - panStartX;
-        offsetY = e.clientY - panStartY;
-        applyTransform();
-        return;
-      }
-    });
-
-    document.addEventListener('mouseup', (e) => {
-      isPanning = false;
-    });
-
-    function applyTransform() {
-      const svg = container.querySelector('svg');
-      if (svg) {
-        svg.style.transform = 'translate(' + offsetX + 'px, ' + offsetY + 'px) scale(' + scale + ')';
-        svg.style.transformOrigin = '0 0';
-      }
-    }
-
-    // Button zoom pivots on the container centre, not the origin — zooming
-    // around (0,0) walked the diagram off-screen with every click.
-    window.zoomIn = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1.3);
-    window.zoomOut = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1 / 1.3);
-    window.resetZoom = () => { scale = 1; offsetX = 0; offsetY = 0; applyTransform(); };
-    window.fitToScreen = () => {
-      const svg = container.querySelector('svg');
-      if (!svg) return;
-      const vb = svg.getAttribute('viewBox') || '0 0 800 600';
-      const parts = vb.split(' ');
-      const cw = container.clientWidth;
-      const ch = container.clientHeight;
-      const sx = cw / parseFloat(parts[2]);
-      const sy = ch / parseFloat(parts[3]);
-      scale = Math.min(sx, sy) * 0.9;
-      offsetX = (cw - parseFloat(parts[2]) * scale) / 2;
-      offsetY = (ch - parseFloat(parts[3]) * scale) / 2;
-      applyTransform();
-    };
-
-    // ── Selection ──────────────────────────────────────────────────────
-    let suppressNextClick = false; // set on drag mouseup so the trailing click doesn't clear selection
-
-    container.addEventListener('click', (e) => {
-      if (suppressNextClick) { suppressNextClick = false; return; }
-      if (isPanning || e.button !== 0) return;
-      const target = e.target.closest('[data-id]');
-      if (target) {
-        const id = target.getAttribute('data-id');
-        const type = target.getAttribute('data-type');
-        // In edge-draw mode, a plain click on a second node completes the
-        // edge instead of changing selection — this is the toolbar-button
-        // entry point into the same gesture the context menu's "Add Edge"
-        // item already supports.
-        if (editMode === 'drawing-edge' && type === 'node') {
-          if (!edgeDrawSourceId) {
-            edgeDrawSourceId = id;
-            markEdgeDrawSource(id);
-          } else if (edgeDrawSourceId !== id) {
-            vscode.postMessage({ type: 'edgeAdded', sourceId: edgeDrawSourceId, targetId: id });
-            clearEdgeDrawSource();
-            edgeDrawSourceId = null;
-            editMode = 'idle';
-            document.getElementById('btnAddEdge').classList.remove('active');
-          }
-          return;
-        }
-        clearSelection();
-        if (type === 'node') {
-          selectedNodeId = id;
-          target.setAttribute('data-selected', 'true');
-        } else if (type === 'edge') {
-          selectedEdgeId = id;
-          target.setAttribute('data-selected', 'true');
-        }
-      } else {
-        clearSelection();
-      }
-    });
-
-    container.addEventListener('dblclick', (e) => {
-      const target = e.target.closest('[data-id]');
-      if (!target) return;
-      const id = target.getAttribute('data-id');
-      const type = target.getAttribute('data-type');
-      if (type === 'node') {
-        // Some node renderings carry their label OUTSIDE the <g> wrapper (or
-        // as paths) — open the editor with an empty seed instead of silently
-        // doing nothing, matching the context menu's Edit Label behavior.
-        const textEl = target.querySelector('text');
-        openLabelEditor(target, textEl ? textEl.textContent : '', id, 'node');
-      } else if (type === 'edge') {
-        const textEl = target.querySelector('text');
-        if (textEl) {
-          openLabelEditor(target, textEl.textContent, id, 'edge');
-        } else {
-          openLabelEditor(target, '', id, 'edge');
-        }
-      }
-    });
-
-    // ── Node Dragging ──────────────────────────────────────────────────
-    let dragUnitsPerPx = 1; // captured at drag start; scale can't change mid-drag
-    let dragIsFloorplan = false;
-
-    container.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || e.shiftKey || isPanning) return;
-      const target = e.target.closest('[data-id][data-type="node"]');
-      if (!target) return;
-      const id = target.getAttribute('data-id');
-      dragNodeId = id;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      dragUnitsPerPx = svgUnitsPerPixel();
-      isDragging = false;
-      const svg = container.querySelector('svg');
-      dragIsFloorplan = !!(svg && svg.querySelector('.seldia-floorplan-walls'));
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!dragNodeId) return;
-      const dx = e.clientX - dragStartX;
-      const dy = e.clientY - dragStartY;
-
-      if (!isDragging) {
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-          isDragging = true;
-        }
-        return;
-      }
-
-      const svg = container.querySelector('svg');
-      if (svg) {
-        const el = svg.querySelector('[data-id="' + dragNodeId + '"]');
-        if (el) {
-          // The ghost translate is in SVG user units, so it must track the
-          // cursor exactly regardless of zoom / CSS scaling.
-          const tx = dx * dragUnitsPerPx, ty = dy * dragUnitsPerPx;
-          el.setAttribute('transform', 'translate(' + tx + ', ' + ty + ')');
-          if (dragIsFloorplan) updateFpDragGuides(svg, el, tx, ty);
-        }
-      }
-    });
-
-    document.addEventListener('mouseup', (e) => {
-      if (dragNodeId && isDragging) {
-        const oldPos = nodePositions[dragNodeId];
-        if (oldPos) {
-          const nx = oldPos.x + (e.clientX - dragStartX) * dragUnitsPerPx;
-          const ny = oldPos.y + (e.clientY - dragStartY) * dragUnitsPerPx;
-          vscode.postMessage({
-            type: 'nodeDragged',
-            nodeId: dragNodeId,
-            oldPosition: { x: oldPos.x, y: oldPos.y },
-            newPosition: { x: nx, y: ny },
-          });
-          nodePositions[dragNodeId] = { x: nx, y: ny };
-        }
-        suppressNextClick = true; // the click event that follows must not clear the selection
-      }
-      dragNodeId = null;
-      isDragging = false;
-      clearFpDragGuides();
-    });
-
-    // ── Label Editor ───────────────────────────────────────────────────
-    const labelEditor = document.getElementById('labelEditor');
-    let editTargetId = null;
-    let editTargetType = null;
-    let editOldLabel = '';
-
-    function openLabelEditor(relativeTo, currentLabel, id, type) {
-      const rect = relativeTo.getBoundingClientRect();
-      labelEditor.style.display = 'block';
-      labelEditor.style.left = (rect.left + 10) + 'px';
-      labelEditor.style.top = (rect.top + 10) + 'px';
-      labelEditor.textContent = currentLabel;
-      editTargetId = id;
-      editTargetType = type;
-      editOldLabel = currentLabel;
-      labelEditor.focus();
-      // Select all text
-      const range = document.createRange();
-      range.selectNodeContents(labelEditor);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
-
-    labelEditor.addEventListener('blur', () => finishLabelEdit());
-    labelEditor.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); labelEditor.blur(); }
-      if (e.key === 'Escape') { e.preventDefault(); labelEditor.style.display = 'none'; }
-    });
-
-    function finishLabelEdit() {
-      const newLabel = labelEditor.textContent.trim();
-      labelEditor.style.display = 'none';
-      if (editTargetId && newLabel && newLabel !== editOldLabel) {
-        if (editTargetType === 'node') {
-          vscode.postMessage({
-            type: 'labelEdited',
-            nodeId: editTargetId,
-            oldLabel: editOldLabel,
-            newLabel: newLabel,
-          });
-        } else if (editTargetType === 'edge') {
-          vscode.postMessage({
-            type: 'labelEdited',
-            edgeId: editTargetId,
-            oldLabel: editOldLabel,
-            newLabel: newLabel,
-          });
-        }
-      }
-      editTargetId = null;
-      editTargetType = null;
-    }
-
-    // ── Context Menu ───────────────────────────────────────────────────
-    const contextMenu = document.getElementById('contextMenu');
-
-    container.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      const target = e.target.closest('[data-id]');
-      if (target) {
-        contextTargetId = target.getAttribute('data-id');
-        contextTargetType = target.getAttribute('data-type');
-      } else {
-        contextTargetId = null;
-        contextTargetType = null;
-      }
-      // Only show the entries that apply to what was clicked.
-      const scope = contextTargetType || 'canvas';
-      const isFurniture = !!(target && target.getAttribute('data-fp-kind') === 'furniture');
-      contextMenu.querySelectorAll('[data-scope]').forEach((item) => {
-        const scopes = item.getAttribute('data-scope').split(' ');
-        const inScope = scopes.indexOf(scope) !== -1;
-        item.style.display = inScope && (!item.hasAttribute('data-fp-only') || isFurniture) ? '' : 'none';
-      });
-      contextMenu.style.display = 'block';
-      contextMenu.style.left = Math.min(e.clientX, window.innerWidth - 180) + 'px';
-      contextMenu.style.top = Math.min(e.clientY, window.innerHeight - contextMenu.children.length * 30) + 'px';
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!contextMenu.contains(e.target)) {
-        contextMenu.style.display = 'none';
-      }
-      const tm = document.getElementById('themeMenu');
-      const tb = document.getElementById('themeBtn');
-      if (tm && !tm.contains(e.target) && e.target !== tb) {
-        tm.style.display = 'none';
-        tb.setAttribute('aria-expanded', 'false');
-      }
-    });
-
-    contextMenu.querySelectorAll('.menu-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const action = item.getAttribute('data-action');
-        contextMenu.style.display = 'none';
-        handleContextAction(action);
-      });
-    });
-
-    function handleContextAction(action) {
-      const id = contextTargetId;
-      const type = contextTargetType;
-      switch (action) {
-        case 'edit-label':
-          if (id) {
-            const el = container.querySelector('[data-id="' + id + '"]');
-            if (el) {
-              const textEl = el.querySelector('text');
-              openLabelEditor(el, textEl ? textEl.textContent : '', id, type);
-            }
-          }
-          break;
-        case 'edit-style':
-          if (id) {
-            // The extension host shows the QuickPick/InputBox and writes the
-            // resulting style patch back into the source.
-            vscode.postMessage({ type: 'requestStyleEdit', nodeId: id });
-          }
-          break;
-        case 'add-node':
-          vscode.postMessage({ type: 'nodeAdded' });
-          break;
-        case 'add-connected-node':
-          if (id) {
-            vscode.postMessage({ type: 'nodeAdded', connectFromId: id });
-          }
-          break;
-        case 'add-edge':
-          if (id && type === 'node') {
-            if (!edgeDrawSourceId) {
-              edgeDrawSourceId = id;
-              document.getElementById('btnAddEdge').classList.add('active');
-              markEdgeDrawSource(id);
-            } else if (edgeDrawSourceId !== id) {
-              vscode.postMessage({ type: 'edgeAdded', sourceId: edgeDrawSourceId, targetId: id });
-              clearEdgeDrawSource();
-              edgeDrawSourceId = null;
-              document.getElementById('btnAddEdge').classList.remove('active');
-            }
-          }
-          break;
-        case 'delete':
-          if (id) {
-            if (type === 'node') vscode.postMessage({ type: 'nodeDeleted', nodeId: id });
-            if (type === 'edge') vscode.postMessage({ type: 'edgeDeleted', edgeId: id });
-          }
-          break;
-        case 'rotate':
-          if (id) rotateFurniture(id);
-          break;
-      }
-    }
-
-    /** Turn a piece of furniture 90° clockwise from its current rotation.
-     *  Reads the current angle off the element's own data-fp-rotation (set by
-     *  the renderer) rather than tracking it separately in webview state,
-     *  since that attribute is always in sync with what's on screen. */
-    function rotateFurniture(id) {
-      const el = container.querySelector('[data-id="' + id + '"]');
-      if (!el || el.getAttribute('data-fp-kind') !== 'furniture') return;
-      const current = Number(el.getAttribute('data-fp-rotation')) || 0;
-      const next = (current + 90) % 360;
-      vscode.postMessage({ type: 'furnitureRotated', nodeId: id, rotation: next });
-    }
-
-    // ── Toolbar Actions ────────────────────────────────────────────────
-    window.handleUndo = () => { vscode.postMessage({ type: 'undoRequested' }); };
-    window.handleRedo = () => { vscode.postMessage({ type: 'redoRequested' }); };
-    window.handleAddNode = () => { vscode.postMessage({ type: 'nodeAdded' }); };
-    window.handleAddEdge = () => {
-      // Edge-draw mode is purely webview state — the old code posted an
-      // editModeChanged message the host never answered, so the button
-      // never actually entered the mode.
-      if (editMode === 'drawing-edge') {
-        editMode = 'idle';
-        edgeDrawSourceId = null;
-        clearEdgeDrawSource();
-        document.getElementById('btnAddEdge').classList.remove('active');
-      } else {
-        editMode = 'drawing-edge';
-        document.getElementById('btnAddEdge').classList.add('active');
-      }
-    };
-
-    // ── Theme (custom dropdown; see the toolbar comment for why not a
-    //    native <select>) ────────────────────────────────────────────────
-    const themeBtn = document.getElementById('themeBtn');
-    const themeMenu = document.getElementById('themeMenu');
-    const THEME_LABELS = {
-      'sketchy-light': 'Sketchy Light', 'sketchy-dark': 'Sketchy Dark',
-      'clean-light': 'Clean Light', 'clean-dark': 'Clean Dark', 'mono': 'Mono',
-    };
-    let currentTheme = ${JSON.stringify(theme)};
-    function setThemeUI(t) {
-      currentTheme = t;
-      themeBtn.textContent = (THEME_LABELS[t] || t) + ' \\u25BE';
-      themeMenu.querySelectorAll('[data-theme-value]').forEach((i) => {
-        i.classList.toggle('selected', i.getAttribute('data-theme-value') === t);
-      });
-    }
-    setThemeUI(currentTheme);
-    themeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const open = themeMenu.style.display === 'block';
-      themeMenu.style.display = open ? 'none' : 'block';
-      themeBtn.setAttribute('aria-expanded', String(!open));
-    });
-    themeMenu.querySelectorAll('[data-theme-value]').forEach((item) => {
-      item.addEventListener('click', () => {
-        const t = item.getAttribute('data-theme-value');
-        themeMenu.style.display = 'none';
-        themeBtn.setAttribute('aria-expanded', 'false');
-        if (t !== currentTheme) {
-          setThemeUI(t);
-          vscode.postMessage({ type: 'changeTheme', theme: t });
-        }
-      });
-    });
-
-    // ── Export ─────────────────────────────────────────────────────────
-    window.exportSvg = () => {
-      const svgEl = container.querySelector('svg');
-      if (!svgEl) return;
-      const s = new XMLSerializer().serializeToString(svgEl);
-      const b = new Blob([s], { type: 'image/svg+xml' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(b);
-      a.download = 'diagram.svg';
-      a.click();
-      URL.revokeObjectURL(a.href);
-    };
-
-    // ── Save ───────────────────────────────────────────────────────────
-    // Visual edits land in the document as WorkspaceEdits, which leaves it
-    // dirty; nothing in the panel ever wrote it to disk, so closing the panel
-    // (or the untouched-looking tab) lost the work.
-    function handleSave() {
-      vscode.postMessage({ type: 'saveRequested' });
-    }
-
-    function setDirty(dirty) {
-      const btn = document.getElementById('btnSave');
-      if (!btn) return;
-      btn.classList.toggle('dirty', !!dirty);
-      btn.title = dirty ? 'Save (Ctrl+S) — unsaved changes' : 'Save (Ctrl+S)';
-    }
-
-    // ── Keyboard shortcuts ─────────────────────────────────────────────
-    document.addEventListener('keydown', (e) => {
-      // While typing in the label editor, Delete/Backspace/undo belong to
-      // the text field — without this guard, a Backspace while renaming a
-      // selected node deleted the node out from under the editor.
-      if (document.activeElement === labelEditor) return;
-      if (e.key === 'Escape') {
-        clearSelection();
-        labelEditor.style.display = 'none';
-        contextMenu.style.display = 'none';
-        edgeDrawSourceId = null;
-        editMode = 'idle';
-        clearEdgeDrawSource();
-        document.getElementById('btnAddEdge').classList.remove('active');
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault();
-        handleSave();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        vscode.postMessage({ type: 'undoRequested' });
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-        e.preventDefault();
-        vscode.postMessage({ type: 'redoRequested' });
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        e.preventDefault();
-        vscode.postMessage({ type: 'redoRequested' });
-      }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedNodeId || selectedEdgeId)) {
-        e.preventDefault();
-        if (selectedNodeId) vscode.postMessage({ type: 'nodeDeleted', nodeId: selectedNodeId });
-        if (selectedEdgeId) vscode.postMessage({ type: 'edgeDeleted', edgeId: selectedEdgeId });
-        clearSelection();
-      }
-      if ((e.key === 'r' || e.key === 'R') && selectedNodeId) {
-        e.preventDefault();
-        rotateFurniture(selectedNodeId);
-      }
-    });
-
-    // ── Edge draw visual feedback ─────────────────────────────────────
-    function markEdgeDrawSource(id) {
-      const el = container.querySelector('[data-id="' + id + '"]');
-      if (el) el.classList.add('seldia-edge-source');
-    }
-    function clearEdgeDrawSource() {
-      container.querySelectorAll('.seldia-edge-source').forEach((el) => el.classList.remove('seldia-edge-source'));
-    }
-
-    // ── Helper functions ───────────────────────────────────────────────
-    function clearSelection() {
-      if (selectedNodeId) {
-        const el = container.querySelector('[data-id="' + selectedNodeId + '"]');
-        if (el) el.setAttribute('data-selected', 'false');
-      }
-      if (selectedEdgeId) {
-        const el = container.querySelector('[data-id="' + selectedEdgeId + '"]');
-        if (el) el.setAttribute('data-selected', 'false');
-      }
-      selectedNodeId = null;
-      selectedEdgeId = null;
-    }
-
-    // ── Message Handler (from extension) ───────────────────────────────
-    let lastInstalledSvg = null; // first updateContent always installs
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      switch (msg.type) {
-        case 'updateContent': {
-          // Incremental re-render: swap the diagram, keep zoom/pan/selection.
-          // An unchanged SVG is not re-installed: every innerHTML swap tears
-          // down and re-rasterizes the whole subtree, and pointless repaints
-          // feed the compositor instability this panel is trying to avoid.
-          if (msg.svg && msg.svg === lastInstalledSvg) {
-            const statsEl2 = document.querySelector('.toolbar .stats');
-            if (statsEl2 && msg.stats) statsEl2.textContent = msg.stats;
-            if (msg.ir) { irData = msg.ir; initFromIR(); }
-            break;
-          }
-          lastInstalledSvg = msg.svg || null;
-          if (msg.svg) {
-            container.innerHTML = msg.svg;
-          } else {
-            // msg.error is pre-escaped by the extension host.
-            const div = document.createElement('div');
-            div.className = 'error';
-            div.innerHTML = msg.error || 'No diagram to render';
-            container.innerHTML = '';
-            container.appendChild(div);
-          }
-          const statsEl = document.querySelector('.toolbar .stats');
-          if (statsEl && msg.stats) statsEl.textContent = msg.stats;
-          if (msg.ir) {
-            irData = msg.ir;
-            initFromIR();
-          }
-          // Fresh SVG: re-bridge engine ids to the interaction attributes,
-          // re-apply the current zoom/pan and restore selection.
-          annotateSvg();
-          applyTransform();
-          if (selectedNodeId) {
-            const sel = container.querySelector('[data-id="' + selectedNodeId + '"]');
-            if (sel) sel.setAttribute('data-selected', 'true'); else selectedNodeId = null;
-          }
-          if (selectedEdgeId) {
-            const sel = container.querySelector('[data-id="' + selectedEdgeId + '"]');
-            if (sel) sel.setAttribute('data-selected', 'true'); else selectedEdgeId = null;
-          }
-          break;
-        }
-        case 'updateTheme':
-          setThemeUI(msg.theme);
-          break;
-        case 'selectNode':
-          clearSelection();
-          const el = container.querySelector('[data-id="' + msg.nodeId + '"]');
-          if (el) {
-            selectedNodeId = msg.nodeId;
-            el.setAttribute('data-selected', 'true');
-          }
-          break;
-        case 'syncDirty':
-          setDirty(msg.dirty);
-          break;
-        case 'syncUndoRedo':
-          document.getElementById('btnUndo').disabled = !msg.canUndo;
-          document.getElementById('btnRedo').disabled = !msg.canRedo;
-          break;
-        case 'setEditMode':
-          editMode = msg.mode;
-          break;
-      }
-    });
-  </script>
+  <script nonce="${nonce}">window.__seldiaInit = ${initJson};</script>
+  <script nonce="${nonce}" src="${editorJsUri}"></script>
 </body>
 </html>`;
   }
@@ -1470,7 +704,7 @@ export class SelDiAInteractiveProvider {
         break;
 
       case 'nodeDragged':
-        void this.applyNodePosition(msg.nodeId, msg.newPosition.x, msg.newPosition.y);
+        void this._editQueue.run(() => this.applyNodePosition(msg.nodeId, msg.newPosition.x, msg.newPosition.y));
         break;
 
       case 'furnitureRotated':
@@ -1479,39 +713,39 @@ export class SelDiAInteractiveProvider {
         // longer applies to it (an explicit attribute always wins there), so
         // this is also how a user overrides an auto-picked default they
         // disagree with.
-        void this.applyNodeAttrs(msg.nodeId, { rotation: msg.rotation });
+        void this._editQueue.run(() => this.applyNodeAttrs(msg.nodeId, { rotation: msg.rotation }));
         break;
 
       case 'labelEdited':
-        void this.handleLabelEdited(msg.nodeId, msg.edgeId, msg.newLabel);
+        void this._editQueue.run(() => this.handleLabelEdited(msg.nodeId, msg.edgeId, msg.newLabel));
         break;
 
       case 'nodeAdded':
-        void this.handleNodeAdded(msg.connectFromId);
+        void this._editQueue.run(() => this.handleNodeAdded(msg.connectFromId));
         break;
 
       case 'nodeDeleted':
-        void this.handleNodeDeleted(msg.nodeId);
+        void this._editQueue.run(() => this.handleNodeDeleted(msg.nodeId));
         break;
 
       case 'edgeAdded':
-        void this.handleEdgeAdded(msg.sourceId, msg.targetId);
+        void this._editQueue.run(() => this.handleEdgeAdded(msg.sourceId, msg.targetId));
         break;
 
       case 'edgeDeleted':
-        void this.handleEdgeDeleted(msg.edgeId);
+        void this._editQueue.run(() => this.handleEdgeDeleted(msg.edgeId));
         break;
 
       case 'saveRequested':
-        void this.saveDocument();
+        void this._editQueue.run(() => this.saveDocument());
         break;
 
       case 'undoRequested':
-        void this.undo();
+        void this._editQueue.run(() => this.undo());
         break;
 
       case 'redoRequested':
-        void this.redo();
+        void this._editQueue.run(() => this.redo());
         break;
 
       case 'exportRequested':
@@ -1528,13 +762,17 @@ export class SelDiAInteractiveProvider {
         // the old path (`handleStyleEdit` → onDslPatch at offset 0) inserted
         // text at the top of the document and corrupted the source.
         if (msg.nodeId && msg.stylePatch && Object.keys(msg.stylePatch).length > 0) {
-          void this.applyNodeAttrs(msg.nodeId, msg.stylePatch);
+          void this._editQueue.run(() => this.applyNodeAttrs(msg.nodeId, msg.stylePatch));
         }
         break;
 
       case 'requestStyleEdit': {
         // Webview asked for the native color picker flow: prompt here (the
-        // webview can't show QuickPick), then round-trip the patch.
+        // webview can't show QuickPick), then round-trip the patch. The
+        // QuickPick/InputBox prompts themselves run outside the queue (the
+        // user can take as long as they like answering them); only the
+        // resulting write, inside promptStyleEdit -> applyNodeAttrs, needs
+        // serializing against other edits, so it queues itself.
         void this.promptStyleEdit(msg.nodeId);
         break;
       }
@@ -1590,37 +828,38 @@ export class SelDiAInteractiveProvider {
 
   /** Apply source-relative `TextEdit`s in one WorkspaceEdit, recording an
    *  undo snapshot of the pre-edit source. All the visual-edit paths funnel
-   *  through here so undo/redo and block-identity refresh stay consistent. */
+   *  through here so undo/redo and block-identity refresh stay consistent.
+   *  Callers reach this only via `_editQueue.run(...)` (see handleMessage),
+   *  so `gt` is always read fresh against the version the caller is about to
+   *  mutate — no interleaving with another gesture's read/write. */
   private async applySourceEdits(
     gt: { document: vscode.TextDocument; source: string; base: number },
     edits: TextEdit[]
   ): Promise<void> {
     if (edits.length === 0) return;
-    this._undoStack.push(gt.source);
-    if (this._undoStack.length > 50) this._undoStack.shift();
-    this._redoStack = [];
-
     const workspaceEdit = new vscode.WorkspaceEdit();
     for (const e of edits) {
       const startPos = gt.document.positionAt(gt.base + e.start);
       const endPos = gt.document.positionAt(gt.base + e.end);
       workspaceEdit.replace(this._sourceUri!, new vscode.Range(startPos, endPos), e.text);
     }
+    this._expectingOwnEdit = true;
     await vscode.workspace.applyEdit(workspaceEdit);
     if (this._blockId) {
       this.refreshBlockIdentity(gt.document);
     } else {
       this._currentSource = gt.document.getText();
     }
+    this._editSession.recordEdit(this._currentSource);
     this.syncUndoRedo();
     this.syncDirty();
     void this.autoSaveIfEnabled();
   }
 
-  // ── Undo / Redo (source snapshots) ────────────────────────────────────
+  // ── Undo / Redo (EditSession-backed) ──────────────────────────────────
 
   private syncUndoRedo(): void {
-    this._messenger.sendSyncUndoRedo(this._undoStack.length > 0, this._redoStack.length > 0);
+    this._messenger.sendSyncUndoRedo(this._editSession.canUndo, this._editSession.canRedo);
   }
 
   /** Write the edited document to disk. Visual edits are applied as
@@ -1659,7 +898,10 @@ export class SelDiAInteractiveProvider {
   }
 
   /** Replace the edited source (fence contents or whole file) with `text`
-   *  via a WorkspaceEdit. Used by undo/redo restore. */
+   *  via a WorkspaceEdit. Used by undo/redo restore. Unlike the old version,
+   *  this also refreshes the dirty indicator and honours autosave — before,
+   *  undo/redo left the Save button's dot stale and never persisted under
+   *  `files.autoSave: afterDelay` (docs/next_steps.md §3.2 step 1.4). */
   private async restoreSource(text: string): Promise<void> {
     const gt = await this.groundTruth();
     if (!gt) return;
@@ -1669,28 +911,27 @@ export class SelDiAInteractiveProvider {
       new vscode.Range(gt.document.positionAt(gt.base), gt.document.positionAt(gt.base + gt.source.length)),
       text
     );
+    this._expectingOwnEdit = true;
     await vscode.workspace.applyEdit(workspaceEdit);
     if (this._blockId) {
       this.refreshBlockIdentity(gt.document);
     } else {
       this._currentSource = gt.document.getText();
     }
+    this.syncDirty();
+    void this.autoSaveIfEnabled();
   }
 
   private async undo(): Promise<void> {
-    const prev = this._undoStack.pop();
+    const prev = this._editSession.undo();
     if (prev === undefined) return;
-    const gt = await this.groundTruth();
-    if (gt) this._redoStack.push(gt.source);
     await this.restoreSource(prev);
     this.syncUndoRedo();
   }
 
   private async redo(): Promise<void> {
-    const next = this._redoStack.pop();
+    const next = this._editSession.redo();
     if (next === undefined) return;
-    const gt = await this.groundTruth();
-    if (gt) this._undoStack.push(gt.source);
     await this.restoreSource(next);
     this.syncUndoRedo();
   }
@@ -1785,7 +1026,7 @@ export class SelDiAInteractiveProvider {
       validateInput: (v) => (v.trim() ? undefined : 'Enter a color value'),
     });
     if (!value) return;
-    await this.applyNodeAttrs(nodeId, { [prop.key]: value.trim() });
+    await this._editQueue.run(() => this.applyNodeAttrs(nodeId, { [prop.key]: value.trim() }));
   }
 
   /** Write a dragged node's new position back into its declaration.

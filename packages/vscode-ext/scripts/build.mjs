@@ -43,12 +43,27 @@ const previewConfig = {
   logLevel: 'info',
 };
 
+/** @type {esbuild.BuildOptions} */
+const editorClientConfig = {
+  entryPoints: ['src/webview/client/editor.ts'],
+  outfile: 'media/editor.js',
+  bundle: true,
+  platform: 'browser',
+  target: 'es2020',
+  format: 'iife',
+  sourcemap: false,
+  minify: true,
+  logLevel: 'info',
+};
+
 async function main() {
   if (isWatch) {
     const extCtx = await esbuild.context(extensionConfig);
     await extCtx.watch();
     const prevCtx = await esbuild.context(previewConfig);
     await prevCtx.watch();
+    const editorCtx = await esbuild.context(editorClientConfig);
+    await editorCtx.watch();
     console.log('[esbuild] Watching for changes...');
   } else {
     // Clean old dist files (keep only esbuild output)
@@ -78,6 +93,14 @@ async function main() {
       process.exit(1);
     }
     console.log('[esbuild] Preview script build complete — dist/seldia-preview.js');
+
+    // Build interactive editor client (browser target, loaded via asWebviewUri)
+    const editorResult = await esbuild.build(editorClientConfig);
+    if (editorResult.errors.length > 0) {
+      console.error('[esbuild] Editor client build failed:', editorResult.errors);
+      process.exit(1);
+    }
+    console.log('[esbuild] Editor client build complete — media/editor.js');
   }
 }
 

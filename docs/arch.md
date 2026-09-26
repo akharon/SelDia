@@ -770,48 +770,17 @@ diagram class "RenderEngine Classes" {
 }
 ```
 
-### 5.4 `@seldia/interaction` — Interactive Layer
+### 5.4 `@seldia/interaction` — Editing Vocabulary (Types Only)
 
-**Responsibilities:**
-- Zoom & pan (d3-zoom or custom)
-- Click/hover selection
-- Drag & drop nodes (with layout reflow)
-- Expand/collapse groups and C4 containers
-- Tooltips and popovers
-- Keyboard navigation
-- ARIA annotations for accessibility
-
-**Key Classes:**
-
-```seldia
-diagram class "InteractionManager Classes" {
-    InteractionManager: "InteractionManager\n+attach(target: HTMLElement): void\n+detach(): void"
-
-    ZoomPanHandler: "ZoomPanHandler\n+enable(): void\n+setScale(scale: number): void"
-    SelectionManager: "SelectionManager\n+select(nodeId: string): void\n+deselect(): void"
-    RectangularSelector: "RectangularSelector\n+startDrag(point: Point): void"
-    ClickSelector: "ClickSelector\n+selectAt(point: Point): string | null"
-    DragDropHandler: "DragDropHandler\n+startDrag(nodeId: string): void\n+onDrop(callback: Function): void"
-    ExpandCollapseHandler: "ExpandCollapseHandler\n+toggle(groupId: string): void"
-    TooltipManager: "TooltipManager\n+show(nodeId: string, content: string): void\n+hide(): void"
-    KeyboardNavigator: "KeyboardNavigator\n+handleKey(event: KeyboardEvent): void"
-    AriaAnnotator: "AriaAnnotator\n+annotate(svg: SVGElement): void"
-
-    InteractionManager --> ZoomPanHandler: "has"
-    InteractionManager --> SelectionManager: "has"
-    InteractionManager --> DragDropHandler: "has"
-    InteractionManager --> ExpandCollapseHandler: "has"
-    InteractionManager --> TooltipManager: "has"
-    InteractionManager --> KeyboardNavigator: "has"
-    InteractionManager --> AriaAnnotator: "has"
-    SelectionManager --> RectangularSelector: "uses"
-    SelectionManager --> ClickSelector: "uses"
-}
-```
-├── TooltipManager
-├── KeyboardNavigator
-└── AriaAnnotator
-```
+The class-per-concern design below (`InteractionManager` owning `ZoomPanHandler`,
+`SelectionManager`, `DragDropHandler`, etc.) was the original plan but was never
+wired up — nothing outside this package ever imported the runtime classes. The
+vscode-ext webview client (§9.4) implements zoom/pan, selection and drag/drop
+directly as a reducer + DOM adapter instead, and `@seldia/interaction` was
+trimmed to just the shared type vocabulary (`EditMode`, `VisualEditState`,
+`DslPatch`, `UndoRedoManager`, source-map types) that `vscode-ext/src/edit/`
+and the webview client import. See docs/next_steps.md §3.2 step 0 for the
+cleanup that removed the unused classes.
 
 ### 5.5 Diagram Plugins (`@seldia/diagrams/*`)
 
@@ -1019,12 +988,15 @@ diagram flowchart "Visual Edit → DSL Round-Trip" {
 │   │   ├── split-panel.ts             # Code | Preview split view
 │   │   └── status-bar.ts              # Status bar: diagram type, theme, zoom
 │   │
-│   ├── webview/                        # Rendered diagram webview
-│   │   ├── provider.ts                 # WebviewViewProvider
-│   │   ├── renderer.ts                # Renders IR → interactive SVG in webview
-│   │   ├── edit-handler.ts            # Visual edit → DSL source sync
-│   │   ├── undo-manager.ts            # Undo/redo stack for visual edits
-│   │   └── messenger.ts               # postMessage bridge (webview ↔ extension)
+│   ├── webview/                        # Rendered diagram webview (host side)
+│   │   ├── provider.ts                 # VS Code glue only: panel lifecycle, message wiring
+│   │   ├── messenger.ts               # postMessage bridge (webview ↔ extension)
+│   │   └── client/                    # Webview-side client, bundled to media/editor.js
+│   │       └── editor.ts              # Interaction state machine + DOM adapter
+│   │
+│   ├── edit/                            # Pure editing logic (no vscode API)
+│   │   ├── session.ts                 # EditSession: source + undo model + intent → TextEdit[]
+│   │   └── position-patch.ts          # Patchers: label/position/attr/delete edits
 │   │
 │   ├── language-server/                # LSP for .seldia files
 │   │   ├── server.ts                   # LSP server startup

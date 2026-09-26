@@ -6,13 +6,14 @@
 // right-click context menus, undo/redo, edge rerouting, and node resizing.
 
 import * as vscode from 'vscode';
-import { createEngine, type CoreEngine, type DiagramIR } from '@seldia/core';
+import { createEngine, type CoreEngine, type DiagramIR, getEditVocabulary } from '@seldia/core';
 import { WebviewMessenger } from './messenger.js';
 import type { WebviewToExtMessage } from '../types.js';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 import {
   computeAttrEdit, computeLabelEdit, computeEdgeLabelEdit,
-  computeEdgeDeleteEdit, computeNodeDeleteEdits, computeAppendStatementEdit,
+  computeEdgeDeleteEdit, computeEdgeReconnectEdit, computeNodeDeleteEdits, computeAppendStatementEdit,
+  buildNodeStatement, buildEdgeStatement,
   type TextEdit,
 } from '../edit/position-patch.js';
 import { findBlockById, findSelDiABlocks, type SelDiABlockLoc } from '../edit/blocks.js';
@@ -114,6 +115,16 @@ export class SelDiAInteractiveProvider {
    *  node positions (drag write-back), edge endpoints (edge id → source/
    *  target), and id-uniqueness when adding nodes. */
   private _positionedIr: DiagramIR | null = null;
+  /** Node id to auto-open the label editor for on the next render after an
+   *  add-node gesture (arch.md §9.4: adding a node should prompt for its
+   *  label immediately, not leave the user to hunt for it and double-click). */
+  private _pendingFocusNodeId: string | null = null;
+  /** Source/target of an edge just added, resolved to that edge's actual id
+   *  once the recompiled IR comes back (edge id formats vary per diagram
+   *  type — `edge-<src>-<tgt>`, `class-edge-<src>-<tgt>`, `seq-edge-<n>`,
+   *  etc — so it can't be predicted, only looked up), to auto-open its label
+   *  editor (next_steps.md Step 3.4, mirrors `_pendingFocusNodeId`). */
+  private _pendingFocusEdgeEndpoints: { sourceId: string; targetId: string } | null = null;
 
   /** Snapshot-based undo/redo over the edited source (the fence contents in
    *  block mode, the whole document otherwise), plus the document-version
@@ -431,12 +442,14 @@ export class SelDiAInteractiveProvider {
     const r4 = r3.ok ? await eng.layoutAsync(r3.value) : r3;
     const result = r4.ok ? eng.render(r4.value) : r4;
 
+    let vocabulary: ReturnType<typeof getEditVocabulary> | undefined;
     if (r4.ok && result.ok) {
       this._positionedIr = r4.value.diagram;
       nodes = r4.value.diagram.nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }));
       fpScale = r4.value.diagram.metadata?.floorplanScale as number | undefined;
       svgContent = result.value.svg;
       stats = `Nodes: ${result.value.stats?.nodeCount || 0} | Edges: ${result.value.stats?.edgeCount || 0}`;
+      vocabulary = getEditVocabulary(r4.value.diagram.type);
     } else {
       // Escape each message before joining with <br> — compiler errors can
       // quote source fragments containing '<', which must not become markup.
@@ -450,9 +463,18 @@ export class SelDiAInteractiveProvider {
     // contain U+0000, so the joined signature is unambiguous. Written as an escape
     // rather than a literal NUL byte so the file stays plain text for grep/diff.
     const sig = `${svgContent}\0${stats}\0${errorMsg}`;
+    const focusNodeId = this._pendingFocusNodeId;
+    this._pendingFocusNodeId = null;
+    const focusEdgeEndpoints = this._pendingFocusEdgeEndpoints;
+    this._pendingFocusEdgeEndpoints = null;
+    const focusEdgeId = focusEdgeEndpoints
+      ? this._positionedIr?.edges.find(
+          (e) => e.sourceId === focusEdgeEndpoints.sourceId && e.targetId === focusEdgeEndpoints.targetId
+        )?.id
+      : undefined;
     if (!this._htmlInitialized) {
       // First render: install the full page (styles, toolbar, script).
-      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes, fpScale });
+      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes, fpScale, vocabulary });
       this._htmlInitialized = true;
       this._lastSentSig = sig;
     } else {
@@ -460,20 +482,25 @@ export class SelDiAInteractiveProvider {
       // the webview keeps its zoom/pan/selection/undo UI state. Replacing the
       // whole HTML here was the old behavior and it reset all of that on
       // every document change. Identical output is dropped entirely — no
-      // repaint for a change that didn't alter this diagram.
-      if (sig === this._lastSentSig) return;
+      // repaint for a change that didn't alter this diagram, UNLESS an
+      // add-node/add-edge gesture is waiting to focus its new label (still
+      // needs to reach the client even when the signature happens to match,
+      // though in practice a just-added element always changes the SVG).
+      if (sig === this._lastSentSig && !focusNodeId && !focusEdgeId) return;
       this._lastSentSig = sig;
       this._panel.webview.postMessage({
         type: 'updateContent',
         svg: svgContent,
         error: errorMsg,
         stats,
-        ir: { nodes, fpScale },
+        ir: { nodes, fpScale, vocabulary },
+        focusNodeId,
+        focusEdgeId,
       });
     }
   }
 
-  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }>; fpScale?: number }): string {
+  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }>; fpScale?: number; vocabulary?: ReturnType<typeof getEditVocabulary> }): string {
     const theme = this._currentTheme;
     const isDark = theme.includes('dark');
 
@@ -598,6 +625,39 @@ export class SelDiAInteractiveProvider {
     #themeMenu .menu-item { padding: 5px 14px; cursor: pointer; font-size: 12px; color: var(--fg-color); white-space: nowrap; }
     #themeMenu .menu-item:hover { background: #0e639c; color: #fff; }
     #themeMenu .menu-item.selected { font-weight: 600; }
+    /* Add-node / add-edge kind palettes: same popover family as #themeMenu,
+       listing the current diagram type's edit vocabulary so "add node" and
+       "draw edge" are an explicit choice instead of one generic template. */
+    #nodePalette, #edgePalette {
+      display: none;
+      position: absolute;
+      top: 100%; left: 0;
+      z-index: 1002;
+      background: ${isDark ? '#252526' : '#fff'};
+      border: 1px solid ${isDark ? '#3c3c3c' : '#ccc'};
+      border-radius: 4px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+      min-width: 160px;
+      padding: 4px 0;
+    }
+    #nodePalette .menu-item, #edgePalette .menu-item { padding: 5px 14px; cursor: pointer; font-size: 12px; color: var(--fg-color); white-space: nowrap; }
+    #nodePalette .menu-item:hover, #edgePalette .menu-item:hover { background: #0e639c; color: #fff; }
+    /* Edge-draw mode banner (arch.md §9.4.5): visible confirmation of which
+       mode is active, since the toolbar button alone easily goes unnoticed. */
+    #modeBanner {
+      display: none;
+      position: absolute;
+      top: 8px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 1003;
+      background: #0e639c;
+      color: #fff;
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      pointer-events: none;
+    }
     .error { color: #e53e3e; padding: 24px; font-family: monospace; font-size: 14px; }
     /* Selection highlight */
     .seldia-selected { outline: 2px solid #0e639c; outline-offset: 2px; }
@@ -607,6 +667,10 @@ export class SelDiAInteractiveProvider {
     .edge-draw-line { stroke: #0e639c; stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
     /* Marks the source node while drawing a new edge (Edit mode). */
     .seldia-edge-source { outline: 2px dashed #0e639c; outline-offset: 3px; }
+    /* Drawing-edge mode (next_steps.md Step 3.2): crosshair over the canvas,
+       and the node under the cursor highlights as the drop target. */
+    #container.seldia-drawing-edge { cursor: crosshair; }
+    .seldia-edge-target { outline: 2px solid #4ec9b0; outline-offset: 3px; }
     .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
     /* Floorplan drag guides: live horizontal/vertical distance lines from the
        dragged item to the nearest wall or object sharing its x/y, drawn in the
@@ -661,8 +725,14 @@ export class SelDiAInteractiveProvider {
     </span>
 
     <span class="sep"></span>
-    <button class="icon-btn" id="btnAddNode" onclick="handleAddNode()" title="Add node" aria-label="Add node">${icon('add-node')}</button>
-    <button class="icon-btn" id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)" aria-label="Draw edge">${icon('add-edge')}</button>
+    <span id="nodePaletteWrap" style="position:relative">
+      <button class="icon-btn" id="btnAddNode" onclick="handleAddNode()" title="Add node" aria-haspopup="listbox" aria-expanded="false" aria-label="Add node">${icon('add-node')}</button>
+      <div id="nodePalette" role="listbox"></div>
+    </span>
+    <span id="edgePaletteWrap" style="position:relative">
+      <button class="icon-btn" id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)" aria-haspopup="listbox" aria-expanded="false" aria-label="Draw edge">${icon('add-edge')}</button>
+      <div id="edgePalette" role="listbox"></div>
+    </span>
 
     <span class="sep"></span>
     <button class="icon-btn" onclick="exportSvg()" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
@@ -670,6 +740,7 @@ export class SelDiAInteractiveProvider {
 
   <div id="container">
     ${svgContent || `<div class="error">${errorMsg || 'No diagram to render'}</div>`}
+    <div id="modeBanner"></div>
   </div>
 
   <!-- Label editor overlay -->
@@ -684,6 +755,8 @@ export class SelDiAInteractiveProvider {
     <div class="menu-item" data-action="add-connected-node" data-scope="node">${icon('add')} Add Connected Node</div>
     <div class="menu-item" data-action="add-edge" data-scope="node">${icon('link')} Add Edge</div>
     <div class="menu-item" data-action="rotate" data-scope="node" data-fp-only="1">${icon('edit')} Rotate 90°</div>
+    <div class="menu-item" data-action="reconnect-source" data-scope="edge">${icon('link')} Reconnect Source</div>
+    <div class="menu-item" data-action="reconnect-target" data-scope="edge">${icon('link')} Reconnect Target</div>
     <div class="menu-sep" data-scope="node edge"></div>
     <div class="menu-item" data-action="add-node" data-scope="canvas">${icon('add-node')} Add Node</div>
     <div class="menu-item" data-action="delete" data-scope="node edge">${icon('delete')} Delete</div>
@@ -721,7 +794,7 @@ export class SelDiAInteractiveProvider {
         break;
 
       case 'nodeAdded':
-        void this._editQueue.run(() => this.handleNodeAdded(msg.connectFromId));
+        void this._editQueue.run(() => this.handleNodeAdded(msg.connectFromId, msg.kind));
         break;
 
       case 'nodeDeleted':
@@ -729,7 +802,11 @@ export class SelDiAInteractiveProvider {
         break;
 
       case 'edgeAdded':
-        void this._editQueue.run(() => this.handleEdgeAdded(msg.sourceId, msg.targetId));
+        void this._editQueue.run(() => this.handleEdgeAdded(msg.sourceId, msg.targetId, msg.kind));
+        break;
+
+      case 'edgeReconnected':
+        void this._editQueue.run(() => this.handleEdgeReconnected(msg.edgeId, msg.end, msg.newId));
         break;
 
       case 'edgeDeleted':
@@ -968,18 +1045,47 @@ export class SelDiAInteractiveProvider {
     else this.editSkipped(`no source line found for '${nodeId ?? edgeId}'`);
   }
 
-  private async handleNodeAdded(connectFromId?: string): Promise<void> {
+  /** Explicit add-node (arch.md §9.4, next_steps.md Step 2): the statement
+   *  emitted depends on the diagram type's edit vocabulary
+   *  (`getEditVocabulary`) instead of always being a flowchart `[Label]`
+   *  node, and positionable kinds get an initial `x`/`y` near the existing
+   *  nodes' centroid so they don't land off-screen. `kind` selects which
+   *  vocabulary entry to use (defaults to the type's first/most common). */
+  private async handleNodeAdded(connectFromId?: string, kind?: string): Promise<void> {
     const gt = await this.groundTruth();
     if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
-    const ids = new Set((this._positionedIr?.nodes ?? []).map((n) => n.id));
+    const ir = this._positionedIr;
+    const ids = new Set((ir?.nodes ?? []).map((n) => n.id));
     let n = ids.size + 1;
     while (ids.has(`node${n}`)) n++;
     const nodeId = `node${n}`;
-    let stmt = `    ${nodeId}: [New Node ${n}]`;
-    if (connectFromId) stmt += `\n    ${connectFromId} --> ${nodeId}`;
+    const label = `New Node ${n}`;
+
+    const vocab = ir ? getEditVocabulary(ir.type) : undefined;
+    const entry = vocab?.nodes.find((e) => e.kind === kind) ?? vocab?.nodes[0];
+    let position: { x: number; y: number } | undefined;
+    if (entry?.positionable && ir && ir.nodes.length) {
+      const cx = ir.nodes.reduce((s, node) => s + node.position.x, 0) / ir.nodes.length;
+      const cy = ir.nodes.reduce((s, node) => s + node.position.y, 0) / ir.nodes.length;
+      // Offset from the centroid so a repeated add-node doesn't stack every
+      // new node exactly on top of the last one.
+      const jitter = 40 * ((n % 5) + 1);
+      position = { x: cx + jitter, y: cy + jitter };
+    }
+    let stmt = buildNodeStatement(entry, nodeId, label, position);
+    if (connectFromId) {
+      stmt += `\n${buildEdgeStatement(vocab?.edges[0]?.template, connectFromId, nodeId)}`;
+    }
     const edit = computeAppendStatementEdit(gt.source, stmt);
-    if (edit) await this.applySourceEdits(gt, [edit]);
-    else this.editSkipped('no closing brace to insert before');
+    if (!edit) { this.editSkipped('no closing brace to insert before'); return; }
+    await this.applySourceEdits(gt, [edit]);
+    this._pendingFocusNodeId = nodeId;
+    if (entry && !entry.positionable) {
+      vscode.window.setStatusBarMessage(
+        `SelDiA: this diagram type ignores manual position — "${entry.label}" was added in declaration order.`,
+        4000
+      );
+    }
   }
 
   private async handleNodeDeleted(nodeId: string): Promise<void> {
@@ -990,13 +1096,29 @@ export class SelDiAInteractiveProvider {
     else this.editSkipped(`no source line found for '${nodeId}'`);
   }
 
-  private async handleEdgeAdded(sourceId: string, targetId: string): Promise<void> {
+  private async handleEdgeAdded(sourceId: string, targetId: string, kind?: string): Promise<void> {
     if (!sourceId || !targetId || sourceId === targetId) return;
     const gt = await this.groundTruth();
     if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
-    const edit = computeAppendStatementEdit(gt.source, `    ${sourceId} --> ${targetId}`);
+    const vocab = this._positionedIr ? getEditVocabulary(this._positionedIr.type) : undefined;
+    const template = vocab?.edges.find((e) => e.kind === kind)?.template ?? vocab?.edges[0]?.template;
+    const stmt = buildEdgeStatement(template, sourceId, targetId);
+    const edit = computeAppendStatementEdit(gt.source, stmt);
+    if (!edit) { this.editSkipped('no closing brace to insert before'); return; }
+    await this.applySourceEdits(gt, [edit]);
+    // Open the label editor on the new edge right away (next_steps.md Step
+    // 3.4); resolved to the edge's actual id once the recompile comes back.
+    this._pendingFocusEdgeEndpoints = { sourceId, targetId };
+  }
+
+  private async handleEdgeReconnected(edgeId: string, end: 'source' | 'target', newId: string): Promise<void> {
+    const ep = this.edgeEndpoints(edgeId);
+    if (!ep) { this.editSkipped(`unknown edge '${edgeId}'`); return; }
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    const edit = computeEdgeReconnectEdit(gt.source, ep.sourceId, ep.targetId, end, newId);
     if (edit) await this.applySourceEdits(gt, [edit]);
-    else this.editSkipped('no closing brace to insert before');
+    else this.editSkipped(`can't reconnect '${ep.sourceId} -> ${ep.targetId}' — its ${end} is shared with a chained edge`);
   }
 
   private async handleEdgeDeleted(edgeId: string): Promise<void> {

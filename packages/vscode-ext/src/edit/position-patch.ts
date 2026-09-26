@@ -510,6 +510,63 @@ export function computeEdgeDeleteEdit(source: string, srcId: string, tgtId: stri
 }
 
 /**
+ * Reconnect the edge `srcId → tgtId`: rewrite its `end` (`'source'` or
+ * `'target'`) to `newId`, keeping the arrow, label, and any chain siblings on
+ * the same line intact.
+ *
+ * Chain-aware like `computeEdgeDeleteEdit`, but a chain link shares its "head"
+ * text with its neighbours (`a --> b --> c`: b is both seg 0's target and seg
+ * 1's implicit source), so rewriting one endpoint of one link can't reuse
+ * `rebuildChainLine`'s per-segment text (that would desync the shared node
+ * id between adjacent links). Instead: for a match on the *first* segment,
+ * rewriting its source rewrites `chain.head` (nothing else references it);
+ * for a match on *any* segment, rewriting its target rewrites just that
+ * segment's target text, which every later segment already reads live off
+ * `chain.segs[s-1].target` via `segEndpoints` — safe to rewrite in isolation
+ * since only the following segment's *logical* source changes, not its text.
+ * Rewriting the source of a non-first segment, or the target of a segment
+ * that has a later segment chained off it, would require renaming the shared
+ * node text at two places and is refused (falls through, `undefined`) rather
+ * than guessed — same "skip, don't guess" rule as the rest of this module.
+ * Returns undefined if no matching edge line is found, if the rewrite would
+ * require renaming a shared chain node, or if `newId` equals the other end
+ * (a self-loop, silently refused).
+ */
+export function computeEdgeReconnectEdit(
+  source: string,
+  srcId: string,
+  tgtId: string,
+  end: 'source' | 'target',
+  newId: string
+): TextEdit | undefined {
+  const lines = source.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const chain = parseEdgeLine(lines[i]);
+    if (!chain) continue;
+    for (let s = 0; s < chain.segs.length; s++) {
+      if (!segMatches(chain, s, srcId, tgtId)) continue;
+      const { src, tgt, reversed } = segEndpoints(chain, s);
+      const otherEnd = end === 'source' ? tgt : src;
+      if (newId === otherEnd) return undefined;
+      // Map the logical end (source/target of the LOGICAL edge, honoring
+      // `<--` reversal) onto which piece of TEXT that is: `chain.head`/prev,
+      // or this segment's own `target`.
+      const rewriteHeadText = end === 'source' ? !reversed : reversed;
+      const base = lineStart(lines, i);
+      if (rewriteHeadText) {
+        if (s !== 0) return undefined; // shared with segment s-1's target — refuse
+        return { start: base + chain.headStart, end: base + chain.headStart + chain.head.length, text: newId };
+      }
+      if (s < chain.segs.length - 1) return undefined; // shared with segment s+1's implicit source — refuse
+      const seg = chain.segs[s];
+      const tgtStart = seg.targetEnd - seg.target.length;
+      return { start: base + tgtStart, end: base + seg.targetEnd, text: newId };
+    }
+  }
+  return undefined;
+}
+
+/**
  * Delete node `nodeId`: its declaration line plus every edge link that
  * touches it (chain links are spliced, whole lines removed when nothing
  * remains). Returns the full set of non-overlapping edits (possibly empty).
@@ -571,17 +628,80 @@ function rebuildChainLine(lines: string[], i: number, chain: ChainLine, keep: (i
 // =============================================================================
 
 /**
- * Insert `stmt` (one or more lines, no trailing newline) before the diagram
- * body's closing brace — the last line whose trimmed content is exactly `}`.
+ * Insert `stmt` (one or more lines, no trailing newline, no leading indent —
+ * this function supplies the indent itself) right after the last non-blank
+ * body line before the diagram body's closing brace — the last line whose
+ * trimmed content is exactly `}`. Falls back to inserting immediately before
+ * the closing brace for an empty body. Each line of `stmt` is indented to
+ * match the body's existing indentation (taken from the line just above the
+ * insertion point, or 4 spaces if the body is empty).
  * Returns undefined if no closing brace line exists.
  */
 export function computeAppendStatementEdit(source: string, stmt: string): TextEdit | undefined {
   const lines = source.split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].trim() === '}') {
-      const at = lineStart(lines, i);
-      return { start: at, end: at, text: stmt + '\n' };
+    if (lines[i].trim() !== '}') continue;
+    let j = i - 1;
+    while (j >= 0 && lines[j].trim() === '') j--;
+    // A line ending in `{` opens a block (the diagram header, or a nested
+    // block like `group "…" { }`) rather than declaring a statement in
+    // *this* body, so it's not a usable indent source — treat as empty body.
+    const hasBody = j >= 0 && !lines[j].trim().endsWith('{');
+    const indent = hasBody ? (lines[j].match(/^[ \t]*/)?.[0] ?? '    ') : '    ';
+    const text = stmt
+      .split('\n')
+      .map((l) => indent + l)
+      .join('\n');
+    if (hasBody) {
+      const at = lineStart(lines, j) + lines[j].length;
+      return { start: at, end: at, text: '\n' + text };
     }
+    const at = lineStart(lines, i);
+    return { start: at, end: at, text: text + '\n' };
   }
   return undefined;
+}
+
+// =============================================================================
+// Edit vocabulary → statement text (pure, testable)
+// =============================================================================
+// Turns an EditVocabularyEntry template plus a fresh id/label into the exact
+// DSL statement text handleNodeAdded/handleEdgeAdded append. Kept separate
+// from provider.ts (which owns the vscode-facing id allocation, position
+// centroid, and WorkspaceEdit dispatch) so the template substitution itself
+// is unit-testable without a vscode host — see test/edit-patchers.test.ts.
+
+export interface EditVocabEntryLike {
+  template: string;
+  positionable?: boolean;
+}
+
+/** Build the node declaration line (with an `{ x, y }` block appended when
+ *  `entry.positionable` and a position is given) for an add-node gesture.
+ *  Falls back to a plain flowchart `id: [Label]` node when `entry` is
+ *  undefined (no vocabulary for this diagram type / unknown kind). */
+export function buildNodeStatement(
+  entry: EditVocabEntryLike | undefined,
+  nodeId: string,
+  label: string,
+  position?: { x: number; y: number }
+): string {
+  let stmt = entry
+    ? entry.template.replace(/\{id\}/g, nodeId).replace(/\{label\}/g, label)
+    : `${nodeId}: [${label}]`;
+  if (entry?.positionable && position) {
+    stmt += ` { x: ${Math.round(position.x)}, y: ${Math.round(position.y)} }`;
+  }
+  return stmt;
+}
+
+/** Build an edge statement from a vocabulary edge template (or the generic
+ *  `-->` fallback) between two existing node ids. */
+export function buildEdgeStatement(
+  template: string | undefined,
+  sourceId: string,
+  targetId: string
+): string {
+  const t = template ?? '{source} --> {target}';
+  return t.replace('{source}', sourceId).replace('{target}', targetId);
 }

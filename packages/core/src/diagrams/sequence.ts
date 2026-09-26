@@ -7,6 +7,10 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl } from '../ast/nodes.js';
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
+const ROUTING_MAP: Record<string, EdgeRouting> = {
+  straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
+  orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
+};
 import { ShapeType } from '../types/shapes.js';
 import type { NodeRenderContext } from '../plugin/types.js';
 import { renderSequenceParticipant } from '../render/custom-renderers.js';
@@ -86,7 +90,7 @@ export const sequencePlugin: DiagramPlugin = {
           targetId: ed.targetId,
           label: ed.label || undefined,
           style: { ...(ed.style || {}), arrowhead: ed.direction !== 'none' },
-          routing: EdgeRouting.SPLINE,
+          routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.SPLINE,
           bidirectional: ed.direction === 'both',
           classList: ed.classList || [],
           data: { ...(ed.data || {}), messageOrder, fragmentIds: fragStack.map((f) => f.id) },

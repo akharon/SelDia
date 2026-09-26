@@ -7,6 +7,10 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl } from '../ast/nodes.js';
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
+const ROUTING_MAP: Record<string, EdgeRouting> = {
+  straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
+  orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
+};
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
 import { sizeForLabel } from '../layout/text-measure.js';
@@ -168,7 +172,7 @@ export const bpmnPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `bpme-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: { ...(ed.style || {}), strokeStyle: StrokeStyle.SOLID }, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `bpme-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: { ...(ed.style || {}), strokeStyle: StrokeStyle.SOLID }, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     resolveEventOrientation(nodes, edges);

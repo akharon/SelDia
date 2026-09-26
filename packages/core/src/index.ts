@@ -15,6 +15,7 @@ export * from './ast/nodes.js';
 
 // Plugin System
 export * from './plugin/types.js';
+export * from './plugin/edit-vocabulary.js';
 
 // Engine
 export type { CoreEngine, EngineOptions } from './engine.js';

@@ -34,10 +34,14 @@ const searchRoots = [
 
 const roots = ['@marp-team/marp-core', 'puppeteer'];
 
-// marp-core depends on both math backends (katex and mathjax-full) but
-// render.ts hardcodes `math: 'katex'` — mathjax-full and its speech-output
-// dependency are dead weight (43MB+8MB) that would otherwise ship unused.
-const excluded = new Set(['mathjax-full', 'speech-rule-engine']);
+// render.ts hardcodes `math: 'katex'`, but marp-core's bundled lib/marp.js
+// requires both math backends unconditionally at module load time (it's not
+// gated behind the `math` option), so mathjax-full must still be vendored or
+// the packaged extension throws "Cannot find module" the moment marp-core is
+// required — even though katex is the only backend actually used at runtime.
+// speech-rule-engine (mathjax's speech-output dependency, 8MB) is not
+// required at load time and stays excluded as genuine dead weight.
+const excluded = new Set(['speech-rule-engine']);
 
 /**
  * Resolve `name` the way Node does: walk up from `fromDir` checking each

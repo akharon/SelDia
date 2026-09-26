@@ -1180,10 +1180,20 @@ class Parser {
     // Optional edge attribute/style block: { stroke: "...", label: "..." }
     const style = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
     if (!label && style && typeof style.label === 'string') label = style.label;
+    // `route: straight|orthogonal|curved|spline` (next_steps.md Step 4.3) picks
+    // this edge's routing explicitly; `routing:` accepted as an alias for
+    // parity with the IR/AST field name. Falls through to undefined (the
+    // diagram plugin's own default) when absent — was previously always
+    // hardcoded to 'straight' here regardless of the attr block's contents.
+    const routeAttr = style && typeof style.route === 'string' ? style.route
+      : (style && typeof style.routing === 'string' ? style.routing : undefined);
+    const routing = (['straight', 'spline', 'orthogonal', 'curved'] as const).includes(routeAttr as any)
+      ? (routeAttr as ASTEdgeDecl['routing'])
+      : undefined;
 
     return {
       kind: 'EdgeDecl', sourceId: srcTok.value, targetId: tgtId,
-      direction, label, style, routing: 'straight', loc: this.locSpan(srcTok, tgtTok),
+      direction, label, style, routing, loc: this.locSpan(srcTok, tgtTok),
     };
   }
 

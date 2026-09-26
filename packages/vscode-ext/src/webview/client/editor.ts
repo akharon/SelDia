@@ -422,10 +422,34 @@ function applyInteractionEffects(effects: InteractionEffect[]) {
         clearEdgeDrawSource();
         break;
       case 'postEdgeAdded':
-        vscode.postMessage({ type: 'edgeAdded', sourceId: eff.sourceId, targetId: eff.targetId });
+        vscode.postMessage({ type: 'edgeAdded', sourceId: eff.sourceId, targetId: eff.targetId, kind: pendingEdgeKind });
+        pendingEdgeKind = undefined;
+        break;
+      case 'postCreateConnectedNode':
+        vscode.postMessage({ type: 'nodeAdded', connectFromId: eff.sourceId });
+        pendingEdgeKind = undefined;
+        break;
+      case 'postEdgeReconnected':
+        vscode.postMessage({ type: 'edgeReconnected', edgeId: eff.edgeId, end: eff.end, newId: eff.newId });
         break;
       case 'setAddEdgeButtonActive':
         document.getElementById('btnAddEdge')!.classList.toggle('active', eff.active);
+        // Visible mode banner (arch.md §9.4.5): the toolbar button alone is
+        // easy to miss, so say explicitly what clicking will do next.
+        modeBanner.style.display = eff.active ? 'block' : 'none';
+        modeBanner.textContent = eff.active ? 'Click source node, then target node — Esc to cancel' : '';
+        // Crosshair cursor for the whole canvas while in draw mode
+        // (next_steps.md Step 3.2); cleared here so ESCAPE/TOGGLE_EDGE_DRAW
+        // both reset it via this one effect.
+        container.classList.toggle('seldia-drawing-edge', eff.active);
+        if (!eff.active) clearRubberBand();
+        break;
+      case 'setReconnectingActive':
+        // Same banner/cursor pattern as drawing-edge mode, worded for
+        // reconnect instead of "click source then target" (Step 4.1).
+        modeBanner.style.display = eff.active ? 'block' : 'none';
+        if (eff.active) modeBanner.textContent = 'Click the new node to reconnect to — Esc to cancel';
+        container.classList.toggle('seldia-drawing-edge', eff.active);
         break;
       case 'closeOverlays':
         labelEditor.style.display = 'none';
@@ -692,6 +716,12 @@ function handleContextAction(action: string) {
         dispatchInteraction({ type: 'CLICK_NODE', id });
       }
       break;
+    case 'reconnect-source':
+      if (id && type === 'edge') dispatchInteraction({ type: 'START_RECONNECT', edgeId: id, end: 'source' });
+      break;
+    case 'reconnect-target':
+      if (id && type === 'edge') dispatchInteraction({ type: 'START_RECONNECT', edgeId: id, end: 'target' });
+      break;
     case 'delete':
       if (id) {
         if (type === 'node') vscode.postMessage({ type: 'nodeDeleted', nodeId: id });
@@ -724,14 +754,96 @@ window.handleRedo = () => {
   vscode.postMessage({ type: 'redoRequested' });
 };
 window.handleAddNode = () => {
-  vscode.postMessage({ type: 'nodeAdded' });
+  togglePalette(nodePalette, btnAddNode);
 };
 window.handleAddEdge = () => {
+  const vocab = irData && irData.vocabulary;
+  const kinds = vocab && Array.isArray(vocab.edges) ? vocab.edges : [];
+  if (kinds.length > 1) {
+    togglePalette(edgePalette, btnAddEdge, true);
+    return;
+  }
+  // Only one edge kind for this diagram type (or vocabulary unknown yet):
+  // skip the picker and go straight into draw mode, same as before.
   // Edge-draw mode is purely webview state — the old code posted an
   // editModeChanged message the host never answered, so the button
   // never actually entered the mode.
   dispatchInteraction({ type: 'TOGGLE_EDGE_DRAW' });
 };
+
+// ── Add-node / add-edge kind palettes ───────────────────────────────
+// Popovers listing the current diagram type's edit vocabulary
+// (getEditVocabulary in @seldia/core), so "add node" and "draw edge" pick a
+// concrete element kind instead of always emitting the same flowchart
+// template regardless of diagram type (next_steps.md Step 2/3).
+const nodePalette = document.getElementById('nodePalette')!;
+const edgePalette = document.getElementById('edgePalette')!;
+const btnAddNode = document.getElementById('btnAddNode')!;
+const btnAddEdge = document.getElementById('btnAddEdge')!;
+const modeBanner = document.getElementById('modeBanner')!;
+
+function togglePalette(menu: HTMLElement, btn: Element, isEdgePalette = false) {
+  const open = menu.style.display === 'block';
+  nodePalette.style.display = 'none';
+  edgePalette.style.display = 'none';
+  btnAddNode.setAttribute('aria-expanded', 'false');
+  btnAddEdge.setAttribute('aria-expanded', 'false');
+  if (open) return;
+  menu.style.display = 'block';
+  btn.setAttribute('aria-expanded', 'true');
+  void isEdgePalette;
+}
+
+function renderPalettes() {
+  const vocab = irData && irData.vocabulary;
+  nodePalette.innerHTML = '';
+  edgePalette.innerHTML = '';
+  const nodeKinds = (vocab && Array.isArray(vocab.nodes) ? vocab.nodes : []) as Array<{ kind: string; label: string }>;
+  const edgeKinds = (vocab && Array.isArray(vocab.edges) ? vocab.edges : []) as Array<{ kind: string; label: string }>;
+  for (const entry of nodeKinds) {
+    const item = document.createElement('div');
+    item.className = 'menu-item';
+    item.setAttribute('role', 'option');
+    item.textContent = entry.label;
+    item.addEventListener('click', () => {
+      nodePalette.style.display = 'none';
+      btnAddNode.setAttribute('aria-expanded', 'false');
+      vscode.postMessage({ type: 'nodeAdded', kind: entry.kind });
+    });
+    nodePalette.appendChild(item);
+  }
+  for (const entry of edgeKinds) {
+    const item = document.createElement('div');
+    item.className = 'menu-item';
+    item.setAttribute('role', 'option');
+    item.textContent = entry.label;
+    item.addEventListener('click', () => {
+      edgePalette.style.display = 'none';
+      btnAddEdge.setAttribute('aria-expanded', 'false');
+      pendingEdgeKind = entry.kind;
+      dispatchInteraction({ type: 'TOGGLE_EDGE_DRAW' });
+    });
+    edgePalette.appendChild(item);
+  }
+}
+renderPalettes();
+
+document.addEventListener('click', (e) => {
+  if (!nodePalette.contains(e.target as Node) && e.target !== btnAddNode) {
+    nodePalette.style.display = 'none';
+    btnAddNode.setAttribute('aria-expanded', 'false');
+  }
+  if (!edgePalette.contains(e.target as Node) && e.target !== btnAddEdge) {
+    edgePalette.style.display = 'none';
+    btnAddEdge.setAttribute('aria-expanded', 'false');
+  }
+});
+
+/** Edge kind chosen from the palette before entering drawing-edge mode;
+ *  consumed (and reset to undefined) the next time an edge is actually
+ *  created, so a plain toolbar click without a prior palette pick falls
+ *  back to the vocabulary's default kind. */
+let pendingEdgeKind: string | undefined;
 
 // ── Theme (custom dropdown; see the toolbar comment for why not a
 //    native <select>) ────────────────────────────────────────────────
@@ -846,6 +958,66 @@ function clearEdgeDrawSource() {
   container.querySelectorAll('.seldia-edge-source').forEach((el) => el.classList.remove('seldia-edge-source'));
 }
 
+// ── Rubber-band line + hover target (next_steps.md Step 3.1/3.2) ────
+// Once a source node is picked in drawing-edge mode, a dashed line follows
+// the cursor from the source node's centre, and whatever node the cursor is
+// over highlights as the drop target — mirroring the click-to-click flow's
+// eventual endpoint without requiring a drag gesture (drag-from-handle is
+// left for a future pass; see next_steps.md).
+let rubberBandLine: SVGLineElement | null = null;
+
+function nodeCenterSvg(id: string): { x: number; y: number } | null {
+  const el = container.querySelector('[data-id="' + id + '"][data-type="node"]') as SVGGraphicsElement | null;
+  if (!el || !el.getBBox) return null;
+  const svg = container.querySelector('svg') as SVGSVGElement | null;
+  if (!svg) return null;
+  const b = el.getBBox();
+  const ctm = el.getCTM();
+  if (!ctm) return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  const pt = svg.createSVGPoint();
+  pt.x = b.x + b.width / 2;
+  pt.y = b.y + b.height / 2;
+  const p = pt.matrixTransform(ctm);
+  return { x: p.x, y: p.y };
+}
+
+function clearRubberBand() {
+  if (rubberBandLine) {
+    rubberBandLine.remove();
+    rubberBandLine = null;
+  }
+  container.querySelectorAll('.seldia-edge-target').forEach((el) => el.classList.remove('seldia-edge-target'));
+}
+
+container.addEventListener('mousemove', (e) => {
+  if (editMode !== 'drawing-edge' || !edgeDrawSourceId) return;
+  const svg = container.querySelector('svg') as SVGSVGElement | null;
+  if (!svg) return;
+  const from = nodeCenterSvg(edgeDrawSourceId);
+  if (!from) return;
+  const rect = svg.getBoundingClientRect();
+  const upp = svgUnitsPerPixel();
+  const vb = svg.viewBox.baseVal;
+  const toX = vb.x + (e.clientX - rect.left) * upp;
+  const toY = vb.y + (e.clientY - rect.top) * upp;
+  if (!rubberBandLine) {
+    rubberBandLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    rubberBandLine.setAttribute('class', 'edge-draw-line');
+    svg.appendChild(rubberBandLine);
+  }
+  rubberBandLine.setAttribute('x1', String(from.x));
+  rubberBandLine.setAttribute('y1', String(from.y));
+  rubberBandLine.setAttribute('x2', String(toX));
+  rubberBandLine.setAttribute('y2', String(toY));
+
+  const hovered = (e.target as Element).closest('[data-id][data-type="node"]');
+  const hoveredId = hovered ? hovered.getAttribute('data-id') : null;
+  container.querySelectorAll('.seldia-edge-target').forEach((el) => {
+    if (el.getAttribute('data-id') !== hoveredId) el.classList.remove('seldia-edge-target');
+  });
+  if (hovered && hoveredId !== edgeDrawSourceId) hovered.classList.add('seldia-edge-target');
+});
+
 // ── Helper functions ───────────────────────────────────────────────
 // DOM-only: clears the data-selected attribute. Does not touch
 // interactionState — callers that also need state cleared go through
@@ -919,6 +1091,26 @@ window.addEventListener('message', (event) => {
         const sel = container.querySelector('[data-id="' + selectedEdgeId + '"]');
         if (sel) sel.setAttribute('data-selected', 'true');
         else selectedEdgeId = null;
+      }
+      renderPalettes();
+      // Explicit add-node (next_steps.md Step 2.2): open the label editor on
+      // the node that was just added instead of leaving the user to find and
+      // double-click it themselves.
+      if (msg.focusNodeId) {
+        const el = container.querySelector('[data-id="' + msg.focusNodeId + '"]');
+        if (el) {
+          const textEl = el.querySelector('text');
+          openLabelEditor(el, textEl ? textEl.textContent! || '' : '', msg.focusNodeId, 'node');
+        }
+      }
+      // Explicit draw-edge (next_steps.md Step 3.4): open the label editor
+      // on the edge that was just created, same as add-node does for nodes.
+      if (msg.focusEdgeId) {
+        const el = container.querySelector('[data-id="' + msg.focusEdgeId + '"]');
+        if (el) {
+          const textEl = el.querySelector('text');
+          openLabelEditor(el, textEl ? textEl.textContent! || '' : '', msg.focusEdgeId, 'edge');
+        }
       }
       break;
     }

@@ -7,6 +7,10 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl } from '../ast/nodes.js';
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
+const ROUTING_MAP: Record<string, EdgeRouting> = {
+  straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
+  orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
+};
 import { ShapeType } from '../types/shapes.js';
 import { sizeForLabel } from '../layout/text-measure.js';
 import { renderClassNote, renderClassCompartments } from '../render/custom-renderers.js';
@@ -102,7 +106,7 @@ export const classPlugin: DiagramPlugin = {
           label: ed.label || undefined,
           label2: ed.label2 || undefined,
           style: { ...(ed.style || {}), arrowhead: true },
-          routing: EdgeRouting.ORTHOGONAL,
+          routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL,
           bidirectional: ed.direction === 'both',
           classList: ed.classList || [],
           data: { ...(ed.data || {}), arrowType: relKind },

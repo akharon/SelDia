@@ -27,7 +27,7 @@ import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
-import { routeBetween, centerOf, computeFans, type Fan } from './render/edge-routing.js';
+import { routeBetween, centerOf, computeFans, clipRouteToNodes, type Fan } from './render/edge-routing.js';
 import { computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
 import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
@@ -303,6 +303,21 @@ class SelDiAEngine implements CoreEngine {
     });
   }
 
+  /** Overlay any `via`-pinned edge's route (Step 4.2) onto already-laid-out
+   *  edges, snapping the pinned points' endpoints to the (possibly
+   *  auto-placed) nodes' current centres. Applied after every layout path —
+   *  dagre, elk, custom, and manual — so a `via` edge keeps its bend even
+   *  when nothing else in the diagram is manually positioned. */
+  private applyManualEdgeRoutes(edges: IREdge[], nodes: IRNode[]): IREdge[] {
+    if (!edges.some((e) => this.manualEdgeRoute(e) !== undefined)) return edges;
+    return edges.map((e) => {
+      const manual = this.manualEdgeRoute(e);
+      if (!manual) return e;
+      const wps = this.computeWaypoints(e, nodes);
+      return wps.length ? { ...e, waypoints: wps } : e;
+    });
+  }
+
   layout(ir: DiagramIR): Result<LayoutResult> {
     if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
     // Some diagram types have a topology dagre cannot express (sequence
@@ -313,7 +328,7 @@ class SelDiAEngine implements CoreEngine {
     if (custom) {
       const { nodes, edges, bounds, metadataPatch } = custom(ir);
       const positioned: DiagramIR = {
-        ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes),
+        ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes),
         metadata: metadataPatch ? { ...ir.metadata, ...metadataPatch } : ir.metadata,
       };
       return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
@@ -321,7 +336,7 @@ class SelDiAEngine implements CoreEngine {
     // Synchronous path only has dagre available; an "elk" request is honored
     // by layoutAsync() (used by compile()), not here.
     const { nodes, edges, bounds } = layoutWithDagre(ir, this.resolvedLayoutOptions(ir));
-    const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
+    const positioned: DiagramIR = { ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes) };
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
@@ -331,7 +346,7 @@ class SelDiAEngine implements CoreEngine {
     if (custom) {
       const { nodes, edges, bounds, metadataPatch } = custom(ir);
       const positioned: DiagramIR = {
-        ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes),
+        ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes),
         metadata: metadataPatch ? { ...ir.metadata, ...metadataPatch } : ir.metadata,
       };
       return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
@@ -341,7 +356,7 @@ class SelDiAEngine implements CoreEngine {
     const { nodes, edges, bounds } = requested === 'elk' && LAYOUT_ENGINES.has('elk')
       ? await layoutWithElk(ir, opts)
       : layoutWithDagre(ir, opts);
-    const positioned: DiagramIR = { ...ir, nodes, edges, groups: this.layoutGroups(ir, nodes) };
+    const positioned: DiagramIR = { ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes) };
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
@@ -385,14 +400,32 @@ class SelDiAEngine implements CoreEngine {
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
+  /** A user-pinned route: the flat `[x1,y1,x2,y2,...]` list from the DSL's
+   *  `via:` edge attribute (next_steps.md Step 4.2), read the same way
+   *  `manualOverride` reads a node's `{x,y}` — as a style field that wins
+   *  over anything layout would otherwise compute. Odd-length or empty
+   *  arrays are treated as absent rather than guessed at. */
+  private manualEdgeRoute(edge: IREdge): Point[] | undefined {
+    const via = edge.style?.via;
+    if (!Array.isArray(via) || via.length < 4 || via.length % 2 !== 0) return undefined;
+    const pts: Point[] = [];
+    for (let i = 0; i < via.length; i += 2) pts.push({ x: via[i], y: via[i + 1] });
+    return pts;
+  }
+
   /** Centre-to-centre; renderEdge clips it back to both node borders. Anchoring
    *  here (the old code always left the source's bottom and entered the
    *  target's top) is wrong whenever a node is dragged beside or above its
-   *  neighbour — which is exactly what this manual-position path is for. */
+   *  neighbour — which is exactly what this manual-position path is for.
+   *  A `via`-pinned edge (Step 4.2) skips this entirely and keeps its own
+   *  points, endpoints snapped to the (possibly re-laid-out) node centres so
+   *  it still tracks a dragged node's new position. */
   private computeWaypoints(edge: IREdge, nodes: IRNode[]): Point[] {
     const src = nodes.find(n => n.id === edge.sourceId);
     const tgt = nodes.find(n => n.id === edge.targetId);
     if (!src || !tgt) return [];
+    const manual = this.manualEdgeRoute(edge);
+    if (manual) return [centerOf(src), ...manual, centerOf(tgt)];
     return [centerOf(src), centerOf(tgt)];
   }
 
@@ -824,9 +857,15 @@ class SelDiAEngine implements CoreEngine {
   /** Shape an edge's path and clip it to the two nodes it joins, so it always
    *  meets them on a border and never lies across one. See render/edge-routing
    *  for why the layout engine's own endpoints can't be reused.
-   *  `allNodes` lets the router avoid crosscuts through unrelated nodes. */
+   *  `allNodes` lets the router avoid crosscuts through unrelated nodes.
+   *  A `via`-pinned edge (Step 4.2) skips the router entirely — obstacle
+   *  avoidance and orthogonal elbow-routing would silently discard the
+   *  user's own bend points, exactly the "manual override wins" rule
+   *  `manualOverride` already applies to a dragged node — and only gets
+   *  border-clipped, same as the router's own final step. */
   private routedWaypoints(edge: IREdge, wps: Point[], src?: IRNode, tgt?: IRNode, fan?: Fan, allNodes?: IRNode[]): Point[] {
     if (wps.length < 2) return wps;
+    if (this.manualEdgeRoute(edge)) return clipRouteToNodes(wps, src, tgt);
     return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes);
   }
 

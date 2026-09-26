@@ -7,6 +7,10 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl } from '../ast/nodes.js';
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
+const ROUTING_MAP: Record<string, EdgeRouting> = {
+  straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
+  orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
+};
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
 import { renderC4Node } from '../render/custom-renderers.js';
@@ -53,7 +57,7 @@ function buildC4Ir(ast: DiagramAST, diagramType: DiagramType): DiagramIR {
       edges.push({
         id: `c4e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId,
         label: ed.label || undefined, style: { ...(ed.style || {}), strokeStyle: StrokeStyle.SOLID },
-        routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {},
+        routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {},
       });
     }
   }

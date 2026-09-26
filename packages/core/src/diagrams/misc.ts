@@ -7,6 +7,10 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTSectionDecl, ASTGroupDecl
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
+const ROUTING_MAP: Record<string, EdgeRouting> = {
+  straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
+  orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
+};
 import { ShapeType } from '../types/shapes.js';
 import { sizeForLabel } from '../layout/text-measure.js';
 import type { NodeRenderContext } from '../plugin/types.js';
@@ -42,7 +46,7 @@ function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, 
             nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 150, 60), style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: { ...(nd.data || {}), ...(sectionLabel ? { sectionLabel } : {}) } });
           } else if (stmt.kind === 'EdgeDecl') {
             const ed = stmt as ASTEdgeDecl;
-            edges.push({ id: `${dt}e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+            edges.push({ id: `${dt}e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
           } else if (stmt.kind === 'SectionDecl') {
             const sd = stmt as ASTSectionDecl;
             walk(sd.body, sd.label || sd.id);
@@ -111,7 +115,7 @@ export const usecasePlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `uce-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `uce-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'usecase-1', type: DiagramType.USECASE, title: ast.title || 'Use Case Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -153,7 +157,7 @@ export const activityPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `acte-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `acte-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'activity-1', type: DiagramType.ACTIVITY, title: ast.title || 'Activity Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -196,7 +200,7 @@ export const deploymentPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `depe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `depe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'deploy-1', type: DiagramType.DEPLOYMENT, title: ast.title || 'Deployment Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -250,7 +254,7 @@ export const networkPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `nete-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `nete-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'network-1', type: DiagramType.NETWORK, title: ast.title || 'Network Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -299,7 +303,7 @@ export const formPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `forme-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `forme-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'form-1', type: DiagramType.FORM, title: ast.title || 'Form', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -331,7 +335,7 @@ export const blockPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `blke-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `blke-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'block-1', type: DiagramType.BLOCK, title: ast.title || 'Block Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -361,7 +365,7 @@ export const timelinePlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `tle-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `tle-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.STRAIGHT, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'timeline-1', type: DiagramType.TIMELINE, title: ast.title || 'Timeline', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -390,7 +394,7 @@ export const dmnPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `dmne-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `dmne-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'dmn-1', type: DiagramType.DMN, title: ast.title || 'DMN Decision Table', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -479,7 +483,7 @@ export const wireframePlugin: DiagramPlugin = {
         // but are never drawn: a mockup is a screen layout, not a flowchart, so
         // arrows threading between form fields would be visual noise. The engine
         // skips drawing edges for DiagramType.WIREFRAME (see engine.ts).
-        edges.push({ id: `wfe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `wfe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     // If the author gave no edges, auto-chain the controls top-to-bottom in
@@ -547,7 +551,7 @@ export const cloudPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `cloude-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `cloude-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'cloud-1', type: DiagramType.CLOUD, title: ast.title || 'Cloud Architecture', nodes, edges, groups: [], layers: [], metadata: {} };

@@ -16,17 +16,27 @@
 // full reducer rewrite of that DOM-coupled code was not attempted blind).
 // =============================================================================
 
-export type InteractionMode = 'idle' | 'selected' | 'drawing-edge';
+export type InteractionMode = 'idle' | 'selected' | 'drawing-edge' | 'reconnecting-edge';
 
 export interface InteractionState {
   mode: InteractionMode;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   edgeDrawSourceId: string | null;
+  /** Set while mode === 'reconnecting-edge': which edge/end is being moved. */
+  reconnectingEdgeId: string | null;
+  reconnectingEnd: 'source' | 'target' | null;
 }
 
 export function initialInteractionState(): InteractionState {
-  return { mode: 'idle', selectedNodeId: null, selectedEdgeId: null, edgeDrawSourceId: null };
+  return {
+    mode: 'idle',
+    selectedNodeId: null,
+    selectedEdgeId: null,
+    edgeDrawSourceId: null,
+    reconnectingEdgeId: null,
+    reconnectingEnd: null,
+  };
 }
 
 export type InteractionEvent =
@@ -34,6 +44,7 @@ export type InteractionEvent =
   | { type: 'CLICK_EDGE'; id: string }
   | { type: 'CLICK_EMPTY' }
   | { type: 'TOGGLE_EDGE_DRAW' }
+  | { type: 'START_RECONNECT'; edgeId: string; end: 'source' | 'target' }
   | { type: 'ESCAPE' }
   | { type: 'SET_MODE'; mode: InteractionMode }
   | { type: 'SELECT_NODE'; id: string | null };
@@ -45,7 +56,10 @@ export type InteractionEffect =
   | { type: 'markEdgeSource'; id: string }
   | { type: 'clearEdgeSource' }
   | { type: 'postEdgeAdded'; sourceId: string; targetId: string }
+  | { type: 'postCreateConnectedNode'; sourceId: string }
+  | { type: 'postEdgeReconnected'; edgeId: string; end: 'source' | 'target'; newId: string }
   | { type: 'setAddEdgeButtonActive'; active: boolean }
+  | { type: 'setReconnectingActive'; active: boolean }
   | { type: 'closeOverlays' };
 
 export interface ReduceResult {
@@ -60,6 +74,18 @@ export interface ReduceResult {
 export function reduceInteraction(state: InteractionState, event: InteractionEvent): ReduceResult {
   switch (event.type) {
     case 'CLICK_NODE': {
+      if (state.mode === 'reconnecting-edge') {
+        if (state.reconnectingEdgeId && state.reconnectingEnd) {
+          return {
+            state: { ...state, mode: 'idle', reconnectingEdgeId: null, reconnectingEnd: null },
+            effects: [
+              { type: 'postEdgeReconnected', edgeId: state.reconnectingEdgeId, end: state.reconnectingEnd, newId: event.id },
+              { type: 'setReconnectingActive', active: false },
+            ],
+          };
+        }
+        return { state, effects: [] };
+      }
       if (state.mode === 'drawing-edge') {
         if (!state.edgeDrawSourceId) {
           return {
@@ -87,7 +113,7 @@ export function reduceInteraction(state: InteractionState, event: InteractionEve
     }
 
     case 'CLICK_EDGE': {
-      if (state.mode === 'drawing-edge') return { state, effects: [] };
+      if (state.mode === 'drawing-edge' || state.mode === 'reconnecting-edge') return { state, effects: [] };
       return {
         state: { ...state, mode: 'selected', selectedEdgeId: event.id, selectedNodeId: null },
         effects: [{ type: 'clearSelection' }, { type: 'selectEdge', id: event.id }],
@@ -95,7 +121,23 @@ export function reduceInteraction(state: InteractionState, event: InteractionEve
     }
 
     case 'CLICK_EMPTY': {
-      if (state.mode === 'drawing-edge') return { state, effects: [] };
+      if (state.mode === 'reconnecting-edge') return { state, effects: [] };
+      if (state.mode === 'drawing-edge') {
+        // A source is already picked and the user dropped on open canvas
+        // instead of a node — offer "create connected node here" rather
+        // than silently doing nothing (next_steps.md Step 3.1).
+        if (state.edgeDrawSourceId) {
+          return {
+            state: { ...state, mode: 'idle', edgeDrawSourceId: null },
+            effects: [
+              { type: 'postCreateConnectedNode', sourceId: state.edgeDrawSourceId },
+              { type: 'clearEdgeSource' },
+              { type: 'setAddEdgeButtonActive', active: false },
+            ],
+          };
+        }
+        return { state, effects: [] };
+      }
       if (!state.selectedNodeId && !state.selectedEdgeId) return { state, effects: [] };
       return {
         state: { ...state, selectedNodeId: null, selectedEdgeId: null },
@@ -111,15 +153,36 @@ export function reduceInteraction(state: InteractionState, event: InteractionEve
         };
       }
       return {
-        state: { ...state, mode: 'drawing-edge', edgeDrawSourceId: null },
+        state: { ...state, mode: 'drawing-edge', edgeDrawSourceId: null, reconnectingEdgeId: null, reconnectingEnd: null },
         effects: [{ type: 'setAddEdgeButtonActive', active: true }],
+      };
+    }
+
+    case 'START_RECONNECT': {
+      return {
+        state: { ...state, mode: 'reconnecting-edge', reconnectingEdgeId: event.edgeId, reconnectingEnd: event.end, edgeDrawSourceId: null },
+        effects: [{ type: 'setReconnectingActive', active: true }],
       };
     }
 
     case 'ESCAPE': {
       return {
-        state: { ...state, mode: 'idle', edgeDrawSourceId: null, selectedNodeId: null, selectedEdgeId: null },
-        effects: [{ type: 'clearSelection' }, { type: 'clearEdgeSource' }, { type: 'setAddEdgeButtonActive', active: false }, { type: 'closeOverlays' }],
+        state: {
+          ...state,
+          mode: 'idle',
+          edgeDrawSourceId: null,
+          selectedNodeId: null,
+          selectedEdgeId: null,
+          reconnectingEdgeId: null,
+          reconnectingEnd: null,
+        },
+        effects: [
+          { type: 'clearSelection' },
+          { type: 'clearEdgeSource' },
+          { type: 'setAddEdgeButtonActive', active: false },
+          { type: 'setReconnectingActive', active: false },
+          { type: 'closeOverlays' },
+        ],
       };
     }
 

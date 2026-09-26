@@ -8,7 +8,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeAttrEdit, computeLabelEdit, computeEdgeLabelEdit, computeEdgeDeleteEdit,
+  computeEdgeReconnectEdit,
   computeNodeDeleteEdits, computeAppendStatementEdit,
+  buildNodeStatement, buildEdgeStatement,
   applyTextEdit, applyTextEdits,
 } from '../src/edit/position-patch.js';
 
@@ -136,6 +138,55 @@ describe('computeEdgeDeleteEdit', () => {
   });
 });
 
+describe('computeEdgeReconnectEdit (next_steps.md Step 4.1)', () => {
+  it('rewrites the target of a single-edge line', () => {
+    const out = applyTextEdit(SRC, computeEdgeReconnectEdit(SRC, 'start', 'build', 'target', 'check')!);
+    expect(out).toContain('start --> check');
+    expect(out).not.toContain('start --> build');
+    expect(out).toContain('build --> |"ok"| check'); // neighbours untouched
+  });
+
+  it('rewrites the source of a single-edge line', () => {
+    const out = applyTextEdit(SRC, computeEdgeReconnectEdit(SRC, 'start', 'build', 'source', 'check')!);
+    expect(out).toContain('check --> build');
+    expect(out).not.toContain('start --> build');
+  });
+
+  it('preserves the arrow and label when reconnecting', () => {
+    const out = applyTextEdit(SRC, computeEdgeReconnectEdit(SRC, 'build', 'check', 'target', 'deploy')!);
+    expect(out).toContain('build --> |"ok"| deploy');
+  });
+
+  it('reconnects the first link of a chain by rewriting the shared head', () => {
+    const src = 'diagram flowchart "X" {\n    a: [A]\n    b: [B]\n    c: [C]\n    d: [D]\n    a --> b --> c\n}';
+    const out = applyTextEdit(src, computeEdgeReconnectEdit(src, 'a', 'b', 'source', 'd')!);
+    expect(out).toContain('d --> b --> c');
+  });
+
+  it('reconnects the last link of a chain by rewriting its own target', () => {
+    const src = 'diagram flowchart "X" {\n    a: [A]\n    b: [B]\n    c: [C]\n    d: [D]\n    a --> b --> c\n}';
+    const out = applyTextEdit(src, computeEdgeReconnectEdit(src, 'b', 'c', 'target', 'd')!);
+    expect(out).toContain('a --> b --> d');
+  });
+
+  it('refuses to reconnect an interior link\'s shared endpoint (would desync the chain) rather than guessing', () => {
+    const src = 'diagram flowchart "X" {\n    a: [A]\n    b: [B]\n    c: [C]\n    d: [D]\n    a --> b --> c\n}';
+    // Rewriting seg 0's target ('b') would also have to rewrite seg 1's
+    // implicit source, which parseEdgeLine doesn't model as one edit site.
+    expect(computeEdgeReconnectEdit(src, 'a', 'b', 'target', 'd')).toBeUndefined();
+    // Rewriting seg 1's source ('b') has the same problem in the other direction.
+    expect(computeEdgeReconnectEdit(src, 'b', 'c', 'source', 'd')).toBeUndefined();
+  });
+
+  it('refuses a reconnect that would create a self-loop', () => {
+    expect(computeEdgeReconnectEdit(SRC, 'start', 'build', 'target', 'start')).toBeUndefined();
+  });
+
+  it('returns undefined for a non-existent edge', () => {
+    expect(computeEdgeReconnectEdit(SRC, 'start', 'deploy', 'target', 'check')).toBeUndefined();
+  });
+});
+
 describe('computeNodeDeleteEdits', () => {
   it('removes the declaration and every touching edge in one edit set', () => {
     const edits = computeNodeDeleteEdits(SRC, 'build');
@@ -159,8 +210,8 @@ describe('computeNodeDeleteEdits', () => {
 });
 
 describe('computeAppendStatementEdit', () => {
-  it('inserts before the closing brace, not inside a trailing attr block', () => {
-    const edit = computeAppendStatementEdit(SRC, '    node6: [New Node 6]')!;
+  it('inserts after the last body line, indented to match it, not inside a trailing attr block', () => {
+    const edit = computeAppendStatementEdit(SRC, 'node6: [New Node 6]')!;
     const out = applyTextEdit(SRC, edit);
     const lines = out.split('\n');
     expect(lines[lines.length - 1]).toBe('}');
@@ -170,8 +221,52 @@ describe('computeAppendStatementEdit', () => {
   });
 
   it('supports multi-line statements (add connected node)', () => {
-    const edit = computeAppendStatementEdit(SRC, '    n: [N]\n    start --> n')!;
+    const edit = computeAppendStatementEdit(SRC, 'n: [N]\nstart --> n')!;
     const out = applyTextEdit(SRC, edit);
     expect(out).toContain('    n: [N]\n    start --> n\n}');
+  });
+
+  it('matches the body indentation when it is not 4 spaces', () => {
+    const src = 'diagram flowchart "X" {\n  a: [A]\n  b: [B]\n}';
+    const out = applyTextEdit(src, computeAppendStatementEdit(src, 'c: [C]')!);
+    expect(out).toBe('diagram flowchart "X" {\n  a: [A]\n  b: [B]\n  c: [C]\n}');
+  });
+
+  it('inserts before the closing brace when the body is empty', () => {
+    const src = 'diagram flowchart "X" {\n}';
+    const out = applyTextEdit(src, computeAppendStatementEdit(src, 'a: [A]')!);
+    expect(out).toBe('diagram flowchart "X" {\n    a: [A]\n}');
+  });
+});
+
+describe('buildNodeStatement / buildEdgeStatement (edit-vocabulary → statement text)', () => {
+  it('falls back to a plain flowchart node when no vocabulary entry is given', () => {
+    expect(buildNodeStatement(undefined, 'node1', 'New Node 1')).toBe('node1: [New Node 1]');
+  });
+
+  it('substitutes {id} and {label} in a vocabulary template', () => {
+    const entry = { template: 'participant {id}: "{label}"', positionable: false };
+    expect(buildNodeStatement(entry, 'alice', 'Alice')).toBe('participant alice: "Alice"');
+  });
+
+  it('appends an { x, y } block only for a positionable entry with a position', () => {
+    const entry = { template: '{id}: [{label}]', positionable: true };
+    expect(buildNodeStatement(entry, 'node1', 'New Node 1', { x: 12.4, y: 8.6 })).toBe(
+      'node1: [New Node 1] { x: 12, y: 9 }'
+    );
+    expect(buildNodeStatement(entry, 'node1', 'New Node 1')).toBe('node1: [New Node 1]');
+  });
+
+  it('does not append a position block for a non-positionable entry even if one is given', () => {
+    const entry = { template: 'participant {id}: "{label}"', positionable: false };
+    expect(buildNodeStatement(entry, 'alice', 'Alice', { x: 10, y: 10 })).toBe('participant alice: "Alice"');
+  });
+
+  it('falls back to --> when no edge template is given', () => {
+    expect(buildEdgeStatement(undefined, 'a', 'b')).toBe('a --> b');
+  });
+
+  it('substitutes {source} and {target} in an edge template', () => {
+    expect(buildEdgeStatement('{source} -->|"1 : *"| {target}', 'user', 'order')).toBe('user -->|"1 : *"| order');
   });
 });

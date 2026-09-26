@@ -7,8 +7,12 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTGroupDecl, ASTStatement }
 import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import type { ShapeType } from '../types/shapes.js';
-import { DiagramType } from '../ir/types.js';
+import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+const ROUTING_MAP: Record<string, EdgeRouting> = {
+  straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
+  orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
+};
 
 export const flowchartPlugin: DiagramPlugin = {
   id: 'seldia-flowchart',
@@ -45,7 +49,7 @@ export const flowchartPlugin: DiagramPlugin = {
         targetId: ed.targetId,
         label: ed.label || undefined,
         style: ed.style ? { ...ed.style } : {},
-        routing: (ed.routing as any) || 'orthogonal',
+        routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL,
         bidirectional: ed.direction === 'both',
         classList: ed.classList || [],
         data: ed.data || {},

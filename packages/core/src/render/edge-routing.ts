@@ -622,3 +622,15 @@ export function routeBetween(
   pts = dedupe(pts);
   return pts.length >= 2 ? pts : raw;
 }
+
+/** Border-clip a route's endpoints without re-routing anything in between —
+ *  same final step every `routeBetween` branch applies, exposed standalone
+ *  for a `via`-pinned edge (next_steps.md Step 4.2), whose interior points
+ *  are the user's own and must survive untouched. */
+export function clipRouteToNodes(raw: Point[], src?: IRNode, tgt?: IRNode): Point[] {
+  let pts = raw;
+  if (src) pts = clipStart(pts, nodeRect(src, EDGE_GAP));
+  if (tgt) pts = clipEnd(pts, nodeRect(tgt, EDGE_GAP));
+  pts = dedupe(pts);
+  return pts.length >= 2 ? pts : raw;
+}

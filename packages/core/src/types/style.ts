@@ -186,6 +186,14 @@ export interface EdgeStyle {
   fontWeight: FontWeight;
   fontStyle: FontStyle;
   textColor: string;
+
+  // --- User-pinned route (next_steps.md Step 4.2) ---
+  /** Flat `[x1, y1, x2, y2, ...]` waypoint list from the DSL's `via:` edge
+   *  attribute. When present, layout skips routing for this edge and uses
+   *  these points (plus the node border clip) as-is — same "manual override
+   *  wins" model as a node's `{x,y}`. Optional: absent on every edge that
+   *  hasn't been manually routed, which is the overwhelming majority. */
+  via?: number[];
 }
 
 // -----------------------------------------------------------------------------

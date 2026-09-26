@@ -201,6 +201,59 @@ describe('diagram-wide manual layout override', () => {
   });
 });
 
+describe('edge via/routing attrs (next_steps.md Step 4.2/4.3)', () => {
+  it('a `via` edge lays out through its pinned points, no node manually positioned', () => {
+    const src = 'fl "T" { a (Start)\n b [Do]\n a -> b { via: [100, 400, 300, 400] } }';
+    const parsed = engine.parse(src);
+    expect(parsed.ok).toBe(true);
+    const laid = (parsed as any).ok
+      ? engine.layout(engine.transform(engine.analyze((parsed as any).value).value as any).value as any)
+      : null;
+    expect((laid as any).ok).toBe(true);
+    const edge = (laid as any).value.diagram.edges.find((e: any) => e.sourceId === 'a' && e.targetId === 'b');
+    expect(edge.waypoints).toBeDefined();
+    // src-centre, both via points, tgt-centre, in order.
+    expect(edge.waypoints).toEqual(
+      expect.arrayContaining([{ x: 100, y: 400 }, { x: 300, y: 400 }])
+    );
+    const viaIdx0 = edge.waypoints.findIndex((p: any) => p.x === 100 && p.y === 400);
+    const viaIdx1 = edge.waypoints.findIndex((p: any) => p.x === 300 && p.y === 400);
+    expect(viaIdx0).toBeGreaterThanOrEqual(0);
+    expect(viaIdx1).toBeGreaterThan(viaIdx0);
+  });
+
+  it('a `via` edge survives full render() — orthogonal routing does not discard it and produces a valid SVG', () => {
+    const src = 'fl "T" { a (Start)\n b [Do]\n a -> b { via: [50, 300, 250, 300] } }';
+    const r = engine.compileSync(src);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      // Two <path> elements inside the edge <g> (rough.js double-stroke) means
+      // rendering succeeded through the via-pinned route without throwing or
+      // collapsing to an empty/degenerate path.
+      expect(r.value.svg).toMatch(/data-seldia-edge-id="edge-a-b">\s*<path/);
+    }
+  });
+
+  it('an odd-length `via` array is treated as absent, not guessed at', () => {
+    const src = 'fl "T" { a (Start)\n b [Do]\n a -> b { via: [1, 2, 3] } }';
+    const r = engine.compileSync(src);
+    expect(r.ok).toBe(true);
+  });
+
+  it('`route: straight` on one edge overrides the diagram type default without affecting other edges', () => {
+    const src = 'fl "T" { a (Start)\n b [Do]\n c [Done]\n a -> b { route: straight }\n b -> c }';
+    const r = engine.compileSync(src);
+    expect(r.ok).toBe(true);
+    const parsed = engine.parse(src);
+    const analyzed = engine.analyze((parsed as any).value);
+    const transformed = engine.transform(analyzed.value as any);
+    const ab = (transformed as any).value.edges.find((e: any) => e.sourceId === 'a' && e.targetId === 'b');
+    const bc = (transformed as any).value.edges.find((e: any) => e.sourceId === 'b' && e.targetId === 'c');
+    expect(ab.routing).toBe('straight');
+    expect(bc.routing).toBe('orthogonal'); // flowchart's own default, unaffected
+  });
+});
+
 describe('render() error guard', () => {
   it('returns { ok: false } instead of throwing when a custom renderer hits malformed IR', () => {
     const src = 'cls "M" { user [User] }';

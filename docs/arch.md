@@ -1013,14 +1013,6 @@ diagram flowchart "Visual Edit → DSL Round-Trip" {
 │   │   ├── insert-diagram.ts          # Insert ```seldia block in markdown
 │   │   └── theme-cycle.ts             # Cycle through built-in themes
 │   │
-│   ├── skill/                          # Copilot skill deployment
-│   │   ├── index.ts                    # Public API: deploySkill(), checkStatus()
-│   │   ├── types.ts                    # SkillDeploymentConfig, SkillManifest, SkillStatus
-│   │   ├── provider.ts                 # SkillProvider implementation
-│   │   ├── deployer.ts                 # File-copy deployment logic
-│   │   ├── manifest.ts                 # Manifest read/write/compare
-│   │   └── status-bar.ts              # Status bar integration
-│   │
 │   └── utils/
 │       ├── source-map.ts               # AST node ↔ source location mapping
 │       ├── code-generator.ts           # DSL code generation from IR changes
@@ -1148,32 +1140,6 @@ When right-clicking a rendered diagram in the webview:
           "enum": ["svg", "png", "pdf"],
           "default": "svg",
           "description": "Default export format"
-        },
-        "seldia.copilotSkill.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable deployment of the SelDiA DSL Copilot skill"
-        },
-        "seldia.copilotSkill.scope": {
-          "type": "string",
-          "enum": ["workspace", "user", "both"],
-          "default": "workspace",
-          "description": "Where to deploy the SelDiA DSL Copilot skill"
-        },
-        "seldia.copilotSkill.autoDeploy": {
-          "type": "boolean",
-          "default": false,
-          "description": "Auto-deploy the Copilot skill without prompting on activation"
-        },
-        "seldia.copilotSkill.promptBeforeDeploy": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a prompt before first-time skill deployment"
-        },
-        "seldia.copilotSkill.autoUpdate": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically update the Copilot skill when the extension updates"
         }
       }
     },
@@ -1183,11 +1149,7 @@ When right-clicking a rendered diagram in the webview:
       { "command": "seldia.insertDiagram", "title": "SelDiA: Insert Diagram Block" },
       { "command": "seldia.cycleTheme", "title": "SelDiA: Cycle Theme" },
       { "command": "seldia.openPreview", "title": "SelDiA: Open Preview to the Side" },
-      { "command": "seldia.exportAllDiagrams", "title": "SelDiA: Export All Diagrams in File" },
-      { "command": "seldia.deploySkill", "title": "SelDiA: Deploy Copilot Skill" },
-      { "command": "seldia.updateSkill", "title": "SelDiA: Update Copilot Skill" },
-      { "command": "seldia.uninstallSkill", "title": "SelDiA: Uninstall Copilot Skill" },
-      { "command": "seldia.checkSkillStatus", "title": "SelDiA: Check Skill Status" }
+      { "command": "seldia.exportAllDiagrams", "title": "SelDiA: Export All Diagrams in File" }
     ],
     "keybindings": [
       { "command": "seldia.toggleView", "key": "ctrl+shift+v", "when": "editorLangId == seldia || seldiaMarkdownActive" },
@@ -1214,7 +1176,6 @@ When right-clicking a rendered diagram in the webview:
 | **9c: Interactive Editing** | 21 | Webview with Rough.js SVG rendering, drag-drop, double-click edit, undo/redo |
 | **9d: Bidirectional Sync** | 22 | Visual edit → DSL source round-trip, code diff generator, formatting preservation |
 | **9e: MD-to-PDF Export** | 23 | Markdown → PDF export with Puppeteer, embedded SelDiA diagrams |
-| **9f: Copilot Skill** | 23 | Bundle & deploy `seldia-dsl` Copilot skill; manifest tracking; update detection; status bar |
 | **9g: Polish** | 24 | Snippets, templates, context menus, keybindings, walkthrough, marketplace publication prep |
 
 #### 5.8.10 Markdown → PDF Export (`md2pdf`)
@@ -1463,174 +1424,6 @@ seldia md2pdf docs/ --batch -o pdfs/
 | **Error blocks (not failure)** | A single broken diagram shouldn't block the entire document export |
 | **`networkidle0` wait** | Ensures external images (e.g., linked screenshots) are loaded before print |
 
-#### 5.8.11 Copilot Skill Deployment
-
-When the SelDiA VS Code extension is installed, it **deploys a Copilot skill** (`seldia-dsl`) that teaches GitHub Copilot how to write SelDiA DSL code. This enables Copilot to generate, modify, and explain SelDiA diagrams directly in chat and inline completions.
-
-##### 5.8.11.1 Motivation
-
-SelDiA's DSL is a custom language. Without a skill, Copilot has no knowledge of its syntax, diagram types, or conventions. By bundling and deploying a skill, Copilot gains:
-
-- **Full DSL grammar knowledge** — all 21 diagram types, node shapes, edge syntax, styling, layout directives
-- **Context-appropriate suggestions** — Copilot can suggest the right diagram type for a given scenario
-- **Idiomatic code generation** — diagrams follow SelDiA conventions (kebab-case IDs, descriptive labels, consistent styling)
-- **Markdown integration awareness** — Copilot knows to wrap SelDiA code in ` ```seldia ` fenced blocks in `.md` files
-
-##### 5.8.11.2 Skill Format
-
-The skill is packaged as a `SKILL.md` file following the [Copilot Agent Skills specification](https://code.visualstudio.com/docs/copilot/customization/agent-skills):
-
-```
-packages/vscode-ext/resources/skills/seldia-dsl/
-├── SKILL.md              # Main skill file (~500 lines)
-│   ├── YAML frontmatter  # name, description (keyword-rich for discovery), argument-hint
-│   ├── When to Use       # Trigger conditions and use-case mapping
-│   ├── DSL Syntax        # Complete grammar reference with examples
-│   ├── Diagram Types     # All 21 diagram types with worked examples
-│   ├── Advanced Features # Styling, layout, interactivity hints
-│   └── Conventions       # Naming, best practices, Markdown integration
-```
-
-**Key design attributes of the SKILL.md:**
-
-| Attribute | Value | Rationale |
-|-----------|-------|-----------|
-| `name` | `seldia-dsl` | Must match folder name; lowercase alphanumeric + hyphens |
-| `description` | Keyword-rich, ~800 chars | Triggers: seldia, diagram, flowchart, C4, BPMN, ERD, sequence, etc. |
-| `user-invocable` | `true` | Appears as `/seldia-dsl` slash command in chat |
-| `disable-model-invocation` | `false` | Copilot auto-loads the skill when it detects diagram-related requests |
-| Body length | <5000 tokens | Under the progressive loading threshold for skill instructions |
-
-##### 5.8.11.3 Deployment Mechanism
-
-```
-Extension Activation (extension.ts)
-    │
-    ├── 1. Check if skill is already deployed
-    │       • Read ~/.copilot/skills/seldia-dsl/SKILL.md (user scope)
-    │       • Read .github/skills/seldia-dsl/SKILL.md (workspace scope)
-    │
-    ├── 2. Compare version & content hash
-    │       • Is the deployed skill outdated? (older extension version)
-    │       • Has the user modified it? (hash mismatch)
-    │
-    ├── 3. Decide action based on config
-    │       • First install → prompt user, then deploy
-    │       • Update available → show "Update SelDiA DSL skill?" toast
-    │       • User modified → skip, but show status bar indicator
-    │       • Already up-to-date → no action
-    │
-    └── 4. Deploy (if needed)
-            • Copy SKILL.md from extension bundle to target path(s)
-            • Write manifest (.seldia-skill-manifest.json) for version tracking
-            • Fire seldia:skill:deployed event
-            • Show VS Code notification: "SelDiA DSL skill deployed for Copilot ✓"
-```
-
-##### 5.8.11.4 Deployment Scopes
-
-The skill can be deployed at two scopes, controlled by the `seldia.copilotSkill.scope` setting:
-
-| Scope | Path | Visibility | Use Case |
-|-------|------|------------|----------|
-| **User** | `~/.copilot/skills/seldia-dsl/` | All workspaces (personal) | Individual developers; roams with Settings Sync |
-| **Workspace** | `.github/skills/seldia-dsl/` | This project only (team) | Team-shared conventions; version-controlled in Git |
-
-**Default behavior:**
-1. If a workspace is open → prompt: *"Deploy SelDiA DSL skill to this workspace (team-shared) or your user profile (all workspaces)?"*
-2. If no workspace → deploy to user scope automatically
-3. If both already exist → check versions, offer update if outdated
-
-##### 5.8.11.5 Manifest & Version Tracking
-
-A lightweight manifest file (`.seldia-skill-manifest.json`) is written alongside the deployed SKILL.md:
-
-```json
-{
-  "name": "seldia-dsl",
-  "version": "1.0.0",
-  "deployedBy": "seldia-vscode-ext@1.0.0",
-  "deployedAt": "2025-07-13T10:30:00Z",
-  "scope": "workspace",
-  "skillPath": ".github/skills/seldia-dsl/SKILL.md",
-  "contentHash": "sha256:abc123def456..."
-}
-```
-
-This enables:
-- **Update detection**: Compare extension version vs deployed version
-- **User-modification detection**: Compare content hash; if mismatched, the user has customized the skill and auto-update is skipped
-- **Uninstall tracking**: Clean removal of both SKILL.md and manifest
-
-##### 5.8.11.6 VS Code Integration Points
-
-| Integration | Description |
-|-------------|-------------|
-| **Status Bar** | `SelDiA Skill: Active` / `SelDiA Skill: Update Available` / `SelDiA Skill: Not Deployed` |
-| **Command Palette** | `SelDiA: Deploy Copilot Skill`, `SelDiA: Update Copilot Skill`, `SelDiA: Uninstall Copilot Skill`, `SelDiA: Check Skill Status` |
-| **Notification** | Toast on first activation: *"SelDiA can teach Copilot to write diagrams. Deploy DSL skill?"* [Deploy] [Not Now] |
-| **Settings** | `seldia.copilotSkill.enabled`, `.scope`, `.autoDeploy`, `.promptBeforeDeploy`, `.autoUpdate` |
-| **Walkthrough** | Step in the extension's walkthrough: "Enable Copilot Integration" |
-
-##### 5.8.11.7 User Experience Flow
-
-```seldia
-diagram flowchart "Copilot Skill Deployment UX" {
-    install: [Extension Installed / Activated]
-    prompt: {Prompt: "Teach Copilot\nto write diagrams?"}
-    deploy_ws: [Deploy to Workspace]
-    deploy_user: [Deploy for All Workspaces]
-    not_now: [Not Now]
-    deployed: [Skill Deployed ✅]
-    capabilities: [
-        Copilot can now:
-        • Generate diagrams from NL
-        • Suggest diagram types
-        • Complete DSL code inline
-        • Explain & refactor diagrams
-        • Convert between types
-    ]
-
-    install --> prompt
-    prompt --> deploy_ws: "Workspace"
-    prompt --> deploy_user: "User-wide"
-    prompt --> not_now: "Dismiss"
-    deploy_ws --> deployed
-    deploy_user --> deployed
-    deployed --> capabilities
-}
-```
-
-##### 5.8.11.8 Design Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **Skill over Instructions** | Skill is on-demand (loaded when relevant); instructions would burn context on every interaction. Skill can be invoked via `/seldia-dsl` slash command. |
-| **Skill over Agent** | No need for context isolation or tool restrictions; a skill provides the same DSL knowledge without the overhead of a custom agent. |
-| **Bundled in extension, not separate download** | Ensures version consistency; skill updates ship with extension updates. Zero user friction. |
-| **Prompt before deploy** | Respects user choice; avoids cluttering `.github/` without consent. Power users can set `autoDeploy: true`. |
-| **Manifest-based version tracking** | Simple JSON file; no dependency on VS Code's global state. Survives extension reinstall. Git-friendly (workspace scope). |
-| **Content hash for modification detection** | Prevents overwriting user customizations. Users can extend the skill with org-specific conventions. |
-| **Both user and workspace scopes** | Matches Copilot's own skill resolution order. Teams can version-control workspace skills; individuals can have personal skills. |
-
-##### 5.8.11.9 File Structure
-
-```
-packages/vscode-ext/
-├── resources/
-│   └── skills/
-│       └── seldia-dsl/
-│           └── SKILL.md                    # The Copilot skill file
-│
-├── src/
-│   └── skill/
-│       ├── index.ts                        # Public API: deploySkill(), checkStatus(), etc.
-│       ├── types.ts                        # SkillDeploymentConfig, SkillManifest, SkillStatus, etc.
-│       ├── provider.ts                     # SkillProvider implementation
-│       ├── deployer.ts                     # File-copy deployment logic
-│       ├── manifest.ts                     # Manifest read/write/compare
-│       └── status-bar.ts                   # Status bar integration
-```
 
 ---
 

@@ -1,9 +1,0 @@
-{
-  "name": "seldia-dsl",
-  "version": "1.0.0",
-  "deployedBy": "seldia-vscode-ext@1.0.0",
-  "deployedAt": "2026-07-23T00:00:00Z",
-  "scope": "workspace",
-  "skillPath": "/home/mkyr/Workspace/SelDiA/.github/skills/seldia-dsl/SKILL.md",
-  "contentHash": "sha256:0134bf6e5b50f3b0e37a91b9eb2de111cd67819f2cd3c86c47c60c4479cc762e"
-}

@@ -33,7 +33,6 @@ Verified against the codebase, not the README:
 - **30 diagram types** in the `DiagramType` enum ([ir/types.ts:15](../packages/core/src/ir/types.ts#L15)) — marketed as "21+" because C4's 4 levels and charts' 5 variants collapse to one each. Genuinely broader than Mermaid (~15) or PlantUML. Native Gitgraph, DMN, Sankey, Form, Wireframe, Cloud have no clean Mermaid equivalent.
 - **Live editing in VS Code's Markdown preview** — drag-to-move, double-click-to-rename, syncing back to source. No competitor does this.
 - **Rough.js hand-drawn rendering** + 5 themes.
-- **A Copilot/agent skill** ([.github/skills/seldia-dsl](../.github/skills/seldia-dsl/SKILL.md)) that teaches an LLM the DSL.
 - Modern TypeScript plugin architecture, synchronous rendering, LSP, PDF export.
 
 ### An honest correction to the prior internal analysis

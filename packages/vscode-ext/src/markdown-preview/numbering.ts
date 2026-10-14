@@ -65,7 +65,7 @@ export function captionFor(n: number, title?: string): string {
 /** Extract a diagram's declared name from its DSL source, e.g.
  *  `diagram flowchart "Payment flow" { … }` → `"Payment flow"`, or the
  *  terser `flowchart "Payment flow" { … }` form (no `diagram` keyword) that
- *  the skill docs also teach for every type, e.g. `er "Shop" { … }`.
+ *  the reference docs also show for every type, e.g. `er "Shop" { … }`.
  *
  *  Mirrors the regex already shipped on the PDF path
  *  (md2pdf/diagram-injector.ts) so both paths agree on what counts as a name;

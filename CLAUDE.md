@@ -3,7 +3,6 @@
 ## Session preferences
 
 - Keep chat responses silent/minimal to save tokens — avoid narration, progress updates, or verbose explanations unless asked.
-- Use `/pairs` skill for code navigation instead of Read/grep — saves 40-60% of lookup tokens.
 - Batch independent Read/Edit/Bash calls together to reduce round-trips.
 - Trust diffs on edits — never ask to verify changes after Edit tool succeeds.
 - Ask for specific line ranges when reading large files, not whole files.
@@ -65,28 +64,6 @@ alias validate='./scripts/validate-examples.sh'
 Monorepo (pnpm): `packages/core/`, `packages/cli/`, `packages/interaction/`, `packages/vscode-ext/`, `packages/web/`, `docs/`.
 
 ## Key Architecture Points
-
-## PAiRS Skill Shortcuts
-
-Use [/pairs skill](/.claude/skills/pairs) for code navigation.
-
-**Common queries for SelDiA:**
-```bash
-# Trace IR contract compliance (G1 rule)
-/pairs find_symbol "IntermediateRepresentation|IRNode" --preview
-
-# Find all renderers (Mermaid, PlantUML, etc.)
-/pairs find_symbol ".*Renderer" --regex
-
-# Check parser lifecycle coverage
-/pairs grep_symbols "parser|engine|renderer|exporter" --regex --preview
-
-# Verify fidelity documentation per-renderer
-/pairs find_symbol "Fidelity|Lossy" --regex
-
-# Trace import fallback behavior
-/pairs find_symbol "import.*fallback|null.*fence" --regex
-```
 
 **Key concepts:
 

@@ -366,21 +366,3 @@ export type {
   PdfMetadata,
 } from './md2pdf/types';
 
-// -----------------------------------------------------------------------------
-// Re-exported from skill/types — Copilot Skill Deployment
-// -----------------------------------------------------------------------------
-
-export type {
-  SkillDeploymentConfig,
-  SkillDeploymentResult,
-  SkillManifest,
-  SkillStatus,
-  SkillProvider,
-  BundledSkill,
-  SkillSettings,
-} from './skill/types';
-
-export {
-  SkillDeploymentScope,
-  SkillEvent,
-} from './skill/types';

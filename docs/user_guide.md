@@ -2109,6 +2109,26 @@ nodeA --> nodeB { layout: { sameRow: true } }
 nodeC { layout: { align: left } }
 ```
 
+### 7.5 Readability
+
+Diagrams are drawn to stay legible without hand-tuning:
+
+- **Clean edges.** The config key `edgeStyle` is `clean` (default) or `sketch`. `clean` draws rounded orthogonal paths; `sketch` keeps the hand-drawn rough lines. Both get a background-colour casing so an edge stays readable over whatever it crosses. A single diagram can override the config with a one-line directive inside the fence, `edges sketch` or `edges clean`, on its own line before or among the statements; it wins over `edgeStyle`. `edges` stays usable as a node id when it is not followed by `sketch` or `clean` on the same line.
+- **Line jumps.** Where a later edge crosses an earlier horizontal one, it hops over with a small arc (clean edges only). Parallel runs that would overlap are nudged apart.
+- **Hover highlight.** In SVG output, hovering an edge or node thickens it and its connections and dims the rest (pure CSS, no script).
+- **Labels on the line.** An edge label sits on a background chip on its own edge, never over an arrowhead, a node or a group title. If it has to move away, a thin dashed leader ties it back to the line.
+- **Shapes sized to their text.** Nodes grow to fit their label, wrapped inside the usable area of the shape (diamond, cylinder, hexagon).
+
+Check a diagram from the terminal:
+
+```bash
+seldia check diagram.sld            # one line per diagram: ok, or problem=count
+seldia check notes.md --json        # every seldia/mermaid/plantuml/spice fence
+seldia check diagram.sld --max 0    # exit 1 if any diagram has more than 0 problems
+```
+
+Counted problems: `crossings`, `edgeOverlaps`, `edgeNodeHits`, `labelOverlaps`, `labelDetached`, `labelOnArrowhead`, `labelEdgeHits`, `groupViolations`, `nodeLabelHits`. `--max` also fails on a diagram that cannot be laid out.
+
 ---
 
 ## 8. Groups & Containers

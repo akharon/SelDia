@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { Command } from 'commander';
-import { createEngine, importMermaid, importPlantUml, importCircuit, exportMermaid, exportPlantUml, exportBpmn, exportSqlDdl, diffDiagrams, BUILTIN_PALETTES } from '@seldia/core';
+import { createEngine, importMermaid, importPlantUml, importCircuit, exportMermaid, fenceToSource, exportPlantUml, exportBpmn, exportSqlDdl, diffDiagrams, measureLayout, BUILTIN_PALETTES } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename, join, relative as pathRelative } from 'path';
 import { scanRepo } from './scan.js';
@@ -367,6 +367,88 @@ program
       for (const err of errors) {
         console.error(`   [${err.severity}] Line ${err.source.startLine}:${err.source.startColumn} — ${err.message}`);
       }
+    }
+  });
+
+// ── check ─────────────────────────────────────────────────────────────────────
+// Readability report: lays out each diagram exactly as it renders and prints the
+// layout-metric defects a reader would notice (see core layout/metrics.ts).
+const CHECK_KEYS = ['crossings', 'edgeOverlaps', 'edgeNodeHits', 'labelOverlaps', 'labelDetached', 'labelOnArrowhead', 'labelEdgeHits', 'groupViolations', 'nodeLabelHits'] as const;
+
+/** Diagram fences of a Markdown file. Same fence rules as scripts/layout-metrics-lib.mjs;
+ *  the language-to-source mapping is core fenceToSource (one source of truth). */
+function extractDiagramFences(text: string): Array<{ index: number; lang: string; code: string }> {
+  const out: Array<{ index: number; lang: string; code: string }> = [];
+  const lines = text.split('\n');
+  let lang: string | null = null, buf: string[] = [], fence = '', idx = 0;
+  for (const line of lines) {
+    if (lang === null) {
+      const m = line.match(/^(\s*)(`{3,}|~{3,})\s*([\w-]*)/);
+      if (m) { fence = m[2]; lang = m[3].toLowerCase(); buf = []; }
+    } else if (line.trim().startsWith(fence) && line.trim().replace(/[`~]/g, '') === '') {
+      if (fenceToSource(lang, '') !== null) out.push({ index: ++idx, lang, code: buf.join('\n') });
+      lang = null;
+    } else buf.push(line);
+  }
+  return out;
+}
+
+async function checkDiagram(engine: ReturnType<typeof createEngine>, lang: string, code: string) {
+  try {
+    const fence = fenceToSource(lang, code);
+    if (!fence) throw new Error(`unsupported fence language: ${lang}`);
+    let ir: any;
+    if (fence.kind === 'mermaid') ir = importMermaid(fence.source).ir;
+    else if (fence.kind === 'plantuml') ir = importPlantUml(fence.source).ir;
+    else {
+      const p: any = engine.parse(fence.source); if (!p.ok) throw new Error('parse failed');
+      const a: any = engine.analyze(p.value); if (!a.ok) throw new Error('analyze failed');
+      const t: any = engine.transform(a.value); if (!t.ok) throw new Error('transform failed');
+      ir = t.value;
+    }
+    if (!ir) throw new Error('import failed');
+    const l: any = await engine.layoutAsync(ir); if (!l.ok) throw new Error('layout failed');
+    const m: any = measureLayout(l.value.diagram);
+    const problems: Record<string, number> = {};
+    let total = 0;
+    for (const k of CHECK_KEYS) if (m[k]) { problems[k] = m[k]; total += m[k]; }
+    return { type: String(ir.type), problems, total };
+  } catch (e: any) {
+    return { type: lang, problems: {} as Record<string, number>, total: 0, error: String(e?.message ?? e) };
+  }
+}
+
+program
+  .command('check')
+  .description('Readability report for a .sld/.seldia file or the diagram fences of a .md file')
+  .argument('<file>', 'Path to .sld, .seldia or .md file')
+  .option('--json', 'Machine-readable output')
+  .option('--max <n>', 'Exit 1 if any diagram has more than n problems (or cannot be measured)', parseFloat)
+  .action(async (file, options) => {
+    const inPath = resolve(process.cwd(), file);
+    if (!existsSync(inPath)) { console.error(`❌ File not found: ${inPath}`); process.exit(1); }
+    const text = readFileSync(inPath, 'utf-8');
+    const ext = extname(inPath).toLowerCase();
+    let fences: Array<{ index: number; lang: string; code: string }>;
+    if (ext === '.md') fences = extractDiagramFences(text);
+    else if (ext === '.sld' || ext === '.seldia') fences = [{ index: 1, lang: 'seldia', code: text }];
+    else { console.error('❌ check accepts .sld, .seldia or .md files'); process.exit(1); }
+
+    const engine = createEngine();
+    const rows = [];
+    for (const f of fences) rows.push({ index: f.index, lang: f.lang, ...(await checkDiagram(engine, f.lang, f.code)) });
+
+    const failing = options.max !== undefined && rows.some((r) => r.error !== undefined || r.total > options.max);
+    if (failing) process.exitCode = 1;
+
+    if (options.json) {
+      console.log(JSON.stringify({ file, max: options.max ?? null, failing, diagrams: rows }, null, 2));
+      return;
+    }
+    for (const r of rows) {
+      const status = r.error ? `error: ${r.error}` : r.total === 0 ? 'ok'
+        : Object.entries(r.problems).map(([k, v]) => `${k}=${v}`).join(' ');
+      console.log(`#${r.index} ${r.type}  ${status}`);
     }
   });
 

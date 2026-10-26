@@ -116,8 +116,25 @@ export const DS = {
    *  meta = edge labels / secondary text. Fixed so nothing looks off-key. */
   fontSize: { title: 15, label: 14, meta: 12, small: 11 },
 
-  /** Stroke widths (px). One set for the whole system. */
-  stroke: { node: 1.75, edge: 1.75, divider: 1 },
+  /** Stroke widths (px). One set for the whole system — the tokens lint
+   *  rejects any emitted stroke-width outside these values. `casing` is the
+   *  extra width of the background under-stroke drawn beneath every edge. */
+  stroke: { hairline: 1, divider: 1, edge: 1.5, node: 1.75, emphasis: 2.5, casing: 3 },
+
+  /** Dash patterns (stroke-dasharray). `edge` = dashed edges, `leader` = label leader lines. */
+  dash: { edge: '6 4', leader: '3 3' },
+
+  /** Arrowhead length as a multiple of the edge stroke width. */
+  arrowScale: 4.5,
+
+  /** Edge label chip: padding around the text, corner radius. */
+  chip: { padX: 6, padY: 3, rx: 3 },
+
+  /** Corner radius for rounded orthogonal edge bends (px). */
+  bendRadius: 6,
+
+  /** Minimum straight stub before the first / after the last bend (px). */
+  portStub: 12,
 
   /** Corner radius for rectangular nodes (px). */
   radius: 7,
@@ -236,6 +253,47 @@ export const CHART_SERIES = [
 
 export function seriesColor(index: number): string {
   return CHART_SERIES[index % CHART_SERIES.length];
+}
+
+// ── readable text on a fill ──────────────────────────────────────────────────
+const hexRgb = (hex: string): [number, number, number] | null => {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) { const t = /^#([0-9a-f]{3})$/i.exec(hex.trim()); if (!t) return null; const [a, b, c] = t[1].split('').map((ch) => parseInt(ch + ch, 16)); return [a, b, c]; }
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const lin = (c: number): number => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const lumOf = ([r, g, b]: [number, number, number]): number => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+/** WCAG 2.x contrast ratio of two #rgb/#rrggbb colours (1..21), or 21 when either is unparseable. */
+export function contrastOf(a: string, b: string): number {
+  const ra = hexRgb(a), rb = hexRgb(b);
+  if (!ra || !rb) return 21;
+  const la = lumOf(ra), lb = lumOf(rb);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+/** Text colour that reads (WCAG >= 4.5) on `fill`. Keeps `preferred` when it
+ *  already clears the bar; otherwise picks whichever of dark text / white has
+ *  the higher contrast. `opacity` blends the fill over white first (a faded
+ *  group lightens what the text actually sits on). Unparseable fills return
+ *  `preferred`. */
+export function readableTextOn(fill: string, preferred?: string, opacity = 1): string {
+  const rgb = hexRgb(fill);
+  if (!rgb) return preferred ?? DS.neutral.text;
+  const eff = rgb.map((c) => Math.round(c * opacity + 255 * (1 - opacity)));
+  const effHex = '#' + eff.map((c) => c.toString(16).padStart(2, '0')).join('');
+  if (preferred && contrastOf(preferred, effHex) >= 4.5) return preferred;
+  const dark = DS.neutral.text, light = '#ffffff', ink = '#0b1220';
+  const cands = [dark, light, ink];
+  for (const c of cands) if (contrastOf(c, effHex) >= 4.5) return c;
+  return cands.reduce((b, c) => (contrastOf(c, effHex) > contrastOf(b, effHex) ? c : b));
+}
+
+/** Mix two hex colours: t=0 gives `a`, t=1 gives `b`. Used to get the effective
+ *  background of a tinted chip so text on it can be checked with readableTextOn. */
+export function blendHex(a: string, b: string, t: number): string {
+  const ra = hexRgb(a), rb = hexRgb(b);
+  if (!ra || !rb) return a;
+  return '#' + ra.map((c, i) => Math.round(c * (1 - t) + rb[i] * t).toString(16).padStart(2, '0')).join('');
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

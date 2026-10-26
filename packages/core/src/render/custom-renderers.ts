@@ -15,11 +15,13 @@
 import type { IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { Point } from '../types/common.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './rough.js';
-import { DS, typeSwatch, roleSwatch, seriesColor, type Swatch } from './design-system.js';
+import { arrowheadSvg } from './edge-layer.js';
+import { DS, typeSwatch, roleSwatch, seriesColor, readableTextOn, blendHex, type Swatch } from './design-system.js';
+import { chipRect } from './edge-label-placement.js';
 import { ganttDayLabel } from './custom-layout.js';
 import { FontWeight, FontStyle, type GroupStyle } from '../types/style.js';
 import { escapeXml as esc } from './escape.js';
-import { iconLabelLayout, C4_DB_RY, C4_DB_LABEL_Y } from './node-label-geometry.js';
+import { iconLabelLayout, balancedWrap, C4_DB_RY, C4_DB_LABEL_Y, C4_LABEL_PAD, C4_LABEL_LH } from './node-label-geometry.js';
 
 function splitLabelLines(label: string): string[] {
   return (label || '').replace(/\\n/g, '\n').split('\n');
@@ -56,11 +58,11 @@ export function renderSequenceParticipant(node: IRNode, pad: number, sketchy: bo
   // Dashed lifeline dropping from the header's bottom edge to the last message.
   const bottom = (node.data as any)?.lifelineBottom as number | undefined;
   if (bottom !== undefined) {
-    const lifeStyle = { stroke: swatch.stroke, strokeWidth: 1.25, seed };
+    const lifeStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.edge, seed };
     if (sketchy) {
       el += roughLine(cx, y + h, cx, bottom + pad, lifeStyle);
     } else {
-      el += `    <line x1="${cx}" y1="${y + h}" x2="${cx}" y2="${bottom + pad}" stroke="${swatch.stroke}" stroke-width="1.25" stroke-dasharray="5,4"/>\n`;
+      el += `    <line x1="${cx}" y1="${y + h}" x2="${cx}" y2="${bottom + pad}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}" stroke-dasharray="5,4"/>\n`;
     }
   }
   return el;
@@ -76,27 +78,28 @@ export function renderSequenceMessage(edge: IREdge, pad: number, sketchy: boolea
   if (sketchy) {
     const seed = seedFor(edge.id);
     for (let i = 0; i < pts.length - 1; i++) {
-      el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke, strokeWidth: 1.75, roughness: DS.roughness * 0.7, seed: seed + i });
+      el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke, strokeWidth: DS.stroke.node, roughness: DS.roughness * 0.7, seed: seed + i });
     }
   } else {
     const d = pts.map((p) => `${p.x},${p.y}`).join(' ');
-    const dashAttr = dashed ? ' stroke-dasharray="6,4"' : '';
-    el += `    <polyline points="${d}" fill="none" stroke="${stroke}" stroke-width="1.75"${dashAttr}/>\n`;
+    const dashAttr = dashed ? ` stroke-dasharray="${DS.dash.edge}"` : '';
+    el += `    <polyline points="${d}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"${dashAttr}/>\n`;
   }
   // Filled arrowhead at the final point.
-  const last = pts[pts.length - 1], prev = pts[pts.length - 2];
-  const dx = last.x - prev.x, dy = last.y - prev.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const nx = dx / len, ny = dy / len;
-  const asz = 9;
-  const p1x = last.x - asz * (nx * 0.8 - ny * 0.5), p1y = last.y - asz * (ny * 0.8 + nx * 0.5);
-  const p2x = last.x - asz * (nx * 0.8 + ny * 0.5), p2y = last.y - asz * (ny * 0.8 - nx * 0.5);
-  el += `    <polygon points="${p1x},${p1y} ${p2x},${p2y} ${last.x},${last.y}" fill="${stroke}"/>\n`;
+  el += arrowheadSvg('flow', wps[wps.length - 2], wps[wps.length - 1], pad, stroke, DS.stroke.edge);
 
-  if (edge.label) {
+  if (edge.label && (edge.data as any)?.sequenceSelf) {
+    // Self-message: label sits right of the loop, vertically centred on it.
+    const lx = Math.max(...pts.map((p) => p.x)) + 8;
+    const ly = (pts[0].y + pts[pts.length - 1].y) / 2;
+    const chipW = Math.max(30, edge.label.length * 6.5 + 12);
+    el += `    <rect x="${lx - 4}" y="${ly - 9}" width="${chipW}" height="18" rx="${DS.chip.rx}" fill="${DS.neutral.surface}" fill-opacity="0.95" stroke="${accent.stroke}" stroke-opacity="0.3" stroke-width="${DS.stroke.hairline}"/>\n`;
+    el += `    <text x="${lx + 2}" y="${ly + 4}" text-anchor="start" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
+  } else if (edge.label) {
     const midx = (pts[0].x + pts[pts.length - 1].x) / 2;
     const midy = pts[0].y - 8;
     const chipW = Math.max(30, edge.label.length * 6.5 + 12);
-    el += `    <rect x="${midx - chipW / 2}" y="${midy - 15}" width="${chipW}" height="18" rx="4" fill="${DS.neutral.surface}" fill-opacity="0.95" stroke="${accent.stroke}" stroke-opacity="0.3" stroke-width="1"/>\n`;
+    el += `    <rect x="${midx - chipW / 2}" y="${midy - 15}" width="${chipW}" height="18" rx="${DS.chip.rx}" fill="${DS.neutral.surface}" fill-opacity="0.95" stroke="${accent.stroke}" stroke-opacity="0.3" stroke-width="${DS.stroke.hairline}"/>\n`;
     el += `    <text x="${midx}" y="${midy - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
   }
   return el;
@@ -117,15 +120,15 @@ export function renderSequenceFragment(
   let el = '';
   // Frame — a faint fill keeps nested fragments legible against each other.
   if (sketchy) {
-    el += roughRect(x, y, w, h, { stroke, strokeWidth: 1.25, fill: DS.neutral.surface, fillStyle: 'solid', roughness: DS.roughness * 0.6, seed });
+    el += roughRect(x, y, w, h, { stroke, strokeWidth: DS.stroke.edge, fill: DS.neutral.surface, fillStyle: 'solid', roughness: DS.roughness * 0.6, seed });
   } else {
-    el += `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${DS.neutral.surface}" fill-opacity="0.35" stroke="${stroke}" stroke-width="1.25"/>\n`;
+    el += `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.chip.rx}" fill="${DS.neutral.surface}" fill-opacity="0.35" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
   }
   // Title tab: operator keyword in a notched box, guard beside it.
   const kw = box.keyword.toUpperCase();
   const tabW = Math.max(40, kw.length * 8 + 16);
   const tabH = 20;
-  el += `    <path d="M ${x} ${y} h ${tabW} l -8 ${tabH} h ${-(tabW - 8)} Z" fill="${DS.neutral.surface}" stroke="${stroke}" stroke-width="1.25"/>\n`;
+  el += `    <path d="M ${x} ${y} h ${tabW} l -8 ${tabH} h ${-(tabW - 8)} Z" fill="${DS.neutral.surface}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
   el += `    <text x="${x + 8}" y="${y + 14}" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="700">${esc(kw)}</text>\n`;
   if (box.label) {
     el += `    <text x="${x + tabW + 6}" y="${y + 14}" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">[${esc(box.label)}]</text>\n`;
@@ -133,7 +136,7 @@ export function renderSequenceFragment(
   // else/critical section dividers: a dashed line across the box + the guard.
   for (const d of box.dividers ?? []) {
     const dy = d.y + pad;
-    el += `    <line x1="${x}" y1="${dy}" x2="${x + w}" y2="${dy}" stroke="${stroke}" stroke-width="1" stroke-dasharray="5,4"/>\n`;
+    el += `    <line x1="${x}" y1="${dy}" x2="${x + w}" y2="${dy}" stroke="${stroke}" stroke-width="${DS.stroke.hairline}" stroke-dasharray="5,4"/>\n`;
     if (d.label) {
       el += `    <text x="${x + 8}" y="${dy + 13}" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">[${esc(d.label)}]</text>\n`;
     }
@@ -152,10 +155,10 @@ export function renderStateNode(node: IRNode, pad: number, sketchy: boolean, swa
   const seed = seedFor(node.id);
   if (isStart) {
     const r = 12;
-    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: 2, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
     return sketchy
       ? roughEllipse(cx, cy, r * 2, r * 2, style)
-      : `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${swatch.stroke}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      : `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${swatch.stroke}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   }
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = sketchy
@@ -174,9 +177,9 @@ export function renderStateFinalNode(node: IRNode, pad: number, sketchy: boolean
   const cx = x + w / 2, cy = y + h / 2;
   const rOuter = 13, rInner = 7;
   const seed = seedFor(node.id);
-  const ring: RoughStyle = { stroke: swatch.stroke, strokeWidth: 2, fill: 'none', roughness: DS.roughness, seed };
+  const ring: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: 'none', roughness: DS.roughness, seed };
   const dot: RoughStyle = { stroke: swatch.stroke, strokeWidth: 0, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed: seed + 1 };
-  let el = sketchy ? roughEllipse(cx, cy, rOuter * 2, rOuter * 2, ring) : `    <circle cx="${cx}" cy="${cy}" r="${rOuter}" fill="none" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+  let el = sketchy ? roughEllipse(cx, cy, rOuter * 2, rOuter * 2, ring) : `    <circle cx="${cx}" cy="${cy}" r="${rOuter}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   el += sketchy ? roughEllipse(cx, cy, rInner * 2, rInner * 2, dot) : `    <circle cx="${cx}" cy="${cy}" r="${rInner}" fill="${swatch.stroke}"/>\n`;
   return el;
 }
@@ -227,7 +230,7 @@ export function renderErEntity(node: IRNode, pad: number, sketchy: boolean, swat
   // Attribute rows.
   rows.forEach((attr, i) => {
     const ry = y + headerH + i * rowH;
-    if (i > 0) el += `    <line x1="${x}" y1="${ry}" x2="${x + w}" y2="${ry}" stroke="${DS.neutral.stroke}" stroke-width="0.75" stroke-opacity="0.5"/>\n`;
+    if (i > 0) el += `    <line x1="${x}" y1="${ry}" x2="${x + w}" y2="${ry}" stroke="${DS.neutral.stroke}" stroke-width="${DS.stroke.hairline}" stroke-opacity="0.5"/>\n`;
     const isKey = /\bPK\b|\bid\b/i.test(attr.split(/\s+/)[0] || '');
     el += `    <text x="${x + 12}" y="${ry + rowH / 2 + DS.fontSize.meta * 0.35}" text-anchor="start" fill="${DS.neutral.text}" font-size="${DS.fontSize.meta}" font-family="${DS.monoFamily}" font-weight="${isKey ? '700' : '400'}">${esc(attr)}</text>\n`;
   });
@@ -256,10 +259,10 @@ export function renderErRelationship(
   if (sketchy) {
     const seed = seedFor(edge.id);
     for (let i = 0; i < pts.length - 1; i++) {
-      el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke, strokeWidth: 1.5, roughness: DS.roughness * 0.6, seed: seed + i });
+      el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke, strokeWidth: DS.stroke.edge, roughness: DS.roughness * 0.6, seed: seed + i });
     }
   } else {
-    el += `    <polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="1.5"/>\n`;
+    el += `    <polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
   }
   // `A --> B` reads "one A relates to many B" — the crow's foot belongs on the
   // TARGET. These were swapped, which stated the opposite cardinality.
@@ -282,7 +285,7 @@ export function renderErRelationship(
     }
     // Chip behind the label so the relationship line doesn't strike through it.
     const chipW = Math.max(24, edge.label.length * 6.5 + 12);
-    el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="4" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${stroke}" stroke-opacity="0.35" stroke-width="1"/>\n`;
+    el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="${DS.chip.rx}" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${stroke}" stroke-opacity="0.35" stroke-width="${DS.stroke.hairline}"/>\n`;
     el += `    <text x="${lx}" y="${ly - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
   }
   return el;
@@ -295,13 +298,13 @@ function crowsFoot(at: Point, towards: Point, stroke: string, kind: 'one' | 'man
   const size = 12;
   if (kind === 'one') {
     const bx = at.x + nx * 6, by = at.y + ny * 6;
-    return `    <line x1="${bx - perpx * 6}" y1="${by - perpy * 6}" x2="${bx + perpx * 6}" y2="${by + perpy * 6}" stroke="${stroke}" stroke-width="1.5"/>\n`;
+    return `    <line x1="${bx - perpx * 6}" y1="${by - perpy * 6}" x2="${bx + perpx * 6}" y2="${by + perpy * 6}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
   }
   const tipx = at.x, tipy = at.y;
   const bx = at.x + nx * size, by = at.y + ny * size;
   const l1x = bx - perpx * 7, l1y = by - perpy * 7;
   const l2x = bx + perpx * 7, l2y = by + perpy * 7;
-  return `    <polyline points="${l1x},${l1y} ${tipx},${tipy} ${l2x},${l2y}" fill="none" stroke="${stroke}" stroke-width="1.5"/>\n`;
+  return `    <polyline points="${l1x},${l1y} ${tipx},${tipy} ${l2x},${l2y}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
 }
 
 // -----------------------------------------------------------------------------
@@ -317,16 +320,16 @@ export function renderGanttRow(node: IRNode, pad: number, sketchy: boolean, swat
   el += `    <text x="${20 + pad}" y="${y + h / 2 + DS.fontSize.meta * 0.35}" text-anchor="start" fill="${DS.neutral.text}" font-size="${DS.fontSize.meta}" font-family="${DS.fontFamily}">${esc(node.label)}</text>\n`;
   if (isMilestone) {
     const cx = x + 12, cy = y + h / 2, r = 11;
-    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: 2, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
     el += sketchy
       ? roughPolygon([[cx, cy - r], [cx + r, cy], [cx, cy + r], [cx - r, cy]], style)
-      : `    <polygon points="${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      : `    <polygon points="${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     return el;
   }
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   el += sketchy
     ? roughRect(x, y + 4, w, h - 8, style)
-    : `    <rect x="${x}" y="${y + 4}" width="${w}" height="${h - 8}" rx="5" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    : `    <rect x="${x}" y="${y + 4}" width="${w}" height="${h - 8}" rx="${DS.radius}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   const days = (node.data as any)?.ganttDuration as number | undefined;
   // Fit test against the actual chip text ("8d", "10d"), not a flat 34px:
   // a 4-day bar is ~32px and easily holds "4d", so the old constant hid the
@@ -359,7 +362,7 @@ export function renderGanttAxis(nodes: IRNode[], pad: number, bounds: { width: n
   const chartRight = bounds.width - pad - 10;
   for (let px = leftPad; px <= chartRight; px += tickPx) {
     const x = px + pad;
-    el += `    <line x1="${x}" y1="${topPad - 10 + pad}" x2="${x}" y2="${bounds.height - pad}" stroke="${DS.neutral.stroke}" stroke-width="1" stroke-opacity="0.25"/>\n`;
+    el += `    <line x1="${x}" y1="${topPad - 10 + pad}" x2="${x}" y2="${bounds.height - pad}" stroke="${DS.neutral.stroke}" stroke-width="${DS.stroke.hairline}" stroke-opacity="0.25"/>\n`;
     const day = minDay + ((px - leftPad) / dayWidth);
     el += `    <text x="${x}" y="${topPad - 18 + pad}" text-anchor="middle" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${ganttDayLabel(day, unit)}</text>\n`;
   }
@@ -373,18 +376,13 @@ export function renderGanttDependency(edge: IREdge, pad: number, sketchy: boolea
   let el = '';
   if (sketchy) {
     const seed = seedFor(edge.id);
-    for (let i = 0; i < pts.length - 1; i++) el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke, strokeWidth: 1.25, roughness: 0.6, seed: seed + i });
+    for (let i = 0; i < pts.length - 1; i++) el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke, strokeWidth: DS.stroke.edge, roughness: 0.6, seed: seed + i });
   } else {
-    el += `    <polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="1.25" stroke-dasharray="3,3"/>\n`;
+    el += `    <polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}" stroke-dasharray="${DS.dash.edge}"/>\n`;
   }
   // Small filled arrowhead at the successor end — without it a dependency
   // line reads as a stray mark rather than a "finishes before" relationship.
-  const last = pts[pts.length - 1], prev = pts[pts.length - 2];
-  const dx = last.x - prev.x, dy = last.y - prev.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const nx = dx / len, ny = dy / len, asz = 7;
-  const p1x = last.x - asz * (nx * 0.8 - ny * 0.5), p1y = last.y - asz * (ny * 0.8 + nx * 0.5);
-  const p2x = last.x - asz * (nx * 0.8 + ny * 0.5), p2y = last.y - asz * (ny * 0.8 - nx * 0.5);
-  el += `    <polygon points="${p1x},${p1y} ${p2x},${p2y} ${last.x},${last.y}" fill="${stroke}"/>\n`;
+  el += arrowheadSvg('flow', wps[wps.length - 2], wps[wps.length - 1], pad, stroke, DS.stroke.edge);
   return el;
 }
 
@@ -402,16 +400,17 @@ export function renderMindmapNode(node: IRNode, pad: number, sketchy: boolean, s
   // so each main branch is visually distinct while its sub-branches keep
   // the same hue (just lighter with depth).
   const fill = isRoot ? swatch.stroke : branchColor;
-  const textColor = isRoot ? '#ffffff' : swatch.text;
-  const strokeW = isRoot ? 2.25 : Math.max(1, DS.stroke.node - (depth - 1) * 0.25);
-  const fontSize = Math.max(10, DS.fontSize.label - (depth - 1) * 1.5);
+  const textColor = readableTextOn(fill, isRoot ? '#ffffff' : swatch.text, groupOpacity);
+  const strokeW = isRoot ? DS.stroke.emphasis : [DS.stroke.node, DS.stroke.node, DS.stroke.edge, DS.stroke.hairline][Math.min(3, Math.max(0, depth - 1))] ?? DS.stroke.hairline;
+  const fontSize = isRoot ? DS.fontSize.title : [DS.fontSize.label, DS.fontSize.label, DS.fontSize.meta, DS.fontSize.small][Math.min(3, Math.max(0, depth - 1))];
   const style: RoughStyle = { stroke: branchColor, strokeWidth: strokeW, fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = `    <g opacity="${groupOpacity}">\n`;
   el += sketchy
     ? roughRect(x, y, w, h, style)
     : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${fill}" stroke="${branchColor}" stroke-width="${strokeW}"/>\n`;
-  el += textBlock(cx, cy + fontSize * 0.35, Math.round(fontSize * 1.3), fontSize, DS.fontFamily, textColor, node.label, 'middle', isRoot ? '700' : depth <= 1 ? '600' : '500');
   el += '    </g>\n';
+  // The label stays outside the faded group so its contrast is the computed one.
+  el += textBlock(cx, cy + fontSize * 0.35, Math.round(fontSize * 1.3), fontSize, DS.fontFamily, textColor, node.label, 'middle', isRoot ? '700' : depth <= 1 ? '600' : '500');
   return el;
 }
 
@@ -426,10 +425,10 @@ export function renderMindmapBranch(edge: IREdge, pad: number, sketchy: boolean,
   if (sketchy) {
     const seed = seedFor(edge.id);
     const mx = (a.x + b.x) / 2;
-    return roughLine(a.x, a.y, mx, a.y, { stroke: branchColor, strokeWidth: 2, roughness: 1.1, seed })
-      + roughLine(mx, cpy, b.x, b.y, { stroke: branchColor, strokeWidth: 2, roughness: 1.1, seed: seed + 1 });
+    return roughLine(a.x, a.y, mx, a.y, { stroke: branchColor, strokeWidth: DS.stroke.node, roughness: 1.1, seed })
+      + roughLine(mx, cpy, b.x, b.y, { stroke: branchColor, strokeWidth: DS.stroke.node, roughness: 1.1, seed: seed + 1 });
   }
-  return `    <path d="M ${a.x} ${a.y} Q ${cpx} ${cpy} ${b.x} ${b.y}" fill="none" stroke="${branchColor}" stroke-width="2"/>\n`;
+  return `    <path d="M ${a.x} ${a.y} Q ${cpx} ${cpy} ${b.x} ${b.y}" fill="none" stroke="${branchColor}" stroke-width="${DS.stroke.node}"/>\n`;
 }
 
 // -----------------------------------------------------------------------------
@@ -440,7 +439,7 @@ export function renderSankeyNode(node: IRNode, pad: number, sketchy: boolean, sw
   const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
   const seed = seedFor(node.id);
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
-  let el = sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+  let el = sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.chip.rx}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   el += textBlock(x + w / 2, y - 8, 0, DS.fontSize.meta, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
   return el;
 }
@@ -449,19 +448,33 @@ export function renderSankeyNode(node: IRNode, pad: number, sketchy: boolean, sw
  *  proportional to the edge's parsed weight, connecting the source's right
  *  edge to the target's left edge with a smooth S-curve. */
 export function renderSankeyRibbon(edge: IREdge, pad: number, srcNode: IRNode, tgtNode: IRNode, weight: number, maxWeight: number, accentFill: string): string {
-  const thickness = Math.max(6, (weight / maxWeight) * 60);
-  const x1 = srcNode.position.x + srcNode.size.width + pad, y1 = srcNode.position.y + srcNode.size.height / 2 + pad;
-  const x2 = tgtNode.position.x + pad, y2 = tgtNode.position.y + tgtNode.size.height / 2 + pad;
+  const wp = edge.waypoints!;
+  const thickness = ((edge.data as any)?.sankeyThick as number) ?? Math.max(6, (weight / maxWeight) * 60);
+  const x1 = srcNode.position.x + srcNode.size.width + pad, y1 = wp[0].y + pad;
+  const x2 = tgtNode.position.x + pad, y2 = wp[wp.length - 1].y + pad;
   const midx = (x1 + x2) / 2;
   const half = thickness / 2;
   const d = `M ${x1} ${y1 - half} C ${midx} ${y1 - half}, ${midx} ${y2 - half}, ${x2} ${y2 - half} ` +
     `L ${x2} ${y2 + half} C ${midx} ${y2 + half}, ${midx} ${y1 + half}, ${x1} ${y1 + half} Z`;
-  let el = `    <path d="${d}" fill="${accentFill}" fill-opacity="0.55" stroke="none"/>\n`;
-  if (edge.label) {
-    el += `    <text x="${midx}" y="${(y1 + y2) / 2 - half - 4}" text-anchor="middle" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
-  }
+  const titleEl = edge.label ? `<title>${esc(`${srcNode.label} → ${tgtNode.label}: ${edge.label}`)}</title>` : '';
+  let el = `    <path d="${d}" fill="${accentFill}" fill-opacity="0.55" stroke="none">${titleEl}</path>\n`;
   return el;
 }
+
+/** The value chip of a ribbon. Drawn after every ribbon and node so no later
+ *  band can paint over it. */
+export function renderSankeyChip(edge: IREdge, pad: number, srcNode: IRNode, tgtNode: IRNode): string {
+  const ed = (edge.data || {}) as any;
+  if (!edge.label || ed.sankeyLabelHidden || !edge.waypoints?.length) return '';
+  const wp = edge.waypoints;
+  const x1 = srcNode.position.x + srcNode.size.width + pad, x2 = tgtNode.position.x + pad;
+  const midx = (x1 + x2) / 2;
+  const ly = typeof ed.sankeyLabelY === 'number' ? ed.sankeyLabelY + pad : (wp[0].y + wp[wp.length - 1].y) / 2 + pad - 4;
+  const cr = chipRect(midx, ly - 4, String(edge.label));
+  return `    <rect x="${cr.x}" y="${cr.y}" width="${cr.width}" height="${cr.height}" rx="${DS.chip.rx}" fill="#ffffff" fill-opacity="0.92"/>\n`
+    + `    <text x="${midx}" y="${ly}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
+}
+
 
 // -----------------------------------------------------------------------------
 // C4 — person stick figures, tagged system/container/component boxes,
@@ -485,15 +498,15 @@ export function renderC4Node(node: IRNode, pad: number, sketchy: boolean, swatch
 
   if (kind === 'person') {
     const cyHead = y + 22, r = 16;
-    const style: RoughStyle = { stroke, strokeWidth: 2, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke, strokeWidth: DS.stroke.node, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
     let el = sketchy
       ? roughEllipse(cx, cyHead, r * 2, r * 2, style)
-      : `    <circle cx="${cx}" cy="${cyHead}" r="${r}" fill="${swatch.stroke}" stroke="${stroke}" stroke-width="2"/>\n`;
+      : `    <circle cx="${cx}" cy="${cyHead}" r="${r}" fill="${swatch.stroke}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     const bodyY = cyHead + r + 4, bodyW = w * 0.7, bodyH = h - (bodyY - y) - 28;
-    const bodyStyle: RoughStyle = { stroke, strokeWidth: 2, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed: seed + 1 };
+    const bodyStyle: RoughStyle = { stroke, strokeWidth: DS.stroke.node, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed: seed + 1 };
     el += sketchy
       ? roughRect(cx - bodyW / 2, bodyY, bodyW, bodyH, { ...bodyStyle })
-      : `    <path d="M ${cx - bodyW / 2} ${bodyY + bodyH} Q ${cx - bodyW / 2} ${bodyY} ${cx} ${bodyY} Q ${cx + bodyW / 2} ${bodyY} ${cx + bodyW / 2} ${bodyY + bodyH} Z" fill="${swatch.stroke}" stroke="${stroke}" stroke-width="2"/>\n`;
+      : `    <path d="M ${cx - bodyW / 2} ${bodyY + bodyH} Q ${cx - bodyW / 2} ${bodyY} ${cx} ${bodyY} Q ${cx + bodyW / 2} ${bodyY} ${cx + bodyW / 2} ${bodyY + bodyH} Z" fill="${swatch.stroke}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     el += textBlock(cx, bodyY + bodyH + 16, 15, DS.fontSize.label, DS.fontFamily, textColor, node.label, 'middle', '600');
     el += textBlock(cx, bodyY + bodyH + 32, 12, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, `[${C4_TAG[kind]}]`, 'middle', '400');
     return el;
@@ -511,11 +524,12 @@ export function renderC4Node(node: IRNode, pad: number, sketchy: boolean, swatch
     const dashAttr = isExternal ? ' stroke-dasharray="5,4"' : '';
     el = sketchy
       ? roughRect(x, y, w, h, { ...roughStyle, roughness: isExternal ? DS.roughness * 1.3 : DS.roughness })
-      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${DS.stroke.node}"${dashAttr}/>\n`;
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${fill}" stroke="${stroke}" stroke-width="${DS.stroke.node}"${dashAttr}/>\n`;
   }
   let ty = y + (isDb ? C4_DB_LABEL_Y : 26);
-  el += textBlock(cx, ty, 16, DS.fontSize.label, DS.fontFamily, textColor, node.label, 'middle', '700');
-  ty += 18;
+  const c4Lines = balancedWrap(node.label, w - C4_LABEL_PAD, DS.fontSize.label);
+  el += textBlock(cx, ty, C4_LABEL_LH, DS.fontSize.label, DS.fontFamily, textColor, c4Lines.join('\n'), 'middle', '600');
+  ty += C4_LABEL_LH * c4Lines.length;
   el += textBlock(cx, ty, 12, DS.fontSize.small, DS.fontFamily, isExternal ? DS.neutral.muted : textColor, `[${C4_TAG[kind]}]`, 'middle', '400');
   const desc = (node.description as string | undefined);
   if (desc) {
@@ -537,20 +551,20 @@ function bpmnTaskGlyph(x: number, y: number, kind: string, stroke: string): stri
   const gx = x + 8, gy = y + 8, gw = 16, gh = 14;
   switch (kind) {
     case 'userTask':
-      return `<circle cx="${gx + gw/2}" cy="${gy + 4}" r="3.5" fill="none" stroke="${stroke}" stroke-width="1.25"/>
-      <path d="M ${gx + 2} ${gy + 12} Q ${gx + gw/2} ${gy + 7} ${gx + gw - 2} ${gy + 12}" fill="none" stroke="${stroke}" stroke-width="1.25"/>`;
+      return `<circle cx="${gx + gw/2}" cy="${gy + 4}" r="3.5" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <path d="M ${gx + 2} ${gy + 12} Q ${gx + gw/2} ${gy + 7} ${gx + gw - 2} ${gy + 12}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>`;
     case 'serviceTask':
-      return `<circle cx="${gx + gw/2}" cy="${gy + gh/2}" r="3" fill="none" stroke="${stroke}" stroke-width="1.25"/>
-      <line x1="${gx + gw/2}" y1="${gy + 1}" x2="${gx + gw/2}" y2="${gy + 3}" stroke="${stroke}" stroke-width="1.25"/>
-      <line x1="${gx + gw/2}" y1="${gy + gh - 1}" x2="${gx + gw/2}" y2="${gy + gh - 3}" stroke="${stroke}" stroke-width="1.25"/>
-      <line x1="${gx + 1}" y1="${gy + gh/2}" x2="${gx + 3}" y2="${gy + gh/2}" stroke="${stroke}" stroke-width="1.25"/>
-      <line x1="${gx + gw - 1}" y1="${gy + gh/2}" x2="${gx + gw - 3}" y2="${gy + gh/2}" stroke="${stroke}" stroke-width="1.25"/>`;
+      return `<circle cx="${gx + gw/2}" cy="${gy + gh/2}" r="3" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <line x1="${gx + gw/2}" y1="${gy + 1}" x2="${gx + gw/2}" y2="${gy + 3}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <line x1="${gx + gw/2}" y1="${gy + gh - 1}" x2="${gx + gw/2}" y2="${gy + gh - 3}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <line x1="${gx + 1}" y1="${gy + gh/2}" x2="${gx + 3}" y2="${gy + gh/2}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <line x1="${gx + gw - 1}" y1="${gy + gh/2}" x2="${gx + gw - 3}" y2="${gy + gh/2}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>`;
     case 'scriptTask':
-      return `<rect x="${gx + 2}" y="${gy + 2}" width="${gw - 4}" height="${gh - 4}" rx="1" fill="none" stroke="${stroke}" stroke-width="1"/>
-      <line x1="${gx + 5}" y1="${gy + 5}" x2="${gx + gw - 5}" y2="${gy + 5}" stroke="${stroke}" stroke-width="0.8"/>
-      <line x1="${gx + 5}" y1="${gy + 8}" x2="${gx + gw - 7}" y2="${gy + 8}" stroke="${stroke}" stroke-width="0.8"/>`;
+      return `<rect x="${gx + 2}" y="${gy + 2}" width="${gw - 4}" height="${gh - 4}" rx="1" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.hairline}"/>
+      <line x1="${gx + 5}" y1="${gy + 5}" x2="${gx + gw - 5}" y2="${gy + 5}" stroke="${stroke}" stroke-width="${DS.stroke.hairline}"/>
+      <line x1="${gx + 5}" y1="${gy + 8}" x2="${gx + gw - 7}" y2="${gy + 8}" stroke="${stroke}" stroke-width="${DS.stroke.hairline}"/>`;
     default:
-      return `<rect x="${gx + 4}" y="${gy + 4}" width="${gw - 8}" height="${gh - 8}" rx="1" fill="none" stroke="${stroke}" stroke-width="1"/>`;
+      return `<rect x="${gx + 4}" y="${gy + 4}" width="${gw - 8}" height="${gh - 8}" rx="1" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.hairline}"/>`;
   }
 }
 
@@ -558,13 +572,13 @@ function bpmnGatewayMarker(cx: number, cy: number, kind: string, stroke: string,
   const m = r * 0.22;
   switch (kind) {
     case 'parallelGateway':
-      return `<line x1="${cx - m}" y1="${cy}" x2="${cx + m}" y2="${cy}" stroke="${stroke}" stroke-width="2.5"/>
-      <line x1="${cx}" y1="${cy - m}" x2="${cx}" y2="${cy + m}" stroke="${stroke}" stroke-width="2.5"/>`;
+      return `<line x1="${cx - m}" y1="${cy}" x2="${cx + m}" y2="${cy}" stroke="${stroke}" stroke-width="${DS.stroke.emphasis}"/>
+      <line x1="${cx}" y1="${cy - m}" x2="${cx}" y2="${cy + m}" stroke="${stroke}" stroke-width="${DS.stroke.emphasis}"/>`;
     case 'inclusiveGateway':
-      return `<circle cx="${cx}" cy="${cy}" r="${m * 0.7}" fill="none" stroke="${stroke}" stroke-width="2.5"/>`;
+      return `<circle cx="${cx}" cy="${cy}" r="${m * 0.7}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.emphasis}"/>`;
     default:
-      return `<line x1="${cx - m}" y1="${cy - m}" x2="${cx + m}" y2="${cy + m}" stroke="${stroke}" stroke-width="2.5"/>
-      <line x1="${cx + m}" y1="${cy - m}" x2="${cx - m}" y2="${cy + m}" stroke="${stroke}" stroke-width="2.5"/>`;
+      return `<line x1="${cx - m}" y1="${cy - m}" x2="${cx + m}" y2="${cy + m}" stroke="${stroke}" stroke-width="${DS.stroke.emphasis}"/>
+      <line x1="${cx + m}" y1="${cy - m}" x2="${cx - m}" y2="${cy + m}" stroke="${stroke}" stroke-width="${DS.stroke.emphasis}"/>`;
   }
 }
 
@@ -572,12 +586,12 @@ function bpmnEventGlyph(cx: number, cy: number, r: number, kind: string, stroke:
   const s = r * 0.45;
   switch (kind) {
     case 'messageEvent':
-      return `<rect x="${cx - s}" y="${cy - s * 0.65}" width="${s * 2}" height="${s * 1.3}" rx="1.5" fill="none" stroke="${stroke}" stroke-width="1.25"/>
-      <path d="M ${cx - s} ${cy - s * 0.65} L ${cx} ${cy + s * 0.15} L ${cx + s} ${cy - s * 0.65}" fill="none" stroke="${stroke}" stroke-width="1.25"/>`;
+      return `<rect x="${cx - s}" y="${cy - s * 0.65}" width="${s * 2}" height="${s * 1.3}" rx="1.5" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <path d="M ${cx - s} ${cy - s * 0.65} L ${cx} ${cy + s * 0.15} L ${cx + s} ${cy - s * 0.65}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>`;
     case 'timerEvent':
-      return `<circle cx="${cx}" cy="${cy}" r="${s}" fill="none" stroke="${stroke}" stroke-width="1.25"/>
-      <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - s * 0.6}" stroke="${stroke}" stroke-width="1.25"/>
-      <line x1="${cx}" y1="${cy}" x2="${cx + s * 0.5}" y2="${cy}" stroke="${stroke}" stroke-width="1.25"/>`;
+      return `<circle cx="${cx}" cy="${cy}" r="${s}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - s * 0.6}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>
+      <line x1="${cx}" y1="${cy}" x2="${cx + s * 0.5}" y2="${cy}" stroke="${stroke}" stroke-width="${DS.stroke.edge}"/>`;
     case 'errorEvent':
       return `<polygon points="${cx - s * 0.3},${cy - s * 0.9} ${cx + s * 0.15},${cy - s * 0.1} ${cx + s * 0.1},${cy - s * 0.1} ${cx + s * 0.4},${cy + s * 0.9} ${cx - s * 0.05},${cy + s * 0.1} ${cx - s * 0.2},${cy + s * 0.1}" fill="${stroke}" stroke="none"/>`;
     case 'terminateEvent':
@@ -595,16 +609,16 @@ export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swat
 
   // ── Pool ──
   if (kind === 'pool') {
-    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: 2, fill: DS.neutral.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: DS.neutral.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
     let el = sketchy ? roughRect(x, y, w, h, style)
-      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="${DS.neutral.fill}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${DS.neutral.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     el += `    <text x="${x + 16}" y="${cy}" text-anchor="middle" fill="${swatch.stroke}" font-size="${DS.fontSize.meta}" font-family="${DS.fontFamily}" font-weight="700" transform="rotate(-90, ${x + 16}, ${cy})">${esc(node.label)}</text>\n`;
     const lanes = (node.data as any)?.lanes as string[] | undefined;
     if (lanes && lanes.length > 1) {
       const laneH = h / lanes.length;
       for (let i = 1; i < lanes.length; i++) {
         const ly = y + i * laneH;
-        el += `    <line x1="${x + 36}" y1="${ly}" x2="${x + w}" y2="${ly}" stroke="${swatch.stroke}" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>\n`;
+        el += `    <line x1="${x + 36}" y1="${ly}" x2="${x + w}" y2="${ly}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}" stroke-dasharray="4,3" opacity="0.5"/>\n`;
         el += `    <text x="${x + 44}" y="${ly - 4}" text-anchor="start" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(lanes[i - 1])}</text>\n`;
       }
     }
@@ -613,9 +627,9 @@ export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swat
 
   // ── Lane ──
   if (kind === 'lane') {
-    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: 1, fill: 'none', roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.hairline, fill: 'none', roughness: DS.roughness, fillStyle: 'solid', seed };
     let el = sketchy ? roughRect(x, y, w, h, style)
-      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${swatch.stroke}" stroke-width="1" stroke-dasharray="6,4"/>\n`;
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}" stroke-dasharray="6,4"/>\n`;
     el += `    <text x="${x + 8}" y="${y + 16}" text-anchor="start" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="600">${esc(node.label)}</text>\n`;
     return el;
   }
@@ -646,7 +660,7 @@ export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swat
       : `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="${ringWidth}"/>\n`;
     if (kind === 'intermediateEvent') {
       el += sketchy ? roughEllipse(cx, cy, r * 2 - 10, r * 2 - 10, { ...style, fill: 'none' })
-        : `    <circle cx="${cx}" cy="${cy}" r="${r - 5}" fill="none" stroke="${role.stroke}" stroke-width="1.5"/>\n`;
+        : `    <circle cx="${cx}" cy="${cy}" r="${r - 5}" fill="none" stroke="${role.stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
     }
     el += bpmnEventGlyph(cx, cy, r, subKind, role.stroke);
     el += iconLabel(node, pad, DS.neutral.text, '500');
@@ -656,9 +670,9 @@ export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swat
   // ── Gateway ──
   if (kind === 'gateway') {
     const role = roleSwatch('decision');
-    const style: RoughStyle = { stroke: role.stroke, strokeWidth: 2, fill: role.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke: role.stroke, strokeWidth: DS.stroke.node, fill: role.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
     let el = sketchy ? roughPolygon([[cx, y], [x + w, cy], [cx, y + h], [x, cy]], style)
-      : `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="2"/>\n`;
+      : `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     el += bpmnGatewayMarker(cx, cy, subKind || 'exclusiveGateway', role.stroke, Math.min(w, h) / 2);
     el += iconLabel(node, pad, DS.neutral.text, '500');
     return el;
@@ -669,7 +683,7 @@ export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swat
   let el = sketchy ? roughRect(x, y, w, h, style)
     : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   el += bpmnTaskGlyph(x, y, subKind || 'abstractTask', swatch.stroke);
-  el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '500');
+  el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
   return el;
 }
 
@@ -773,22 +787,22 @@ export function renderUsecaseNode(node: IRNode, pad: number, sketchy: boolean, s
   if (kind === 'actor') {
     const role = roleSwatch('external');
     const r = 14, headCy = y + r + 4;
-    const style: RoughStyle = { stroke: role.stroke, strokeWidth: 2, fill: 'none', roughness: DS.roughness, seed };
+    const style: RoughStyle = { stroke: role.stroke, strokeWidth: DS.stroke.node, fill: 'none', roughness: DS.roughness, seed };
     let el = sketchy
       ? roughEllipse(cx, headCy, r * 2, r * 2, style)
-      : `    <circle cx="${cx}" cy="${headCy}" r="${r}" fill="none" stroke="${role.stroke}" stroke-width="2"/>\n`;
+      : `    <circle cx="${cx}" cy="${headCy}" r="${r}" fill="none" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     const neckY = headCy + r, armY = neckY + 18, torsoY = neckY + 34, legY = y + h - 20;
-    const lineStyle: Omit<RoughStyle, 'fill'> = { stroke: role.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 1 };
+    const lineStyle: Omit<RoughStyle, 'fill'> = { stroke: role.stroke, strokeWidth: DS.stroke.node, roughness: DS.roughness, seed: seed + 1 };
     if (sketchy) {
       el += roughLine(cx, neckY, cx, torsoY, lineStyle);
       el += roughLine(cx - w * 0.32, armY, cx + w * 0.32, armY, lineStyle);
       el += roughLine(cx, torsoY, cx - w * 0.28, legY, lineStyle);
       el += roughLine(cx, torsoY, cx + w * 0.28, legY, lineStyle);
     } else {
-      el += `    <line x1="${cx}" y1="${neckY}" x2="${cx}" y2="${torsoY}" stroke="${role.stroke}" stroke-width="2"/>\n`;
-      el += `    <line x1="${cx - w * 0.32}" y1="${armY}" x2="${cx + w * 0.32}" y2="${armY}" stroke="${role.stroke}" stroke-width="2"/>\n`;
-      el += `    <line x1="${cx}" y1="${torsoY}" x2="${cx - w * 0.28}" y2="${legY}" stroke="${role.stroke}" stroke-width="2"/>\n`;
-      el += `    <line x1="${cx}" y1="${torsoY}" x2="${cx + w * 0.28}" y2="${legY}" stroke="${role.stroke}" stroke-width="2"/>\n`;
+      el += `    <line x1="${cx}" y1="${neckY}" x2="${cx}" y2="${torsoY}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      el += `    <line x1="${cx - w * 0.32}" y1="${armY}" x2="${cx + w * 0.32}" y2="${armY}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      el += `    <line x1="${cx}" y1="${torsoY}" x2="${cx - w * 0.28}" y2="${legY}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      el += `    <line x1="${cx}" y1="${torsoY}" x2="${cx + w * 0.28}" y2="${legY}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     }
     el += textBlock(cx, y + h - 4, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
     return el;
@@ -816,24 +830,24 @@ export function renderActivityNode(node: IRNode, pad: number, sketchy: boolean, 
   if (kind === 'start') {
     const role = roleSwatch('start');
     const r = Math.min(w, h) / 2 - 4;
-    const style: RoughStyle = { stroke: role.stroke, strokeWidth: 2, fill: role.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
-    return sketchy ? roughEllipse(cx, cy, r * 2, r * 2, style) : `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${role.stroke}" stroke="${role.stroke}" stroke-width="2"/>\n`;
+    const style: RoughStyle = { stroke: role.stroke, strokeWidth: DS.stroke.node, fill: role.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
+    return sketchy ? roughEllipse(cx, cy, r * 2, r * 2, style) : `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${role.stroke}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   }
   if (kind === 'end') {
     const role = roleSwatch('stop');
     const rOuter = Math.min(w, h) / 2 - 2, rInner = rOuter - 6;
-    const ring: RoughStyle = { stroke: role.stroke, strokeWidth: 2.5, fill: 'none', roughness: DS.roughness, seed };
+    const ring: RoughStyle = { stroke: role.stroke, strokeWidth: DS.stroke.emphasis, fill: 'none', roughness: DS.roughness, seed };
     const dot: RoughStyle = { stroke: role.stroke, strokeWidth: 0, fill: role.stroke, roughness: DS.roughness, fillStyle: 'solid', seed: seed + 1 };
-    let el = sketchy ? roughEllipse(cx, cy, rOuter * 2, rOuter * 2, ring) : `    <circle cx="${cx}" cy="${cy}" r="${rOuter}" fill="none" stroke="${role.stroke}" stroke-width="2.5"/>\n`;
+    let el = sketchy ? roughEllipse(cx, cy, rOuter * 2, rOuter * 2, ring) : `    <circle cx="${cx}" cy="${cy}" r="${rOuter}" fill="none" stroke="${role.stroke}" stroke-width="${DS.stroke.emphasis}"/>\n`;
     el += sketchy ? roughEllipse(cx, cy, rInner * 2, rInner * 2, dot) : `    <circle cx="${cx}" cy="${cy}" r="${rInner}" fill="${role.stroke}"/>\n`;
     return el;
   }
   if (kind === 'decision') {
     const role = roleSwatch('decision');
-    const style: RoughStyle = { stroke: role.stroke, strokeWidth: 2, fill: role.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke: role.stroke, strokeWidth: DS.stroke.node, fill: role.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
     let el = sketchy
       ? roughPolygon([[cx, y], [x + w, cy], [cx, y + h], [x, cy]], style)
-      : `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="2"/>\n`;
+      : `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     el += textBlock(cx, cy + DS.fontSize.small * 0.35, Math.round(DS.fontSize.small * 1.2), DS.fontSize.small, DS.fontFamily, role.text, label, 'middle', '600');
     return el;
   }
@@ -861,7 +875,8 @@ export function renderDeploymentNode(node: IRNode, pad: number, sketchy: boolean
     let el = sketchy
       ? roughRect(x, y + ry, w, h - ry * 2, style) + roughEllipse(cx, y + ry, w, ry * 2, style) + roughEllipse(cx, y + h - ry, w, ry * 2, style)
       : `    <rect x="${x}" y="${y + ry}" width="${w}" height="${h - ry * 2}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + ry}" rx="${w / 2}" ry="${ry}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + h - ry}" rx="${w / 2}" ry="${ry}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
-    el += textBlock(cx, y + h / 2 + 9, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '600');
+    const dsLines = balancedWrap(node.label, w - 24, DS.fontSize.label);
+    el += textBlock(cx, y + h / 2 + 5 - ((dsLines.length - 1) * 15) / 2, 15, DS.fontSize.label, DS.fontFamily, swatch.text, dsLines.join('\n'), 'middle', '600');
     return el;
   }
   if (kind === 'artifact') {
@@ -873,7 +888,7 @@ export function renderDeploymentNode(node: IRNode, pad: number, sketchy: boolean
     let el = sketchy ? roughPolygon(pts, style) : `    <polygon points="${pts.map((p) => p.join(',')).join(' ')}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     el += `    <polyline points="${x + w - foldSz},${y} ${x + w - foldSz},${y + foldSz} ${x + w},${y + foldSz}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     el += textBlock(x + w / 2, y + h / 2 - 6, 16, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, '«artifact»', 'middle', '400');
-    el += textBlock(x + w / 2, y + h / 2 + 12, 16, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '700');
+    el += textBlock(x + w / 2, y + h / 2 + 12, 16, DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
     return el;
   }
   if (kind === 'device') {
@@ -890,9 +905,9 @@ export function renderDeploymentNode(node: IRNode, pad: number, sketchy: boolean
     el += sketchy ? roughPolygon(sidePts, sideStyle) : `    <polygon points="${sidePts.map((p) => p.join(',')).join(' ')}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}" fill-opacity="0.6"/>\n`;
     el += sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     const screenW = w * 0.34, screenH = h * 0.4, screenX = x + w / 2 - screenW / 2, screenY = y + 10;
-    el += `    <rect x="${screenX}" y="${screenY}" width="${screenW}" height="${screenH}" rx="3" fill="none" stroke="${swatch.stroke}" stroke-width="1.25" opacity="0.7"/>\n`;
+    el += `    <rect x="${screenX}" y="${screenY}" width="${screenW}" height="${screenH}" rx="${DS.chip.rx}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}" opacity="0.7"/>\n`;
     el += textBlock(x + w / 2, y + h / 2 + 14, 16, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, '«device»', 'middle', '400');
-    el += textBlock(x + w / 2, y + h - 8, 16, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '700');
+    el += textBlock(x + w / 2, y + h - 8, 16, DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
     return el;
   }
   if (kind === 'executionEnvironment') {
@@ -902,9 +917,9 @@ export function renderDeploymentNode(node: IRNode, pad: number, sketchy: boolean
     const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: 'none', roughness: DS.roughness, fillStyle: 'solid', seed };
     let el = sketchy
       ? roughRect(x, y, w, h, style)
-      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}" stroke-dasharray="6,4"/>\n`;
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}" stroke-dasharray="6,4"/>\n`;
     el += textBlock(x + w / 2, y + h / 2 - 6, 16, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, '«execution environment»', 'middle', '400');
-    el += textBlock(x + w / 2, y + h / 2 + 12, 16, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '700');
+    el += textBlock(x + w / 2, y + h / 2 + 12, 16, DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
     return el;
   }
   const depth = 14; // isometric offset for the top + side faces
@@ -919,7 +934,7 @@ export function renderDeploymentNode(node: IRNode, pad: number, sketchy: boolean
   el += sketchy ? roughPolygon(sidePts, sideStyle) : `    <polygon points="${sidePts.map((p) => p.join(',')).join(' ')}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}" fill-opacity="0.6"/>\n`;
   el += sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   el += textBlock(x + w / 2, y + h / 2 - 6, 16, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, '«node»', 'middle', '400');
-  el += textBlock(x + w / 2, y + h / 2 + 12, 16, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '700');
+  el += textBlock(x + w / 2, y + h / 2 + 12, 16, DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
   return el;
 }
 
@@ -941,7 +956,8 @@ export function renderComponentNode(node: IRNode, pad: number, sketchy: boolean,
     // Centred on the cylinder's face — the band between the two ellipses. An
     // offset large enough to reach the lower ellipse draws the label straight
     // through its curve, which reads as a strikethrough.
-    el += textBlock(cx, y + h / 2 + 4, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '600');
+    const dsLines = balancedWrap(node.label, w - 24, DS.fontSize.label);
+    el += textBlock(cx, y + h / 2 + 5 - ((dsLines.length - 1) * 15) / 2, 15, DS.fontSize.label, DS.fontFamily, swatch.text, dsLines.join('\n'), 'middle', '600');
     return el;
   }
   if (kind === 'interface') {
@@ -957,7 +973,7 @@ export function renderComponentNode(node: IRNode, pad: number, sketchy: boolean,
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = sketchy
     ? roughRect(x, y, w, h, style)
-    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.chip.rx}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   // Two stub tabs straddling the left edge — the UML component-icon signature.
   const tabW = 20, tabH = 10;
   const tab1Y = y + h * 0.28 - tabH / 2, tab2Y = y + h * 0.68 - tabH / 2;
@@ -968,7 +984,7 @@ export function renderComponentNode(node: IRNode, pad: number, sketchy: boolean,
   });
   const stereotype = kind === 'service' ? '«service»' : '«component»';
   el += textBlock(cx, y + 20, 15, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, stereotype, 'middle', '400');
-  el += textBlock(cx, cy + 10, 15, DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '700');
+  el += textBlock(cx, cy + 10, 15, DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
   return el;
 }
 
@@ -988,20 +1004,20 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
     let el = sketchy ? roughPolygon(pts, style) : `    <polygon points="${pts.map((p) => p.join(',')).join(' ')}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     // Signal-arc glyph — two concentric arcs, evoking a wireless/router icon.
     for (const r of [10, 16]) {
-      el += `    <path d="M ${cx - r} ${cy + r * 0.3} A ${r} ${r} 0 0 1 ${cx + r} ${cy + r * 0.3}" fill="none" stroke="${swatch.stroke}" stroke-width="1.5" opacity="0.7"/>\n`;
+      el += `    <path d="M ${cx - r} ${cy + r * 0.3} A ${r} ${r} 0 0 1 ${cx + r} ${cy + r * 0.3}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}" opacity="0.7"/>\n`;
     }
     el += iconLabel(node, pad, DS.neutral.text, '600');
     return el;
   }
   if (kind === 'switch') {
-    let el = sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    let el = sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.chip.rx}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     // Row of port ticks along the bottom — the switch's visual signature.
     const ports = 6, portGap = w / (ports + 1);
     for (let i = 1; i <= ports; i++) {
       const px = x + portGap * i;
-      el += `    <rect x="${px - 4}" y="${y + h - 12}" width="8" height="8" fill="${DS.neutral.surface}" stroke="${swatch.stroke}" stroke-width="1"/>\n`;
+      el += `    <rect x="${px - 4}" y="${y + h - 12}" width="8" height="8" fill="${DS.neutral.surface}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}"/>\n`;
     }
-    el += textBlock(cx, y + h / 2 - 6, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '600');
+    el += textBlock(cx, y + h / 2 - 6, 15, DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
     return el;
   }
   if (kind === 'firewall') {
@@ -1015,7 +1031,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
       const ry = cy - rows * brickH / 2 + r * brickH;
       const offset = r % 2 === 0 ? 0 : brickW / 2;
       for (let bx = x + 14 - offset; bx < x + w - 10; bx += brickW) {
-        el += `    <rect x="${Math.max(x + 10, bx)}" y="${ry}" width="${brickW - 2}" height="${brickH - 2}" fill="none" stroke="${swatch.stroke}" stroke-width="1" opacity="0.6"/>\n`;
+        el += `    <rect x="${Math.max(x + 10, bx)}" y="${ry}" width="${brickW - 2}" height="${brickH - 2}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}" opacity="0.6"/>\n`;
       }
     }
     el += iconLabel(node, pad, DS.neutral.text, '600');
@@ -1046,11 +1062,11 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
   if (kind === 'loadbalancer') {
     // Rectangle with a fan-out glyph (one line splitting into three) — reads
     // as "distributes traffic" at a glance, unlike a plain box.
-    let el = sketchy ? roughRect(x, y, w, h * 0.62, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h * 0.62}" rx="4" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    let el = sketchy ? roughRect(x, y, w, h * 0.62, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h * 0.62}" rx="${DS.chip.rx}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     const topY = y + 8, forkY = y + h * 0.3, botY = y + h * 0.54;
-    el += `    <line x1="${cx}" y1="${topY}" x2="${cx}" y2="${forkY}" stroke="${swatch.stroke}" stroke-width="1.5"/>\n`;
+    el += `    <line x1="${cx}" y1="${topY}" x2="${cx}" y2="${forkY}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
     for (const fx of [x + w * 0.28, cx, x + w * 0.72]) {
-      el += `    <line x1="${cx}" y1="${forkY}" x2="${fx}" y2="${botY}" stroke="${swatch.stroke}" stroke-width="1.5"/>\n`;
+      el += `    <line x1="${cx}" y1="${forkY}" x2="${fx}" y2="${botY}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
       el += `    <circle cx="${fx}" cy="${botY}" r="3" fill="${swatch.stroke}"/>\n`;
     }
     el += iconLabel(node, pad, DS.neutral.text, '700');
@@ -1066,7 +1082,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
       : `    <rect x="${x}" y="${y + ry}" width="${w}" height="${h - ry * 2}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + ry}" rx="${w / 2}" ry="${ry}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + h - ry}" rx="${w / 2}" ry="${ry}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     if (kind === 'storage') {
       for (const frac of [0.35, 0.55, 0.75]) {
-        el += `    <line x1="${x + 8}" y1="${y + h * frac}" x2="${x + w - 8}" y2="${y + h * frac}" stroke="${swatch.stroke}" stroke-width="1" opacity="0.5"/>\n`;
+        el += `    <line x1="${x + 8}" y1="${y + h * frac}" x2="${x + w - 8}" y2="${y + h * frac}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}" opacity="0.5"/>\n`;
       }
     }
     el += iconLabel(node, pad, DS.neutral.text, '600');
@@ -1078,21 +1094,21 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
     let el = `    <path d="M ${x + w * 0.3} ${y + h * 0.6} Q ${cx} ${y + h * 0.3} ${x + w * 0.7} ${y + h * 0.6} Z" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     el += `    <line x1="${x + w * 0.3}" y1="${y + h * 0.6}" x2="${x + w * 0.7}" y2="${y + h * 0.6}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     for (const r of [8, 14, 20]) {
-      el += `    <path d="M ${cx - r} ${y + h * 0.3 - r * 0.15} A ${r} ${r} 0 0 1 ${cx + r} ${y + h * 0.3 - r * 0.15}" fill="none" stroke="${swatch.stroke}" stroke-width="1.25" opacity="0.6"/>\n`;
+      el += `    <path d="M ${cx - r} ${y + h * 0.3 - r * 0.15} A ${r} ${r} 0 0 1 ${cx + r} ${y + h * 0.3 - r * 0.15}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}" opacity="0.6"/>\n`;
     }
     el += iconLabel(node, pad, DS.neutral.text, '600');
     return el;
   }
   // server / workstation — a monitor-like rectangle on a small stand.
   const screenH = h * 0.68;
-  let el = sketchy ? roughRect(x, y, w, screenH, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${screenH}" rx="3" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+  let el = sketchy ? roughRect(x, y, w, screenH, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${screenH}" rx="${DS.chip.rx}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   const standW = w * 0.3, standX = cx - standW / 2, standY = y + screenH;
   el += `    <rect x="${standX}" y="${standY}" width="${standW}" height="8" fill="${swatch.stroke}"/>\n`;
   el += `    <rect x="${cx - w * 0.22}" y="${standY + 8}" width="${w * 0.44}" height="6" rx="2" fill="${swatch.stroke}"/>\n`;
   if (kind === 'server') {
     // Horizontal rack-unit lines inside the box.
     for (const frac of [0.3, 0.55, 0.8]) {
-      el += `    <line x1="${x + 10}" y1="${y + screenH * frac}" x2="${x + w - 10}" y2="${y + screenH * frac}" stroke="${swatch.stroke}" stroke-width="1" opacity="0.5"/>\n`;
+      el += `    <line x1="${x + 10}" y1="${y + screenH * frac}" x2="${x + w - 10}" y2="${y + screenH * frac}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}" opacity="0.5"/>\n`;
     }
   }
   el += iconLabel(node, pad, DS.neutral.text, '600');
@@ -1113,10 +1129,10 @@ export function renderFormNode(node: IRNode, pad: number, sketchy: boolean, swat
 
   if (isSubmit) {
     const role = roleSwatch('start');
-    const style: RoughStyle = { stroke: role.stroke, strokeWidth: 2, fill: role.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
-    let el = sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${role.stroke}" stroke="${role.stroke}" stroke-width="2"/>\n`;
+    const style: RoughStyle = { stroke: role.stroke, strokeWidth: DS.stroke.node, fill: role.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
+    let el = sketchy ? roughRect(x, y, w, h, style) : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${role.stroke}" stroke="${role.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     const label = field ? field.name : node.label;
-    el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, '#ffffff', label, 'middle', '700');
+    el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, readableTextOn(role.stroke, '#ffffff'), label, 'middle', '600');
     return el;
   }
 
@@ -1133,7 +1149,7 @@ export function renderFormNode(node: IRNode, pad: number, sketchy: boolean, swat
     const oy = y + h - 18;
     for (const opt of opts) {
       const pw = Math.max(28, opt.length * 6.5 + 14);
-      el += `    <rect x="${ox}" y="${oy - 12}" width="${pw}" height="20" rx="10" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="1"/>\n`;
+      el += `    <rect x="${ox}" y="${oy - 12}" width="${pw}" height="20" rx="10" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}"/>\n`;
       el += `    <text x="${ox + pw / 2}" y="${oy + 2}" text-anchor="middle" fill="${swatch.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(opt)}</text>\n`;
       ox += pw + 6;
     }
@@ -1141,7 +1157,7 @@ export function renderFormNode(node: IRNode, pad: number, sketchy: boolean, swat
     el += `    <rect x="${x + 14}" y="${y + h - 26}" width="${Math.max(48, field.type.length * 7 + 16)}" height="18" rx="9" fill="${swatch.fill}"/>\n`;
     el += `    <text x="${x + 14 + Math.max(48, field.type.length * 7 + 16) / 2}" y="${y + h - 13}" text-anchor="middle" fill="${swatch.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="600">${esc(field.type)}</text>\n`;
     if (field.required) {
-      el += `    <text x="${x + w - 14}" y="${y + 22}" text-anchor="end" fill="${roleSwatch('stop').stroke}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="700">*</text>\n`;
+      el += `    <text x="${x + w - 14}" y="${y + 22}" text-anchor="end" fill="#b91c1c" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}" font-weight="700">*</text>\n`;
     }
   }
   return el;
@@ -1159,13 +1175,13 @@ export function renderBlockNode(node: IRNode, pad: number, sketchy: boolean, swa
   const style: RoughStyle = { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: swatch.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = sketchy
     ? roughRect(x, y, w, h, style)
-    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.chip.rx}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   // Stacked-layers glyph, top-left corner.
   const gx = x + 12, gy = y + 12;
   for (let i = 0; i < 3; i++) {
     el += `    <rect x="${gx}" y="${gy + i * 4}" width="14" height="2.5" fill="${swatch.stroke}" opacity="${0.9 - i * 0.2}"/>\n`;
   }
-  el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '700');
+  el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
   return el;
 }
 
@@ -1179,7 +1195,7 @@ export function renderTimelineAxis(nodes: IRNode[], pad: number, bounds: { width
   const midY = bounds.height / 2 + pad;
   const minX = Math.min(...nodes.map((n) => n.position.x)) + pad - 20;
   const maxX = Math.max(...nodes.map((n) => n.position.x + n.size.width)) + pad + 20;
-  return `    <line x1="${minX}" y1="${midY}" x2="${maxX}" y2="${midY}" stroke="${stroke}" stroke-width="2.5"/>\n`;
+  return `    <line x1="${minX}" y1="${midY}" x2="${maxX}" y2="${midY}" stroke="${stroke}" stroke-width="${DS.stroke.emphasis}"/>\n`;
 }
 
 export function renderTimelineNode(node: IRNode, pad: number, sketchy: boolean, swatch: Swatch, midY: number): string {
@@ -1191,13 +1207,13 @@ export function renderTimelineNode(node: IRNode, pad: number, sketchy: boolean, 
   if (kind === 'lifeline') {
     const states = (node.data as any)?.states as string[] | undefined || [node.label];
     const stateH = Math.min(22, (h - 16) / states.length);
-    let el = `<line x1="${cx}" y1="${y}" x2="${cx}" y2="${y + h}" stroke="${swatch.stroke}" stroke-width="1.25" stroke-dasharray="5,4"/>\n`;
+    let el = `<line x1="${cx}" y1="${y}" x2="${cx}" y2="${y + h}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}" stroke-dasharray="5,4"/>\n`;
     for (let i = 0; i < states.length; i++) {
       const sy = y + 8 + i * (stateH + 4);
       const sw = w * 0.78; const sx = cx - sw / 2;
-      el += `<rect x="${sx}" y="${sy}" width="${sw}" height="${stateH}" rx="3" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="1.25"/>\n`;
+      el += `<rect x="${sx}" y="${sy}" width="${sw}" height="${stateH}" rx="${DS.chip.rx}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
       el += `<text x="${cx}" y="${sy + stateH / 2 + 4}" text-anchor="middle" fill="${swatch.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(states[i])}</text>\n`;
-      el += `<line x1="${cx}" y1="${sy + stateH}" x2="${cx}" y2="${midY}" stroke="${swatch.stroke}" stroke-width="1" stroke-dasharray="3,3"/>\n`;
+      el += `<line x1="${cx}" y1="${sy + stateH}" x2="${cx}" y2="${midY}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.hairline}" stroke-dasharray="3,3"/>\n`;
     }
     el += `<circle cx="${cx}" cy="${midY}" r="4" fill="${swatch.stroke}"/>\n`;
     return el;
@@ -1210,7 +1226,7 @@ export function renderTimelineNode(node: IRNode, pad: number, sketchy: boolean, 
     : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
   el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.label, DS.fontFamily, swatch.text, node.label, 'middle', '600');
   const tickY = cy < midY ? y + h : y;
-  el += `    <line x1="${cx}" y1="${tickY}" x2="${cx}" y2="${midY}" stroke="${swatch.stroke}" stroke-width="1.5" stroke-dasharray="3,3"/>\n`;
+  el += `    <line x1="${cx}" y1="${tickY}" x2="${cx}" y2="${midY}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}" stroke-dasharray="${DS.dash.edge}"/>\n`;
   el += `    <circle cx="${cx}" cy="${midY}" r="5" fill="${swatch.stroke}"/>\n`;
   return el;
 }
@@ -1228,8 +1244,8 @@ export function renderGitCommit(node: IRNode, pad: number, sketchy: boolean): st
   const lane = (node.data as any)?.gitLane ?? 0;
   const color = laneColor(lane);
   const seed = seedFor(node.id);
-  const style: RoughStyle = { stroke: color, strokeWidth: 2, fill: DS.neutral.surface, roughness: DS.roughness, fillStyle: 'solid', seed };
-  let el = sketchy ? roughEllipse(cx, cy, w, h, style) : `    <circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="${DS.neutral.surface}" stroke="${color}" stroke-width="2.5"/>\n`;
+  const style: RoughStyle = { stroke: color, strokeWidth: DS.stroke.node, fill: DS.neutral.surface, roughness: DS.roughness, fillStyle: 'solid', seed };
+  let el = sketchy ? roughEllipse(cx, cy, w, h, style) : `    <circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="${DS.neutral.surface}" stroke="${color}" stroke-width="${DS.stroke.emphasis}"/>\n`;
   el += `    <text x="${cx}" y="${y + h + 16}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(node.label)}</text>\n`;
   return el;
 }
@@ -1242,9 +1258,9 @@ export function renderGitLane(edge: IREdge, pad: number, sketchy: boolean, srcLa
   let el = '';
   if (sketchy) {
     const seed = seedFor(edge.id);
-    for (let i = 0; i < pts.length - 1; i++) el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke: color, strokeWidth: 2.5, roughness: 0.7, seed: seed + i });
+    for (let i = 0; i < pts.length - 1; i++) el += roughLine(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, { stroke: color, strokeWidth: DS.stroke.emphasis, roughness: 0.7, seed: seed + i });
   } else {
-    el += `    <polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${color}" stroke-width="2.5"/>\n`;
+    el += `    <polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${color}" stroke-width="${DS.stroke.emphasis}"/>\n`;
   }
   return el;
 }
@@ -1270,6 +1286,7 @@ function parseChartCategory(label: string): { category: string; series: Array<{ 
   return { category, series };
 }
 
+// token-exempt: chart data strokes, gridlines and plot geometry (renderChartBar .. renderChartPie) are data marks, not chrome
 export function renderChartBar(node: IRNode, pad: number, sketchy: boolean, chartMax: number, seriesNames: string[]): string {
   const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
   const { category, series } = parseChartCategory(node.label);
@@ -1392,8 +1409,8 @@ export function renderChartAxes(nodes: IRNode[], pad: number, scale: ChartScale)
     el += `    <text x="${axisX - 8}" y="${y + 4}" text-anchor="end" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${formatTick(t)}</text>\n`;
   }
 
-  el += `    <line x1="${axisX}" y1="${p.top}" x2="${axisX}" y2="${p.bottom}" stroke="${DS.neutral.stroke}" stroke-width="1.25"/>\n`;
-  el += `    <line x1="${axisX}" y1="${p.bottom}" x2="${p.right}" y2="${p.bottom}" stroke="${DS.neutral.stroke}" stroke-width="1.25"/>\n`;
+  el += `    <line x1="${axisX}" y1="${p.top}" x2="${axisX}" y2="${p.bottom}" stroke="${DS.neutral.stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
+  el += `    <line x1="${axisX}" y1="${p.bottom}" x2="${p.right}" y2="${p.bottom}" stroke="${DS.neutral.stroke}" stroke-width="${DS.stroke.edge}"/>\n`;
 
   // Vertical guide lines at each category's x position — helps visually align
   // data points to their category label, especially on line and scatter charts.
@@ -1564,7 +1581,7 @@ export function renderWireframeNode(node: IRNode, pad: number, _sketchy: boolean
   const box = (bx: number, by: number, bw: number, bh: number) =>
     roughRect(bx, by, bw, bh, { stroke: ink, strokeWidth: DS.stroke.node, fill: paper, fillStyle: 'solid', roughness: R * 0.85, seed });
   const hachure = (bx: number, by: number, bw: number, bh: number, gap = 5) =>
-    roughRect(bx, by, bw, bh, { stroke: ink, strokeWidth: 1, fill: ink, fillStyle: 'hachure', hachureGap: gap, roughness: R * 0.7, seed });
+    roughRect(bx, by, bw, bh, { stroke: ink, strokeWidth: DS.stroke.hairline, fill: ink, fillStyle: 'hachure', hachureGap: gap, roughness: R * 0.7, seed });
   const circle = (ccx: number, ccy: number, d: number, fill = paper, fillStyle = 'solid') =>
     roughEllipse(ccx, ccy, d, d, { stroke: ink, strokeWidth: DS.stroke.node, fill, fillStyle, roughness: R * 0.8, seed });
   const label = (lx: number, ly: number, fs: number, color: string, text: string, anchor: 'start' | 'middle' = 'start', weight = '400') =>
@@ -1641,7 +1658,7 @@ export function renderWireframeNode(node: IRNode, pad: number, _sketchy: boolean
       el += label(x + 12, baseline, DS.fontSize.meta, ink, text, 'start', '400');
       // Down-caret on the right.
       const ax = x + w - 22, ay = cy - 3;
-      el += roughPolygon([[ax, ay], [ax + 12, ay], [ax + 6, ay + 8]], { stroke: ink, strokeWidth: 1.5, fill: ink, fillStyle: 'solid', roughness: R * 0.6, seed });
+      el += roughPolygon([[ax, ay], [ax + 12, ay], [ax + 6, ay + 8]], { stroke: ink, strokeWidth: DS.stroke.edge, fill: ink, fillStyle: 'solid', roughness: R * 0.6, seed });
       return el;
     }
     case 'progress': {
@@ -1659,8 +1676,8 @@ export function renderWireframeNode(node: IRNode, pad: number, _sketchy: boolean
     }
     case 'image': {
       let el = box(x, y, w, h);
-      el += line(x, y, x + w, y + h, 1.25);
-      el += line(x + w, y, x, y + h, 1.25);
+      el += line(x, y, x + w, y + h, DS.stroke.hairline);
+      el += line(x + w, y, x, y + h, DS.stroke.hairline);
       el += label(cx, y + h + 14, DS.fontSize.small, muted, text, 'middle', '400');
       return el;
     }
@@ -1719,8 +1736,8 @@ export function renderCloudNode(node: IRNode, pad: number, sketchy: boolean, swa
     const fill = kind === 'cloud' ? DS.neutral.fill : 'none';
     const rx = kind === 'cloud' ? 12 : 8;
     let el = sketchy
-      ? roughRect(x, y, w, h, { stroke: swatch.stroke, strokeWidth: 1.5, fill, roughness: DS.roughness, fillStyle: 'solid', seed })
-      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" stroke="${swatch.stroke}" stroke-width="1.5" stroke-dasharray="${dash}"/>\n`;
+      ? roughRect(x, y, w, h, { stroke: swatch.stroke, strokeWidth: DS.stroke.edge, fill, roughness: DS.roughness, fillStyle: 'solid', seed })
+      : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.edge}" stroke-dasharray="${dash}"/>\n`;
     el += textBlock(cx - 6, y - 6, 0, DS.fontSize.meta, DS.fontFamily, swatch.stroke, node.label, 'start', '700');
     return el;
   }
@@ -1729,18 +1746,18 @@ export function renderCloudNode(node: IRNode, pad: number, sketchy: boolean, swa
   if (kind === 'user') {
     const r = 10;
     let el = sketchy
-      ? roughEllipse(cx, y + r + 4, r * 2, r * 2, { stroke: swatch.stroke, strokeWidth: 2, fill: 'none', roughness: DS.roughness, seed })
-      : `    <circle cx="${cx}" cy="${y + r + 4}" r="${r}" fill="none" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      ? roughEllipse(cx, y + r + 4, r * 2, r * 2, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, fill: 'none', roughness: DS.roughness, seed })
+      : `    <circle cx="${cx}" cy="${y + r + 4}" r="${r}" fill="none" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     if (sketchy) {
-      el += roughLine(cx, y + r * 2 + 8, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 1 });
-      el += roughLine(cx - 8, y + h * 0.45, cx + 8, y + h * 0.45, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 2 });
-      el += roughLine(cx - 6, y + h - 10, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 3 });
-      el += roughLine(cx + 6, y + h - 10, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: 2, roughness: DS.roughness, seed: seed + 4 });
+      el += roughLine(cx, y + r * 2 + 8, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, roughness: DS.roughness, seed: seed + 1 });
+      el += roughLine(cx - 8, y + h * 0.45, cx + 8, y + h * 0.45, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, roughness: DS.roughness, seed: seed + 2 });
+      el += roughLine(cx - 6, y + h - 10, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, roughness: DS.roughness, seed: seed + 3 });
+      el += roughLine(cx + 6, y + h - 10, cx, y + h * 0.55, { stroke: swatch.stroke, strokeWidth: DS.stroke.node, roughness: DS.roughness, seed: seed + 4 });
     } else {
-      el += `    <line x1="${cx}" y1="${y + r * 2 + 8}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
-      el += `    <line x1="${cx - 8}" y1="${y + h * 0.45}" x2="${cx + 8}" y2="${y + h * 0.45}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
-      el += `    <line x1="${cx - 6}" y1="${y + h - 10}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
-      el += `    <line x1="${cx + 6}" y1="${y + h - 10}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="2"/>\n`;
+      el += `    <line x1="${cx}" y1="${y + r * 2 + 8}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      el += `    <line x1="${cx - 8}" y1="${y + h * 0.45}" x2="${cx + 8}" y2="${y + h * 0.45}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      el += `    <line x1="${cx - 6}" y1="${y + h - 10}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      el += `    <line x1="${cx + 6}" y1="${y + h - 10}" x2="${cx}" y2="${y + h * 0.55}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     }
     el += textBlock(cx, y + h + 12, 0, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
     return el;
@@ -1763,12 +1780,12 @@ export function renderCloudNode(node: IRNode, pad: number, sketchy: boolean, swa
 
   const style: RoughStyle = { stroke: sc.stroke, strokeWidth: DS.stroke.node, fill: sc.fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = sketchy ? roughRect(x, y, w, h, style)
-    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${sc.fill}" stroke="${sc.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${sc.fill}" stroke="${sc.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
 
   // Service type badge (top-left).
   if (sc.label) {
-    el += `    <rect x="${x + 6}" y="${y + 6}" width="24" height="14" rx="3" fill="${sc.stroke}" opacity="0.15"/>\n`;
-    el += `    <text x="${x + 18}" y="${y + 17}" text-anchor="middle" fill="${sc.stroke}" font-size="9" font-family="${DS.monoFamily}" font-weight="700">${esc(sc.label)}</text>\n`;
+    el += `    <rect x="${x + 6}" y="${y + 6}" width="24" height="14" rx="${DS.chip.rx}" fill="${sc.stroke}" opacity="0.15"/>\n`;
+    el += `    <text x="${x + 18}" y="${y + 17}" text-anchor="middle" fill="${readableTextOn(blendHex(sc.fill, sc.stroke, 0.15), sc.stroke)}" font-size="${DS.fontSize.small}" font-family="${DS.monoFamily}" font-weight="700">${esc(sc.label)}</text>\n`;
   }
   el += textBlock(cx, cy + DS.fontSize.label * 0.35, Math.round(DS.fontSize.label * 1.3), DS.fontSize.meta, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
   return el;
@@ -1784,7 +1801,7 @@ const DEFAULT_GROUP_STYLE: GroupStyle = {
   roughness: 0.8,
   bowing: 1.0,
   stroke: '#a8a29e',
-  strokeWidth: 1.5,
+  strokeWidth: DS.stroke.edge,
   strokeDasharray: '8,4',
   fill: 'rgba(245,245,244,0.3)',
   opacity: 1,

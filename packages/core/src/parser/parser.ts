@@ -475,6 +475,7 @@ function detectShape(text: string): { shape: ShapeType; label: string } {
 
   if (text.startsWith('[||')) shape = ShapeType.CYLINDER;
   else if (text.startsWith('[()')) shape = ShapeType.STADIUM;
+  else if (text.startsWith('[(')) shape = ShapeType.CYLINDER;
   else if (text.startsWith('[//') || text.startsWith('[\\\\')) shape = ShapeType.PARALLELOGRAM;
   else if (text.startsWith('[/') || text.startsWith('[\\')) shape = ShapeType.PARALLELOGRAM;
   else if (text.startsWith('((')) shape = ShapeType.CIRCLE;
@@ -860,6 +861,16 @@ class Parser {
     // Section declaration
     if (this.peek().type === TokenType.KW_SECTION && !isKeywordAsIdent()) {
       return this.parseSectionDecl();
+    }
+    // Edge style directive: `edges sketch|clean` (a lone line; `edges` stays a valid node id otherwise)
+    if (this.peek().type === TokenType.IDENT && String(this.peek().value).toLowerCase() === 'edges') {
+      const n1 = this.peek(1), n2 = this.peek(2), kw0 = this.peek();
+      const v = String(n1?.value ?? '').toLowerCase();
+      if (n1?.type === TokenType.IDENT && (v === 'sketch' || v === 'clean') && n1.line === kw0.line &&
+          (n2 === undefined || n2.line !== kw0.line || n2.type === TokenType.EOF || n2.type === TokenType.RBRACE)) {
+        const kw = this.consume(); this.consume();
+        return { kind: 'EdgeStyleDecl', style: v, loc: this.locSpan(kw, this.peek(-1)) } as any;
+      }
     }
     // Layout declaration
     if (this.peek().type === TokenType.KW_LAYOUT && !isKeywordAsIdent()) {

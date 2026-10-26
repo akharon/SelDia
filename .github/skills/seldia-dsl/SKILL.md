@@ -86,6 +86,7 @@ group "Backend" {
 }
 theme sketchy-dark      // sketchy-light | sketchy-dark | clean-light | clean-dark | monochrome
 style { defaultNode: { fill: "#eee" } }
+edges sketch            // per-diagram: sketch | clean (default clean); beats the edgeStyle config
 ```
 
 ### Structure lives in the label
@@ -572,6 +573,10 @@ R2 out 0 4.7k
 .op
 .end
 ```
+
+## Verify
+
+Run `seldia check <file.sld|file.md> [--json] [--max n]` after writing a diagram. It prints `ok` or counts of readability problems (crossings, label overlaps, edges through nodes) per diagram; with `--max 0` it exits 1 if any remain. Fix by reordering declarations or splitting the diagram.
 
 ## Conventions
 

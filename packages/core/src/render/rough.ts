@@ -10,6 +10,7 @@
 // =============================================================================
 
 import rough from 'roughjs';
+import { DS } from './design-system.js';
 import type { RoughGenerator } from 'roughjs/bin/generator.js';
 import type { Options as RoughOptions } from 'roughjs/bin/core.js';
 
@@ -29,6 +30,7 @@ export interface RoughStyle {
   hachureAngle?: number;
   hachureGap?: number;
   seed?: number;
+  disableMultiStroke?: boolean;
 }
 
 function toRoughOptions(s: RoughStyle): RoughOptions {
@@ -37,11 +39,12 @@ function toRoughOptions(s: RoughStyle): RoughOptions {
     strokeWidth: s.strokeWidth,
     fill: s.fill,
     fillStyle: s.fillStyle || 'hachure',
-    roughness: s.roughness ?? 1.2,
+    roughness: s.roughness ?? DS.roughness,
     bowing: s.bowing ?? 1,
     hachureAngle: s.hachureAngle ?? -41,
     hachureGap: s.hachureGap,
     seed: s.seed,
+    disableMultiStroke: s.disableMultiStroke,
   };
 }
 
@@ -54,7 +57,7 @@ function drawableToSvg(drawable: ReturnType<RoughGenerator['rectangle']>): strin
   let out = '';
   for (const info of g.toPaths(drawable)) {
     const fillAttr = info.fill ? ` fill="${info.fill}"` : ' fill="none"';
-    const strokeAttr = info.stroke && info.stroke !== 'none' ? ` stroke="${info.stroke}" stroke-width="${info.strokeWidth}"` : '';
+    const strokeAttr = info.stroke && info.stroke !== 'none' ? ` stroke="${info.stroke}" stroke-width="${Math.round(info.strokeWidth * 100) / 100}"` : '';
     out += `    <path d="${info.d}"${fillAttr}${strokeAttr}/>\n`;
   }
   return out;
@@ -73,7 +76,7 @@ export function roughPolygon(points: [number, number][], style: RoughStyle): str
 }
 
 export function roughLine(x1: number, y1: number, x2: number, y2: number, style: Omit<RoughStyle, 'fill'>): string {
-  return drawableToSvg(gen().line(x1, y1, x2, y2, toRoughOptions({ ...style, fill: 'none' })));
+  return drawableToSvg(gen().line(x1, y1, x2, y2, toRoughOptions({ bowing: 0, disableMultiStroke: true, ...style, fill: 'none' })));
 }
 
 /** Deterministic per-node seed so repeated renders of the same diagram are

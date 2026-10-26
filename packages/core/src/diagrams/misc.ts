@@ -4,7 +4,7 @@
 
 import type { DiagramPlugin } from '../plugin/types.js';
 import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTSectionDecl, ASTGroupDecl, ASTStatement } from '../ast/nodes.js';
-import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
+import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 const ROUTING_MAP: Record<string, EdgeRouting> = {
@@ -13,6 +13,7 @@ const ROUTING_MAP: Record<string, EdgeRouting> = {
 };
 import { ShapeType } from '../types/shapes.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+import { sizeForShape } from '../render/node-label-geometry.js';
 import type { NodeRenderContext } from '../plugin/types.js';
 import { seriesColor } from '../render/design-system.js';
 import {
@@ -147,7 +148,7 @@ export const activityPlugin: DiagramPlugin = {
       if (stmt.kind === 'NodeDecl') {
         const nd = stmt as ASTNodeDecl;
         const kind = activityKindOf(nd);
-        const size = kind === 'start' || kind === 'end' ? { width: 48, height: 48 } : kind === 'decision' ? { width: 130, height: 90 } : sizeForLabel(nd.label, 14, 160, 60);
+        const size = kind === 'start' || kind === 'end' ? { width: 48, height: 48 } : kind === 'decision' ? sizeForShape(nd.label, 'diamond', 14, 130, 90) : sizeForLabel(nd.label, 14, 160, 60);
         nodes.push({
           id: nd.id, label: kind === 'start' || kind === 'end' ? '' : nd.label,
           shape: kind === 'start' || kind === 'end' ? ShapeType.CIRCLE : kind === 'decision' ? ShapeType.DIAMOND : ShapeType.ROUNDED_RECTANGLE,
@@ -323,22 +324,35 @@ export const blockPlugin: DiagramPlugin = {
   id: 'seldia-block', name: 'Block', version: '1.0.0', diagramType: DiagramType.BLOCK,
   description: 'System block diagrams',
   transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR {
-    const nodes: IRNode[] = []; const edges: IREdge[] = [];
-    for (const stmt of ast.body) {
-      if (stmt.kind === 'NodeDecl') {
-        const nd = stmt as ASTNodeDecl;
-        nodes.push({
-          id: nd.id, label: nd.label, shape: ShapeType.RECTANGLE, position: { x: 0, y: 0 },
-          size: sizeForLabel(nd.label, 14, 150, 66), style: { ...(nd.style || {}) },
-          ports: [], classList: [], collapsed: false, data: nd.data || {},
-        });
+    const nodes: IRNode[] = []; const edges: IREdge[] = []; const groups: IRGroup[] = [];
+    // Descend into `group { … }` bodies (top-level-only reading dropped every
+    // grouped node, yielding an empty diagram) and record IRGroups like flowchart.
+    const walk = (body: ASTStatement[], parentId?: string) => {
+      for (const stmt of body) {
+        if (stmt.kind === 'NodeDecl') {
+          const nd = stmt as ASTNodeDecl;
+          nodes.push({
+            id: nd.id, label: nd.label, shape: ShapeType.RECTANGLE, position: { x: 0, y: 0 },
+            size: sizeForLabel(nd.label, 14, 150, 66), style: { ...(nd.style || {}) },
+            ports: [], classList: [], collapsed: false, data: nd.data || {},
+          });
+          if (parentId) groups.find((g) => g.id === parentId)!.childNodeIds.push(nd.id);
+        } else if (stmt.kind === 'EdgeDecl') {
+          const ed = stmt as ASTEdgeDecl;
+          edges.push({ id: `blke-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        } else if (stmt.kind === 'GroupDecl') {
+          const gd = stmt as ASTGroupDecl;
+          groups.push({
+            id: gd.id, label: gd.label, position: { x: 0, y: 0 }, size: { width: 0, height: 0 }, style: {},
+            childNodeIds: [], childGroupIds: [], collapsible: gd.collapsible ?? false, collapsed: false, classList: [], data: {},
+          });
+          if (parentId) groups.find((g) => g.id === parentId)!.childGroupIds.push(gd.id);
+          walk(gd.body, gd.id);
+        }
       }
-      if (stmt.kind === 'EdgeDecl') {
-        const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `blke-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
-      }
-    }
-    return { id: ast.metadata?.id || 'block-1', type: DiagramType.BLOCK, title: ast.title || 'Block Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
+    };
+    walk(ast.body);
+    return { id: ast.metadata?.id || 'block-1', type: DiagramType.BLOCK, title: ast.title || 'Block Diagram', nodes, edges, groups, layers: [], metadata: {} };
   },
   renderNode(node, ctx) { return renderBlockNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [70, 60], rankSpacing: 80 }; },

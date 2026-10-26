@@ -17,6 +17,12 @@ Guide to test data, golden values, fixtures, and reference data in SelDiA.
 | `packages/mermaid-renderer/tests/golden_*.svg` | Expected rendered SVGs | SVG | Visual regression tests |
 | `packages/core/test/fixtures/layout-baseline.json` | Layout-quality baseline per docs/examples fence, measured with the shipped defaults (`measureCorpus(..., 'defaults')`). Gated per diagram type on crossings, edgeOverlaps, borderHugs, nodeLabelHits, edgeNodeHits, labelOverlaps and groupViolations; `bends` is recorded but not gated | JSON | `layout-metrics.test.ts` gate: current <= baseline + max(1, ceil(10%)) per type. Regenerate from packages/core: `UPDATE_LAYOUT_BASELINE=1 npx vitest run test/layout-metrics.test.ts` |
 | `docs/layout-metrics.json` | Live layout-metrics report: per-fence values and totals from the corpus | JSON | Written by `node scripts/layout-metrics.mjs [--engine dagre\|elk] [--quiet] [--out file]` (no `--engine` = shipped defaults). Not gated; regenerate, do not hand-edit |
+| `packages/core/test/label-legibility.test.ts` | Label legibility over the docs/examples corpus: chips stay on their own edge, off arrowheads, nodes and group titles; token lint (`tokenViolations` = 0, every `stroke-width` and `font-size` is a DS token) | TypeScript | Run with the core suite |
+| `packages/core/test/edge-layer.test.ts` | Unit tests for `render/edge-layer.ts`: `postRoute` (nudge, apex snap, title-band avoidance, jumps), `edgePathD`, `arrowheadSvg` | TypeScript | Run with the core suite |
+| `packages/core/test/layout-metrics-labels.test.ts` | Hand-built IRs for the label metrics (`labelDetached`, `labelOnArrowhead`, `labelEdgeHits`, `groupTitleHits`, `parallelRunLength`) and `tokenViolations` | TypeScript | Run with the core suite |
+| `packages/cli/test/check.test.ts` | `seldia check`: per-fence report, `--json`, `--max` exit code, bad extension | TypeScript | Run with the CLI suite |
+
+**Readability metrics** (`measureLayout` in `layout/metrics.ts`, also in `docs/layout-metrics.json` and `seldia check`): `labelDetached` (chip more than 16px from its own edge), `labelOnArrowhead` (chip on the last 14px of an edge), `labelEdgeHits` (chip on another edge or a group title band), `groupTitleHits` (edge through a group title), `parallelRunLength` (px of overlapping collinear runs). `tokenViolations(svg)` counts `stroke-width` and `font-size` values that are not DS tokens.
 
 ---
 
@@ -27,6 +33,8 @@ Guide to test data, golden values, fixtures, and reference data in SelDiA.
 | `docs/examples/demo-basic.md` | Basic usage examples | Markdown + code | Documentation |
 | `docs/examples/demo-mermaid.md` | Mermaid integration demo | Markdown + Mermaid | Tutorials |
 | `docs/examples/demo-plantuml.md` | PlantUML conversion demo | Markdown + PlantUML | Tutorials |
+| `docs/examples/demo-circuits.md` | Circuit gallery: SPICE (`spice`/`circuit`/`netlist` fences), KiCad netlist, SKiDL, two `pcb` boards | Markdown + SPICE/KiCad | Tutorials |
+| `docs/examples/demo-readability.md` | Readability gallery: line jumps, label chips, nested groups, shape-specific text, actors | Markdown + code | Tutorials, layout metrics corpus |
 
 ---
 

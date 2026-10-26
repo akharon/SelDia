@@ -12,8 +12,11 @@ const ROUTING_MAP: Record<string, EdgeRouting> = {
   orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
 };
 import { ShapeType } from '../types/shapes.js';
+import { C4_BOX_W, C4_LABEL_PAD, C4_LABEL_LH } from '../render/node-label-geometry.js';
 import { StrokeStyle } from '../types/style.js';
 import { renderC4Node } from '../render/custom-renderers.js';
+import { balancedWrap } from '../render/node-label-geometry.js';
+import { DS } from '../render/design-system.js';
 
 /** Classifies a C4 element from the DSL's type keyword (`person customer:
  *  "..."`, `system_Ext mainframe: "..."`, ...) — falls back to 'system' for
@@ -45,9 +48,11 @@ function buildC4Ir(ast: DiagramAST, diagramType: DiagramType): DiagramIR {
       const shape = c4Kind === 'person' ? ShapeType.ACTOR
         : c4Kind === 'containerDb' ? ShapeType.CYLINDER
         : nd.shape;
+      // Box height grows with the wrapped label (same wrap the renderer draws).
+      const extraLines = c4Kind === 'person' ? 0 : balancedWrap(nd.label, C4_BOX_W - C4_LABEL_PAD, DS.fontSize.label).length - 1;
       nodes.push({
         id: nd.id, label: nd.label, shape, description: nd.description || undefined,
-        position: { x: 0, y: 0 }, size: { width: c4Kind === 'person' ? 130 : 180, height: c4Kind === 'person' ? 100 : 90 },
+        position: { x: 0, y: 0 }, size: { width: c4Kind === 'person' ? 130 : C4_BOX_W, height: c4Kind === 'person' ? 100 : 90 + extraLines * C4_LABEL_LH },
         style: { ...(nd.style || {}), borderRadius: c4Kind === 'person' ? 20 : 8 },
         ports: [], classList: [], collapsed: false, data: { ...(nd.data || {}), c4Kind },
       });

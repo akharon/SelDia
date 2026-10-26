@@ -104,7 +104,7 @@ export function renderBoard(board: Board, opts: PcbOptions, ox: number, oy: numb
   const cu = (s: string) => (s === 'F' ? C.fCu : C.bCu);
   const silk = (s: string) => (s === 'F' ? C.fSilk : C.bSilk);
   const view = back ? 'B' : 'F';
-  let g = `<g transform="translate(${f(ox)} ${f(oy)})">`;
+  let g = `<g data-token-exempt="pcb-geometry" transform="translate(${f(ox)} ${f(oy)})">`;
   g += `<rect width="${f(w)}" height="${f(h)}" fill="${C.bg}" rx="2"/>`;
   // Substrate: tint the Edge.Cuts rectangle region (bbox of the outline).
   g += `<rect x="${f(MARGIN * S)}" y="${f(MARGIN * S)}" width="${f(bb.w * S)}" height="${f(bb.h * S)}" fill="${C.board}"/>`;

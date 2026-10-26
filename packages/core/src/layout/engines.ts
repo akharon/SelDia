@@ -219,7 +219,8 @@ function elkGraphOptions(opts: AutoLayoutOptions): Record<string, string> {
     'elk.spacing.nodeNode': String(opts.nodeSpacing),
     'elk.layered.spacing.nodeNodeBetweenLayers': String(opts.rankSpacing),
     'elk.spacing.edgeNode': String(opts.edgeSpacing),
-    'elk.spacing.edgeEdge': '12',
+    'elk.spacing.edgeEdge': '14',
+    'org.eclipse.elk.randomSeed': '1',
     'elk.layered.spacing.edgeEdgeBetweenLayers': '15',
     'elk.layered.spacing.edgeNodeBetweenLayers': String(Math.max(10, Math.round(opts.edgeSpacing))),
     'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
@@ -329,7 +330,13 @@ export function layoutWithElkSync(ir: DiagramIR, opts: AutoLayoutOptions): AutoL
     };
   };
 
-  const root: any = { id: '__root__', layoutOptions: elkGraphOptions(opts), children: [] as any[], edges: [] as any[] };
+  // Compound graphs: ELK applies the between-layers spacing to the gap between
+  // sibling group boxes as well, on top of their own padding, so groups drift
+  // far apart. Tighten it when groups exist (the group padding already keeps
+  // content off the border).
+  const rootOpts = elkGraphOptions(opts);
+  if (tree && tree.ordered.length) rootOpts['elk.layered.spacing.nodeNodeBetweenLayers'] = String(Math.round(opts.rankSpacing * 0.6));
+  const root: any = { id: '__root__', layoutOptions: rootOpts, children: [] as any[], edges: [] as any[] };
   const containers = new Map<string, any>();
   if (tree) for (const gid of tree.ordered) containers.set(gid, groupNode(gid));
   const ownerOf = (id: string): string | undefined => tree?.owner.get(id);

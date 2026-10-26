@@ -230,7 +230,7 @@ describe('edge via/routing attrs (next_steps.md Step 4.2/4.3)', () => {
       // Two <path> elements inside the edge <g> (rough.js double-stroke) means
       // rendering succeeded through the via-pinned route without throwing or
       // collapsing to an empty/degenerate path.
-      expect(r.value.svg).toMatch(/data-seldia-edge-id="edge-a-b">\s*<path/);
+      expect(r.value.svg).toMatch(/data-seldia-edge-id="edge-a-b"[^>]*>\s*<path/);
     }
   });
 

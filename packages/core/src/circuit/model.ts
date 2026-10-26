@@ -114,20 +114,32 @@ export function circuitToIR(model: CircuitModel, id = 'circuit-1'): DiagramIR {
     else for (const r of h.refs) (h.where === 'in' ? rankIn : rankOut).add(r.toLowerCase());
   }
 
+  // A MOSFET whose body shares the source net draws as a 3-pin symbol; the body
+  // pin is dropped from the nets (it would only add a second rail symbol).
+  const netOfPin = new Map<string, string>();
+  for (const [net, members] of Object.entries(model.nets)) for (const m of members) netOfPin.set(m.toLowerCase(), net);
+  const bodyTied = new Set<string>();
+  for (const p of model.parts) {
+    if (p.kind === 'M' && p.pins.join('') === 'DGSB') {
+      const ns = netOfPin.get(`${p.ref}.S`.toLowerCase()), nb = netOfPin.get(`${p.ref}.B`.toLowerCase());
+      if (ns !== undefined && ns === nb) bodyTied.add(p.ref);
+    }
+  }
+
   for (const p of model.parts) {
     partById.set(p.ref, p);
-    const def = symbolFor(p.kind, p.pins, p.modelType ?? '', p.value);
+    const def = symbolFor(p.kind, p.pins, p.modelType ?? '', p.value, bodyTied.has(p.ref));
     const rot = rotateOf.get(p.ref.toLowerCase()) ?? 0;
     const flip = flipOf.has(p.ref.toLowerCase());
     const valueLine = p.modelType && !p.value.toUpperCase().includes(p.modelType.toUpperCase()) ? `${p.value} (${p.modelType})` : p.value;
     const { w, h, layout } = partLayout(def, def.kind === p.kind ? p.kind : 'X', rot, flip, [p.ref, valueLine]);
     const rank = rankIn.has(p.ref.toLowerCase()) ? 'in' : rankOut.has(p.ref.toLowerCase()) ? 'out' : undefined;
-    nodes.push(nodeBase(p.ref, p.ref, w, h, { role: 'part', kind: p.kind, value: p.value, modelType: p.modelType, pins: p.pins, circuit: layout, rank }));
+    nodes.push(nodeBase(p.ref, p.ref, w, h, { role: 'part', kind: p.kind, value: p.value, modelType: p.modelType, pins: bodyTied.has(p.ref) ? p.pins.filter((n) => n !== 'B') : p.pins, circuit: layout, rank, bodyTied: bodyTied.has(p.ref) }));
   }
 
   const addEdge = (src: string, srcPin: string | undefined, tgt: string, tgtPin: string | undefined, net: string) => {
     edges.push({
-      id: `w${edges.length}-${net}`, sourceId: src, targetId: tgt, style: { stroke: '#1f2933', strokeWidth: 1.6 } as any,
+      id: `w${edges.length}-${net}`, sourceId: src, targetId: tgt, style: { stroke: '#1f2933', strokeWidth: 1.5 } as any,
       routing: EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [],
       data: { role: 'wire', net, srcPin, tgtPin, arrowType: 'none' },
     } as IREdge);
@@ -141,7 +153,7 @@ export function circuitToIR(model: CircuitModel, id = 'circuit-1'): DiagramIR {
   let sym = 0;
   for (const [net, members] of Object.entries(model.nets)) {
     const pins = members.map((m) => { const i = m.lastIndexOf('.'); return { ref: m.slice(0, i), pin: m.slice(i + 1) }; })
-      .filter((m) => partById.has(m.ref));
+      .filter((m) => partById.has(m.ref) && !(bodyTied.has(m.ref) && m.pin === 'B'));
     if (power.has(net.toLowerCase())) {
       const ground = isGroundName(net);
       for (const m of pins) {

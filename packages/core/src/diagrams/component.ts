@@ -3,8 +3,8 @@
 // =============================================================================
 
 import type { DiagramPlugin } from '../plugin/types.js';
-import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl } from '../ast/nodes.js';
-import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
+import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTGroupDecl, ASTStatement } from '../ast/nodes.js';
+import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 const ROUTING_MAP: Record<string, EdgeRouting> = {
@@ -12,6 +12,8 @@ const ROUTING_MAP: Record<string, EdgeRouting> = {
   orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
 };
 import { ShapeType } from '../types/shapes.js';
+import { balancedWrap } from '../render/node-label-geometry.js';
+import { DS } from '../render/design-system.js';
 import { renderComponentNode } from '../render/custom-renderers.js';
 
 export type ComponentKind = 'component' | 'datastore' | 'interface' | 'service';
@@ -41,25 +43,36 @@ export const componentPlugin: DiagramPlugin = {
   diagramType: DiagramType.COMPONENT,
   description: 'Software component and dependency diagrams',
   transform(ast: DiagramAST, _config: SelDiAConfig): DiagramIR {
-    const nodes: IRNode[] = []; const edges: IREdge[] = [];
-    for (const stmt of ast.body) {
+    const nodes: IRNode[] = []; const edges: IREdge[] = []; const groups: IRGroup[] = [];
+    // Descend into `group { … }` bodies; top-level-only reading dropped grouped nodes.
+    const walk = (body: ASTStatement[], parentId?: string) => {
+    for (const stmt of body) {
       if (stmt.kind === 'NodeDecl') {
         const nd = stmt as ASTNodeDecl;
         const kind = componentKindOf(nd);
         const shape = kind === 'datastore' ? ShapeType.CYLINDER : kind === 'interface' ? ShapeType.CIRCLE : ShapeType.RECTANGLE;
-        const size = kind === 'interface' ? { width: 90, height: 90 } : { width: 170, height: 74 };
+        const size = kind === 'interface' ? { width: 90, height: 90 }
+          : kind === 'datastore' ? { width: 170, height: Math.max(74, 28 + 15 * balancedWrap(nd.label, 146, DS.fontSize.label).length + 24) }
+          : { width: 170, height: 74 };
         nodes.push({
           id: nd.id, label: nd.label, shape,
           position: { x: 0, y: 0 }, size, style: { ...(nd.style || {}) },
           ports: [], classList: [], collapsed: false, data: { ...(nd.data || {}), componentKind: kind },
         });
-      }
-      if (stmt.kind === 'EdgeDecl') {
+        if (parentId) groups.find((g) => g.id === parentId)!.childNodeIds.push(nd.id);
+      } else if (stmt.kind === 'GroupDecl') {
+        const gd = stmt as ASTGroupDecl;
+        groups.push({ id: gd.id, label: gd.label, position: { x: 0, y: 0 }, size: { width: 0, height: 0 }, style: {}, childNodeIds: [], childGroupIds: [], collapsible: gd.collapsible ?? false, collapsed: false, classList: [], data: {} });
+        if (parentId) groups.find((g) => g.id === parentId)!.childGroupIds.push(gd.id);
+        walk(gd.body, gd.id);
+      } else if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
         edges.push({ id: `compe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
-    return { id: ast.metadata?.id || 'comp-1', type: DiagramType.COMPONENT, title: ast.title || 'Component Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
+    };
+    walk(ast.body);
+    return { id: ast.metadata?.id || 'comp-1', type: DiagramType.COMPONENT, title: ast.title || 'Component Diagram', nodes, edges, groups, layers: [], metadata: {} };
   },
   renderNode(node, ctx) { return renderComponentNode(node, ctx.pad, ctx.sketchy, ctx.swatch); },
   getDefaultLayoutOptions() { return { direction: 'TB', nodeSpacing: [100, 80], rankSpacing: 100 }; },

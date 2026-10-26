@@ -103,10 +103,6 @@ export function layoutCircuit(ir: DiagramIR): CustomLayoutResult {
         layoutOptions: { 'elk.port.side': SIDE[p.side] },
       }));
     }
-    // `rank in/out` hints pin a part to the first/last layer.
-    const rank = (n.data as any)?.rank;
-    if (rank === 'in') opts['elk.layered.layering.layerConstraint'] = 'FIRST';
-    else if (rank === 'out') opts['elk.layered.layering.layerConstraint'] = 'LAST';
     if (Object.keys(opts).length) child.layoutOptions = opts;
     return child;
   });
@@ -125,17 +121,59 @@ export function layoutCircuit(ir: DiagramIR): CustomLayoutResult {
     return !p ? 0 : (p.side === 'E' || p.side === 'S') ? 1 : -1;
   };
   const reversed = new Set<string>();
-  const elkEdges = ir.edges.filter((e) => !powerIds.has(e.sourceId) && !powerIds.has(e.targetId)).map((e) => {
+  const warnings: string[] = [];
+  const signalEdges = ir.edges.filter((e) => !powerIds.has(e.sourceId) && !powerIds.has(e.targetId));
+  // Orientation per edge: true when flipped for ELK (signal flow W->E).
+  const flip = new Map<string, boolean>();
+  for (const e of signalEdges) {
     const d = (e.data ?? {}) as any;
     const a = sideOf(e.sourceId, d.srcPin), b = sideOf(e.targetId, d.tgtPin);
-    const rev = (a === -1 && b !== -1) || (b === 1 && a !== 1);
-    if (rev) reversed.add(e.id);
+    flip.set(e.id, (a === -1 && b !== -1) || (b === 1 && a !== 1));
+  }
+  // `rank in/out` pins a part to the first/last layer. ELK only accepts that if
+  // no edge enters a FIRST part (none leaves a LAST part), so orient the edges
+  // at hinted parts accordingly. Two hinted parts joined to each other cannot
+  // both hold: the later one loses its hint, with a warning.
+  const rankOf = new Map<string, 'in' | 'out'>();
+  for (const n of ir.nodes) { const r = (n.data as any)?.rank; if (r === 'in' || r === 'out') rankOf.set(n.id, r); }
+  const endsOf = (e: IREdge) => flip.get(e.id) ? { from: e.targetId, to: e.sourceId } : { from: e.sourceId, to: e.targetId };
+  // Junctions join one net: the part a junction hangs off decides nothing here.
+  for (const e of signalEdges) {
+    const { from, to } = endsOf(e);
+    const rf = rankOf.get(from), rt = rankOf.get(to);
+    if (rt === 'in' && rf === 'in') { rankOf.delete(to); warnings.push(`rank in ${to} ignored: it is wired to ${from}, which is also in the first column`); continue; }
+    if (rf === 'out' && rt === 'out') { rankOf.delete(from); warnings.push(`rank out ${from} ignored: it is wired to ${to}, which is also in the last column`); continue; }
+    if (rt === 'in') flip.set(e.id, !flip.get(e.id));
+    else if (rf === 'out') flip.set(e.id, !flip.get(e.id));
+  }
+  // A part hinted `in` that still receives an edge (from an `out` part, say) cannot hold.
+  for (const e of signalEdges) {
+    const { from, to } = endsOf(e);
+    if (rankOf.get(to) === 'in') { warnings.push(`rank in ${to} ignored: an edge from ${from} cannot be reversed`); rankOf.delete(to); }
+    if (rankOf.get(from) === 'out') { warnings.push(`rank out ${from} ignored: an edge to ${to} cannot be reversed`); rankOf.delete(from); }
+  }
+  const buildEdges = () => signalEdges.map((e) => {
+    const d = (e.data ?? {}) as any;
+    const rev = flip.get(e.id) ?? false;
+    if (rev) reversed.add(e.id); else reversed.delete(e.id);
     const s0 = portKnown(e.sourceId, d.srcPin) ? portId(e.sourceId, d.srcPin) : e.sourceId;
     const t0 = portKnown(e.targetId, d.tgtPin) ? portId(e.targetId, d.tgtPin) : e.targetId;
     return { id: e.id, sources: [rev ? t0 : s0], targets: [rev ? s0 : t0] };
   });
-
-  const out = layoutSync({ id: 'root', layoutOptions: SCHEMATIC_ELK_OPTIONS, children, edges: elkEdges });
+  const withRanks = (on: boolean) => children.map((c: any) => {
+    const r = on ? rankOf.get(c.id) : undefined;
+    if (!r) return { ...c, layoutOptions: c.layoutOptions && { ...c.layoutOptions } };
+    return { ...c, layoutOptions: { ...(c.layoutOptions ?? {}), 'elk.layered.layering.layerConstraint': r === 'in' ? 'FIRST' : 'LAST' } };
+  });
+  const elkEdges = buildEdges();
+  let out: any;
+  try {
+    out = layoutSync({ id: 'root', layoutOptions: SCHEMATIC_ELK_OPTIONS, children: withRanks(true), edges: elkEdges });
+  } catch (err) {
+    if (!rankOf.size) throw err;
+    warnings.push(`rank hints ignored: ${(err as Error).message.split('\n')[0]}`);
+    out = layoutSync({ id: 'root', layoutOptions: SCHEMATIC_ELK_OPTIONS, children: withRanks(false), edges: elkEdges });
+  }
 
   const pos = new Map<string, { x: number; y: number }>();
   for (const c of out.children ?? []) pos.set(c.id, { x: c.x ?? 0, y: c.y ?? 0 });
@@ -175,6 +213,31 @@ export function layoutCircuit(ir: DiagramIR): CustomLayoutResult {
     e.waypoints = pw.id === e.sourceId ? route.reverse() : route;
   }
 
+  // A junction's trunk can leave its centre as one shared stub that every wire
+  // then follows: a dead end sticking out of the net. Pull each wire's start up
+  // to where the wires first part, so the dot sits at the real T.
+  for (const n of nodes) {
+    if ((n.data as any)?.role !== 'junction') continue;
+    const ends = edges.filter((e) => e.sourceId === n.id || e.targetId === n.id).map((e) => ({ e, atStart: e.sourceId === n.id }));
+    const pts = (x: { e: IREdge; atStart: boolean }) => (x.atStart ? x.e.waypoints! : [...x.e.waypoints!].reverse());   // junction first
+    for (let guard = 0; guard < 6 && ends.length >= 2; guard++) {
+      const lists = ends.map(pts);
+      if (lists.some((l) => l.length < 2)) break;
+      const dir = (l: Pt[]) => `${Math.sign(l[1].x - l[0].x)},${Math.sign(l[1].y - l[0].y)}`;
+      if (new Set(lists.map(dir)).size !== 1) break;
+      const L = Math.min(...lists.map((l) => Math.abs(l[1].x - l[0].x) + Math.abs(l[1].y - l[0].y)));
+      if (L <= 0) break;
+      const d0 = lists[0], ux = Math.sign(d0[1].x - d0[0].x), uy = Math.sign(d0[1].y - d0[0].y);
+      const np = { x: d0[0].x + ux * L, y: d0[0].y + uy * L };
+      ends.forEach((x, i) => {
+        const l = lists[i];
+        const rest = (Math.abs(l[1].x - np.x) + Math.abs(l[1].y - np.y) < 0.01) ? l.slice(2) : l.slice(1);
+        const nl = [np, ...rest];
+        x.e.waypoints = x.atStart ? nl : nl.reverse();
+      });
+    }
+  }
+
   // Junction dots from the routed geometry: a dot belongs where three or more
   // distinct directions leave one point on the same net (a real T or cross),
   // not wherever a 0x0 node happened to land.
@@ -194,7 +257,7 @@ export function layoutCircuit(ir: DiagramIR): CustomLayoutResult {
   const w = (out.width ?? 0) as number, h = (out.height ?? 0) as number;
   let maxX = w, maxY = h;
   for (const n of nodes) { maxX = Math.max(maxX, n.position.x + n.size.width + 20); maxY = Math.max(maxY, n.position.y + n.size.height + 20); }
-  return { nodes, edges, bounds: { x: 0, y: 0, width: maxX + 40, height: maxY + 40 } };
+  return { nodes, edges, bounds: { x: 0, y: 0, width: maxX + 40, height: maxY + 40 }, warnings };
 }
 
 type Pt = { x: number; y: number };

@@ -26,6 +26,7 @@ import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle } from '../types/style.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+import { sizeForShape } from '../render/node-label-geometry.js';
 import { erEntitySize } from '../render/custom-renderers.js';
 
 export interface PlantUmlImportDiagnostic {
@@ -152,7 +153,7 @@ function makeNode(id: string, label: string, shape: ShapeType): IRNode {
     label,
     shape,
     position: { x: 0, y: 0 },
-    size: sizeForLabel(label, 14, 100, 50),
+    size: sizeForShape(label, String(shape), 14, 100, 50),
     style: {},
     ports: [],
     classList: [],
@@ -779,7 +780,7 @@ function importSequence(lines: PLine[], diagnostics: PlantUmlImportDiagnostic[],
     if (existing) {
       if (label && label !== existing.label) {
         existing.label = label;
-        existing.size = sizeForLabel(label, 14, 100, 50);
+        existing.size = sizeForShape(label, String(existing.shape), 14, 100, 50);
       }
       if (shape && existing.shape === ShapeType.RECTANGLE) existing.shape = shape;
       return id;
@@ -1574,7 +1575,7 @@ function importActivity(lines: PLine[], diagnostics: PlantUmlImportDiagnostic[],
     const node = makeNode(id, kind === 'start' || kind === 'end' ? '' : label,
       kind === 'start' || kind === 'end' ? ShapeType.CIRCLE : kind === 'decision' ? ShapeType.DIAMOND : ShapeType.ROUNDED_RECTANGLE);
     node.size = kind === 'start' || kind === 'end' ? { width: 48, height: 48 }
-      : kind === 'decision' ? { width: 130, height: 90 }
+      : kind === 'decision' ? sizeForShape(label, 'diamond', 14, 130, 90)
         : sizeForLabel(label, 14, 160, 60);
     node.data = { activityKind: kind, activityLabel: label };
     nodes.push(node);

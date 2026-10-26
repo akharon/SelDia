@@ -48,8 +48,8 @@ export const circuitPlugin: DiagramPlugin = {
     }
     const c = d.circuit;
     if (!c) return '';
-    const def = d.role === 'power' ? SYMBOLS[d.kind] : symbolFor(d.kind, d.pins ?? [], d.modelType ?? '', d.value ?? '');
-    const g = def.draw({ stroke, fill: '#ffffff', strokeWidth: 1.6, text });
+    const def = d.role === 'power' ? SYMBOLS[d.kind] : symbolFor(d.kind, d.pins ?? [], d.modelType ?? '', d.value ?? '', !!d.bodyTied);
+    const g = def.draw({ stroke, fill: '#ffffff', strokeWidth: 1.5, text });
     let s = `    <g transform="translate(${x + p + c.symX} ${y + p + c.symY})"><g transform="${c.transform}">${g}</g></g>\n`;
     c.lines.forEach((ln: string, i: number) => {
       s += `    <text x="${x + p + c.labelX}" y="${y + p + c.labelY + i * 14}" text-anchor="${c.anchor}" font-size="${i === 0 ? 12 : 11}" font-weight="${i === 0 ? 700 : 400}" fill="${text}" font-family="sans-serif">${escapeXml(ln)}</text>\n`;

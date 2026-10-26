@@ -22,6 +22,7 @@ import { layoutCircuit } from '../circuit/layout.js';
 import type { Point, Rect } from '../types/common.js';
 import type { FpDimension, FpMeasure, FpBox, FpWallSeg } from '../floorplan/dimensions.js';
 import { wallDimensionStrings, clearGap, formatLength } from '../floorplan/dimensions.js';
+import { chipSize } from './edge-label-placement.js';
 
 export interface CustomLayoutResult {
   nodes: IRNode[];
@@ -30,6 +31,8 @@ export interface CustomLayoutResult {
   /** Merged into the positioned IR's metadata — used by sequence to hand
    *  resolved fragment-box geometry to the renderer. */
   metadataPatch?: Record<string, unknown>;
+  /** Layout-time notes (e.g. a hint that could not be honoured). */
+  warnings?: string[];
 }
 
 function computeBounds(nodes: IRNode[], minWidth = 0, minHeight = 0): Rect {
@@ -65,23 +68,36 @@ export function layoutSequence(ir: DiagramIR): CustomLayoutResult {
   const headerY = 20;
   const headerH = 50;
 
+  // A self-message draws a loop right of its lifeline with the label beyond it,
+  // so the gap to the next lane must hold loop + label (never crossing it).
+  const SELF_W = 36, SELF_H = 32, SELF_PAD = 12;
+  const selfNeed = new Map<string, number>();
+  for (const e of ir.edges) {
+    if (e.sourceId !== e.targetId) continue;
+    const need = SELF_W + 8 + (e.label ? Math.max(30, e.label.length * 6.5 + 12) : 0) + SELF_PAD;
+    selfNeed.set(e.sourceId, Math.max(selfNeed.get(e.sourceId) ?? 0, need));
+  }
   const laneX = new Map<string, number>();
+  let cursor = startX;
   const positioned: IRNode[] = participants.map((n, i) => {
-    const cx = startX + i * laneWidth;
+    const cx = cursor;
     laneX.set(n.id, cx);
+    cursor += Math.max(laneWidth, selfNeed.get(n.id) ?? 0);
     return { ...n, position: { x: cx - 70, y: headerY }, size: { width: 140, height: headerH } };
   });
+  const lastLaneX = participants.length ? laneX.get(participants[participants.length - 1].id)! : startX;
 
   const messageGap = 60;
   let y = headerY + headerH + 50;
   const edges: IREdge[] = ir.edges.map((e) => {
     const x1 = laneX.get(e.sourceId) ?? startX;
     const x2 = laneX.get(e.targetId) ?? startX;
-    const wps: Point[] = x1 === x2
-      ? [{ x: x1, y }, { x: x1 + 60, y: y + 20 }, { x: x1, y: y + 40 }] // self-message loop
+    const self = x1 === x2;
+    const wps: Point[] = self
+      ? [{ x: x1, y }, { x: x1 + SELF_W, y }, { x: x1 + SELF_W, y: y + SELF_H }, { x: x1, y: y + SELF_H }] // self-message loop
       : [{ x: x1, y }, { x: x2, y }];
-    y += x1 === x2 ? messageGap + 20 : messageGap;
-    return { ...e, waypoints: wps, data: { ...e.data, sequenceOrder: true } };
+    y += self ? messageGap + SELF_H - 12 : messageGap;
+    return { ...e, waypoints: wps, data: { ...e.data, sequenceOrder: true, ...(self ? { sequenceSelf: true } : {}) } };
   });
 
   // Resolve control-fragment ranges (from sequence.ts) into pixel boxes now
@@ -100,7 +116,7 @@ export function layoutSequence(ir: DiagramIR): CustomLayoutResult {
       (o.firstEdge < f.firstEdge || o.lastEdge > f.lastEdge)).length;
   const inset = 26;
   const minX = startX - 70;
-  const maxX = startX + Math.max(0, participants.length - 1) * laneWidth + 70;
+  const maxX = lastLaneX + 70 + (selfNeed.get(participants[participants.length - 1]?.id ?? '') ?? 0);
   const fragmentBoxes = rawFrags.map((f) => {
     const ys: number[] = [];
     for (let i = f.firstEdge; i < f.lastEdge; i++) { const yy = yOfEdge(i); if (yy != null) ys.push(yy); }
@@ -122,7 +138,7 @@ export function layoutSequence(ir: DiagramIR): CustomLayoutResult {
   // Lifelines extend from just under each header down to the last message Y.
   const bottomY = y + 20;
   const nodes = positioned.map((n) => ({ ...n, data: { ...n.data, lifelineBottom: bottomY } }));
-  const width = startX + Math.max(0, participants.length - 1) * laneWidth + 140 + 60;
+  const width = lastLaneX + 140 + 60 + (selfNeed.get(participants[participants.length - 1]?.id ?? '') ?? 0);
   return {
     nodes, edges,
     bounds: { x: 0, y: 0, width, height: bottomY + 40 },
@@ -290,6 +306,15 @@ export function layoutGantt(ir: DiagramIR): CustomLayoutResult {
   return { nodes, edges, bounds: { x: 0, y: 0, width, height } };
 }
 
+/** Point where the ray from a node's centre toward `toward` leaves its bounding box. */
+function rectExit(n: IRNode, toward: Point): Point {
+  const cx = n.position.x + n.size.width / 2, cy = n.position.y + n.size.height / 2;
+  const dx = toward.x - cx, dy = toward.y - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const t = Math.min(dx !== 0 ? n.size.width / 2 / Math.abs(dx) : Infinity, dy !== 0 ? n.size.height / 2 / Math.abs(dy) : Infinity, 1);
+  return { x: cx + dx * t, y: cy + dy * t };
+}
+
 // ── Mindmap ──────────────────────────────────────────────────────────────
 // Radial layout: the node with no incoming edge (or the first node) is the
 // root at the center; children fan out in concentric rings at even angles.
@@ -372,7 +397,11 @@ export function layoutMindmap(ir: DiagramIR): CustomLayoutResult {
   const edges: IREdge[] = ir.edges.map((e) => {
     const src = byIdShifted.get(e.sourceId), tgt = byIdShifted.get(e.targetId);
     if (!src || !tgt) return { ...e, waypoints: [] };
-    return { ...e, waypoints: straightWaypoints(src, tgt) };
+    // Clip each end to the node outline (the renderer draws the waypoints as
+    // given, so an unclipped centre-to-centre line shows through faded nodes
+    // and runs under their labels).
+    const [a, b] = straightWaypoints(src, tgt);
+    return { ...e, waypoints: [rectExit(src, b), rectExit(tgt, a)] };
   });
   const width = maxX - minX + 80, height = maxY - minY + 80;
   void byId;
@@ -401,45 +430,131 @@ export function layoutSankey(ir: DiagramIR): CustomLayoutResult {
   for (const n of ir.nodes) if (!depth.has(n.id)) depth.set(n.id, 0);
 
   function weightOf(label?: string): number { const n = label ? parseFloat(label) : NaN; return isNaN(n) ? 1 : n; }
-  const flow = new Map<string, number>();
-  for (const n of ir.nodes) flow.set(n.id, 0);
+  // Node value = max(in, out), the d3-sankey convention; link thickness shares
+  // the same scale k so stacked links exactly fill (or sit inside) their node.
+  const inSum = new Map<string, number>(), outSum = new Map<string, number>();
+  for (const n of ir.nodes) { inSum.set(n.id, 0); outSum.set(n.id, 0); }
   for (const e of ir.edges) {
     const w = weightOf(e.label);
-    flow.set(e.sourceId, (flow.get(e.sourceId) || 0) + w);
-    flow.set(e.targetId, (flow.get(e.targetId) || 0) + w);
+    outSum.set(e.sourceId, (outSum.get(e.sourceId) || 0) + w);
+    inSum.set(e.targetId, (inSum.get(e.targetId) || 0) + w);
   }
+  const flow = new Map<string, number>();
+  for (const n of ir.nodes) flow.set(n.id, Math.max(inSum.get(n.id) || 0, outSum.get(n.id) || 0));
   const maxFlow = Math.max(1, ...Array.from(flow.values()));
 
-  const colWidth = 220, minH = 40, maxH = 160, topPad = 40;
+  const colWidth = 220, minH = 40, maxH = 140, topPad = 40, NODE_GAP = 30, MIN_THICK = 3;
+  const k = maxH / maxFlow;
+  const thickOf = (e: IREdge) => Math.max(MIN_THICK, weightOf(e.label) * k);
   const byCol = new Map<number, IRNode[]>();
   for (const n of ir.nodes) { const d = depth.get(n.id) || 0; if (!byCol.has(d)) byCol.set(d, []); byCol.get(d)!.push(n); }
 
-  const positions = new Map<string, { x: number; y: number; w: number; h: number }>();
-  for (const [col, list] of byCol) {
+  const sumThick = (es: IREdge[]) => es.reduce((t, e) => t + thickOf(e), 0);
+  const ins = new Map<string, IREdge[]>(), outs = new Map<string, IREdge[]>();
+  for (const n of ir.nodes) { ins.set(n.id, []); outs.set(n.id, []); }
+  for (const e of ir.edges) { outs.get(e.sourceId)?.push(e); ins.get(e.targetId)?.push(e); }
+  const height_ = new Map<string, number>();
+  for (const n of ir.nodes) height_.set(n.id, Math.max(minH, sumThick(ins.get(n.id)!), sumThick(outs.get(n.id)!)));
+
+  // Initial stacking in input order, then d3-sankey style relaxation: a fixed
+  // number of left-to-right / right-to-left passes pulling each node towards the
+  // thickness-weighted centre of its neighbours, with collisions resolved by a
+  // stable sweep. Fully deterministic (ties break on input order).
+  const ny = new Map<string, number>(), order = new Map<string, number>();
+  ir.nodes.forEach((n, i) => order.set(n.id, i));
+  const cols = [...byCol.keys()].sort((a, b) => a - b);
+  const stack = (list: IRNode[]) => {
+    const sorted = [...list].sort((a, b) => (ny.get(a.id)! - ny.get(b.id)!) || (order.get(a.id)! - order.get(b.id)!));
     let y = topPad;
+    for (const n of sorted) { const want = Math.max(ny.get(n.id)!, y); ny.set(n.id, want); y = want + height_.get(n.id)! + NODE_GAP; }
+    byCol.set(depth.get(list[0].id) || 0, sorted);
+  };
+  for (const c of cols) { let y = topPad; for (const n of byCol.get(c)!) { ny.set(n.id, y); y += height_.get(n.id)! + NODE_GAP; } }
+  const centre = (id: string) => ny.get(id)! + height_.get(id)! / 2;
+  const pull = (c: number, useIn: boolean) => {
+    const list = byCol.get(c)!;
     for (const n of list) {
-      const h = Math.max(minH, Math.round((flow.get(n.id) || 1) / maxFlow * maxH));
-      positions.set(n.id, { x: 60 + col * colWidth, y, w: 160, h });
-      y += h + 30;
+      const es = useIn ? ins.get(n.id)! : outs.get(n.id)!;
+      if (!es.length) continue;
+      let sw = 0, sy = 0;
+      for (const e of es) { const w = weightOf(e.label); sw += w; sy += w * centre(useIn ? e.sourceId : e.targetId); }
+      ny.set(n.id, Math.max(topPad, sy / sw - height_.get(n.id)! / 2));
     }
+    stack(list);
+  };
+  for (let it = 0; it < 6; it++) {
+    for (const c of cols.slice(1)) pull(c, true);
+    for (const c of [...cols].reverse().slice(1)) pull(c, false);
   }
+
+  const positions = new Map<string, { x: number; y: number; w: number; h: number }>();
+  for (const n of ir.nodes) positions.set(n.id, { x: 60 + (depth.get(n.id) || 0) * colWidth, y: ny.get(n.id)!, w: 160, h: height_.get(n.id)! });
 
   const nodes: IRNode[] = ir.nodes.map((n) => {
     const p = positions.get(n.id)!;
     return { ...n, position: { x: p.x, y: p.y }, size: { width: p.w, height: p.h }, data: { ...n.data, sankeyFlow: flow.get(n.id) } };
   });
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  // Link ordering: at a node, outgoing links sort by target y, incoming by source y.
+  const outY = new Map<string, number>(), inY = new Map<string, number>();
+  const sortedBy = (es: IREdge[], other: (e: IREdge) => string) =>
+    [...es].sort((a, b) => (ny.get(other(a))! - ny.get(other(b))!) || (ir.edges.indexOf(a) - ir.edges.indexOf(b)));
+  for (const n of ir.nodes) {
+    const p = positions.get(n.id)!;
+    let off = p.y + (p.h - sumThick(outs.get(n.id)!)) / 2;
+    for (const e of sortedBy(outs.get(n.id)!, (x) => x.targetId)) { outY.set(e.id, off + thickOf(e) / 2); off += thickOf(e); }
+    off = p.y + (p.h - sumThick(ins.get(n.id)!)) / 2;
+    for (const e of sortedBy(ins.get(n.id)!, (x) => x.sourceId)) { inY.set(e.id, off + thickOf(e) / 2); off += thickOf(e); }
+  }
   const edges: IREdge[] = ir.edges.map((e) => {
     const src = byId.get(e.sourceId), tgt = byId.get(e.targetId);
     if (!src || !tgt) return { ...e, waypoints: [] };
-    const x1 = src.position.x + src.size.width, y1 = src.position.y + src.size.height / 2;
-    const x2 = tgt.position.x, y2 = tgt.position.y + tgt.size.height / 2;
-    return { ...e, waypoints: [{ x: x1, y: y1 }, { x: (x1 + x2) / 2, y: y1 }, { x: (x1 + x2) / 2, y: y2 }, { x: x2, y: y2 }], data: { ...e.data, sankeyWeight: weightOf(e.label) } };
+    const x1 = src.position.x + src.size.width, y1 = outY.get(e.id)!;
+    const x2 = tgt.position.x, y2 = inY.get(e.id)!;
+    return { ...e, waypoints: [{ x: x1, y: y1 }, { x: (x1 + x2) / 2, y: y1 }, { x: (x1 + x2) / 2, y: y2 }, { x: x2, y: y2 }], data: { ...e.data, sankeyWeight: weightOf(e.label), sankeyThick: thickOf(e) } };
   });
   const maxCol = Math.max(0, ...Array.from(byCol.keys()));
   const width = 60 + (maxCol + 1) * colWidth + 60;
   const height = Math.max(...nodes.map((n) => n.position.y + n.size.height)) + 40;
-  return { nodes, edges, bounds: { x: 0, y: 0, width, height } };
+
+  // Flow-label dodge. Ribbons between the same pair of columns share one label
+  // x (the S-curve midpoint), so their ideal labels stack on top of each other.
+  // Per column gap: sort by ideal y, push each label down to keep LABEL_GAP of
+  // clearance, then pull the run back up if it overran the canvas. A label that
+  // still cannot fit is hidden (data.sankeyLabelHidden); the renderer keeps its
+  // value in the ribbon's <title>.
+  const LABEL_GAP = Math.max(14, ...edges.map((e) => (e.label ? chipSize(e.label).h : 0))) + 2, LABEL_TOP = 12 + Math.ceil(LABEL_GAP / 2);
+  const maxW = Math.max(1, ...edges.map((e) => ((e.data as any)?.sankeyWeight as number) ?? 1));
+  const gaps = new Map<number, IREdge[]>();
+  for (const e of edges) {
+    if (!e.label || !e.waypoints?.length) continue;
+    const c = depth.get(e.sourceId) || 0;
+    if (!gaps.has(c)) gaps.set(c, []);
+    gaps.get(c)!.push(e);
+  }
+  const labelY = new Map<string, { y: number; hidden: boolean }>();
+  let bottom = height;
+  for (const list of gaps.values()) {
+    const ideal = list.map((e) => {
+      const w = ((e.data as any)?.sankeyWeight as number) ?? 1;
+      const half = (((e.data as any)?.sankeyThick as number) ?? 6) / 2;
+      const wp = e.waypoints!;
+      return { e, y: (wp[0].y + wp[wp.length - 1].y) / 2 - half - 4, w };
+    }).sort((a, b) => a.y - b.y || b.w - a.w || (a.e.id < b.e.id ? -1 : 1));
+    const room = Math.floor((height - 8 - LABEL_TOP) / LABEL_GAP) + 1;
+    const visible = ideal.slice(0, Math.max(room, 0));
+    let prev = -Infinity;
+    for (const it of visible) { it.y = Math.max(it.y, LABEL_TOP, prev + LABEL_GAP); prev = it.y; }
+    let limit = height - 8;
+    for (let i = visible.length - 1; i >= 0; i--) { if (visible[i].y > limit) visible[i].y = limit; limit = visible[i].y - LABEL_GAP; }
+    for (const it of visible) { labelY.set(it.e.id, { y: it.y, hidden: false }); bottom = Math.max(bottom, it.y + Math.ceil(LABEL_GAP / 2)); }
+    for (const it of ideal.slice(visible.length)) labelY.set(it.e.id, { y: it.y, hidden: true });
+  }
+  const dodged = edges.map((e) => {
+    const l = labelY.get(e.id);
+    return l ? { ...e, data: { ...e.data, sankeyLabelY: l.y, sankeyLabelHidden: l.hidden } } : e;
+  });
+  return { nodes, edges: dodged, bounds: { x: 0, y: 0, width, height: bottom } };
 }
 
 // ── GitGraph ─────────────────────────────────────────────────────────────

@@ -1,5 +1,20 @@
 // =============================================================================
 // SelDiA — Core Engine Interface & Implementation
+
+/** Graph-shaped types whose geometry is fully described by the IR, so the
+ *  canvas can be trimmed to the content bounding box (left/top included). */
+const TRIM_TYPES = new Set<DiagramType>([
+  DiagramType.FLOWCHART, DiagramType.CLASS, DiagramType.STATE, DiagramType.ER, DiagramType.USECASE,
+  DiagramType.ACTIVITY, DiagramType.COMPONENT, DiagramType.DEPLOYMENT, DiagramType.C4_CONTEXT,
+  DiagramType.C4_CONTAINER, DiagramType.C4_COMPONENT, DiagramType.C4_CODE, DiagramType.BPMN,
+  DiagramType.DMN, DiagramType.NETWORK, DiagramType.BLOCK, DiagramType.CLOUD, DiagramType.WORKITEM,
+]);
+
+/** Per-render edge drawing options (see renderEdge). */
+interface EdgeStyle { clean: boolean; jumps: Map<string, Hop[]>; round: boolean; }
+interface EdgeParts { casing: string; path: string; head: string; label: string; }
+
+
 // =============================================================================
 
 import type { ID, Diagnostic, Result, Point, Rect } from './types/common.js';
@@ -24,16 +39,19 @@ import { workitemPlugin } from './diagrams/workitem.js';
 import { floorplanPlugin } from './diagrams/floorplan.js';
 import { pcbPlugin } from './diagrams/pcb.js';
 import { circuitPlugin } from './diagrams/circuit.js';
+import { tJunctions } from './circuit/layout.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
 import { layoutWithDagre, layoutWithElkSync, type AutoLayoutResult } from './layout/engines.js';
 import { routeEdgePolyline, manualEdgeRoute, centerOf, computeFans, type Fan } from './render/edge-routing.js';
-import { iconLabelLayout } from './render/node-label-geometry.js';
-import { chipRect, computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
+import { iconLabelLayout, balancedWrap, shapeTextBox } from './render/node-label-geometry.js';
+import { chipRect, EDGE_LABEL_FONT, computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
+import { textWidth } from './layout/text-measure.js';
+import { postRoute, postRouteCircuit, edgePathD, arrowheadSvg, groupTitleBand, POST_ROUTE_TYPES, type Hop } from './render/edge-layer.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
-import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
+import { DS, readableTextOn, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
 import { escapeXml } from './render/escape.js';
 import { renderFloorplanWalls, renderFloorplanFrame, renderFloorplanTitleBlock, renderFloorplanFloors, renderFloorplanDimensions, renderFloorplanMeasures, renderFloorplanScaleBar, renderFloorplanRoomLabels } from './render/floorplan-render.js';
@@ -47,7 +65,7 @@ import {
   renderErRelationship,
   renderGanttDependency, renderGanttAxis,
   renderMindmapBranch,
-  renderSankeyNode, renderSankeyRibbon,
+  renderSankeyNode, renderSankeyRibbon, renderSankeyChip,
   renderGitLane,
   renderChartBar, renderChartPie, renderChartLinePoint, renderChartLegend,
   renderChartAxes, chartScale, chartPlot, chartLegendHeight, chartLegendMinWidth,
@@ -133,7 +151,7 @@ function nodeSwatch(node: IRNode, type: DiagramType): Swatch {
   return {
     stroke: (s.stroke as string) || base.stroke,
     fill: (s.fill as string) || base.fill,
-    text: (s.textColor as string) || base.text,
+    text: (s.textColor as string) || (s.fill ? readableTextOn(s.fill as string, base.text) : base.text),
     accent: base.accent,
   };
 }
@@ -247,7 +265,8 @@ class SelDiAEngine implements CoreEngine {
     try {
       const ir = plugin.transform(ast, this.config);
       const layoutDecl = ast.body.find((s): s is import('./ast/nodes.js').ASTLayoutDecl => s.kind === 'LayoutDecl');
-      ir.metadata = { ...ir.metadata, layoutEngine: layoutDecl?.engine };
+      const edgeDecl = ast.body.find((s): s is import('./ast/nodes.js').ASTEdgeStyleDecl => s.kind === 'EdgeStyleDecl');
+      ir.metadata = { ...ir.metadata, layoutEngine: layoutDecl?.engine, ...(edgeDecl ? { edgeStyle: edgeDecl.style } : {}) };
       return { ok: true, value: ir };
     }
     catch (err: any) { return { ok: false, errors: [{ severity: DiagnosticSeverity.ERROR, message: `Transform error: ${err.message}`, source: ast.loc, code: 'E0005' }] }; }
@@ -334,12 +353,12 @@ class SelDiAEngine implements CoreEngine {
     // function. Everything else (flowchart-shaped types) still uses dagre.
     const custom = customLayoutFor(ir.type);
     if (custom) {
-      const { nodes, edges, bounds, metadataPatch } = custom(ir);
+      const { nodes, edges, bounds, metadataPatch, warnings: customWarnings } = custom(ir);
       const positioned: DiagramIR = {
         ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes),
         metadata: metadataPatch ? { ...ir.metadata, ...metadataPatch } : ir.metadata,
       };
-      return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
+      return { ok: true, value: { diagram: positioned, bounds, warnings: (customWarnings ?? []).map((message) => ({ message })) } };
     }
     const { nodes, edges, bounds, groupBounds } = this.autoLayout(ir);
     const positioned: DiagramIR = { ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes, groupBounds) };
@@ -584,7 +603,8 @@ class SelDiAEngine implements CoreEngine {
     const wideTypes: DiagramType[] = [DiagramType.GANTT, DiagramType.SANKEY];
     const wideClass = wideTypes.includes(diagramType) ? ' seldia-wide' : '';
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" class="seldia-diagram-svg-el${wideClass}" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}">\n`;
-    svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="8"/>\n`;
+    svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="${DS.radius}"/>\n`;
+    const headerEnd = svg.length;
     const typeAccent = typeSwatch(diagramType);
 
     // Pie charts are one shape drawn from every node's data at once, not one
@@ -615,7 +635,7 @@ class SelDiAEngine implements CoreEngine {
           const pts = nodes.map((n) => renderChartLinePoint(n, pad, chartMax, si));
           if (!dotOnly) {
             const line = pts.map((p) => `${p.x},${p.y}`).join(' ');
-            svg += `  <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.5"/>\n`;
+            svg += `  <polyline points="${line}" fill="none" stroke="${color}" stroke-width="${DS.stroke.emphasis}"/>\n`;
           }
           for (const p of pts) svg += `  <circle cx="${p.x}" cy="${p.y}" r="4" fill="${color}"/>\n`;
         });
@@ -644,6 +664,7 @@ class SelDiAEngine implements CoreEngine {
         svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${content}  </g>\n`;
       }
       for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${renderSankeyNode(n, pad, sketchy, nodeSwatch(n, diagramType))}  </g>\n`;
+      for (const e of edges) { const src = byId.get(e.sourceId), tgt = byId.get(e.targetId); if (src && tgt) svg += renderSankeyChip(e, pad, src, tgt); }
       svg += '</svg>';
       return svg;
     }
@@ -716,8 +737,23 @@ class SelDiAEngine implements CoreEngine {
 
     // Groups draw as a background box behind their member nodes, so they must
     // be emitted before the edge/node loop below.
+    // Titles are drawn in their own layer above the edges (on a surface chip),
+    // so an edge crossing the title band never strikes through the text; the
+    // chip rects also feed postRoute, which steers vertical runs around them.
+    const titleSplit = diagramType !== DiagramType.WIREFRAME;
+    let groupTitles = '';
+    const titleBands: Rect[] = [];
     for (const g of groups) {
-      const content = renderGroup(g, pad, sketchy);
+      let content = renderGroup(titleSplit && g.label ? { ...g, label: '' } : g, pad, sketchy);
+      if (titleSplit && g.label && content) {
+        const full = renderGroup(g, pad, sketchy);
+        const title = full.startsWith(content) ? full.slice(content.length) : '';
+        if (title) {
+          const band = groupTitleBand(g)!;
+          titleBands.push(band);
+          groupTitles += `  <g class="seldia-group-title" data-seldia-group-id="${this.esc(g.id)}">\n    <rect x="${band.x + pad}" y="${band.y + pad}" width="${band.width}" height="${band.height}" rx="${DS.chip.rx}" fill="${DS.neutral.surface}" fill-opacity="0.92"/>\n${title}  </g>\n`;
+        } else content = full;
+      }
       if (content) svg += `  <g class="seldia-group" data-seldia-group-id="${this.esc(g.id)}">\n${content}  </g>\n`;
     }
 
@@ -729,6 +765,8 @@ class SelDiAEngine implements CoreEngine {
       svg += `  <g class="seldia-fragment" data-seldia-fragment-id="${this.esc(fb.id)}">\n${renderSequenceFragment(fb, pad, sketchy)}  </g>\n`;
     }
 
+    let deferred = '';
+    let edgeExtents: ((box: { add(x: number, y: number): void }) => void) | undefined;
     // Wireframe edges are layout-only (they stack controls in reading order);
     // drawing arrows between mockup controls would read as flowchart noise.
     if (diagramType !== DiagramType.WIREFRAME) {
@@ -751,25 +789,102 @@ class SelDiAEngine implements CoreEngine {
         if (raw.length < 2) continue;
         routedWps.set(e.id, this.routedWaypoints(e, raw, nodeById.get(e.sourceId), nodeById.get(e.targetId), fans.get(e.id), allNodes));
       }
+      // Nudge parallel runs apart and plan line jumps on the SAME polylines the
+      // labels are placed against and the paths are drawn from. Schematic and
+      // layout-owned geometry (sequence lifelines, circuits, PCBs, git lanes)
+      // keeps its routes untouched.
+      const cleanEdges = ((metadata?.edgeStyle as string | undefined) ?? this.config.render.edgeStyle) !== 'sketch';   // in-fence `edges sketch|clean` beats config
+      const dt = diagramType as string;
+      const postRouted = POST_ROUTE_TYPES.has(dt);
+      let jumps = new Map<string, Hop[]>();
+      if (postRouted) {
+        const fixed = new Map([...routedWps].filter(([id]) => !(edges.find((e) => e.id === id)?.data as any)?.exactEnds));
+        const post = postRoute({ nodes: allNodes }, fixed, cleanEdges, titleBands);
+        for (const [id, pts] of post.routes) routedWps.set(id, pts);
+        jumps = post.jumps;
+      } else if (dt === 'circuit') {
+        const nets = new Map<string, string>();
+        for (const e of edges) { const d = e.data as any; nets.set(e.id, String(d?.net ?? e.id)); }
+        const post = postRouteCircuit({ nodes: allNodes }, routedWps, nets, cleanEdges);
+        for (const [id, pts] of post.routes) routedWps.set(id, pts);
+        jumps = post.jumps;
+        // Junction dots come from the final geometry.
+        const byNet = new Map<string, Point[][]>();
+        for (const e of edges) {
+          const d = e.data as any;
+          if (d?.role !== 'wire' || !routedWps.has(e.id)) continue;
+          (byNet.get(d.net) ?? byNet.set(d.net, []).get(d.net)!).push(routedWps.get(e.id)!);
+        }
+        for (const n of allNodes) {
+          const d = n.data as any;
+          if (d?.role === 'junction' && byNet.has(d.net)) d.dots = tJunctions(byNet.get(d.net)!);
+        }
+      }
       const routedEdges = edges.map((e) => routedWps.has(e.id) ? { ...e, waypoints: routedWps.get(e.id) } : e);
-      const labelPos = computeEdgeLabelPositions(routedEdges, nodeById, pad);
-      // The nudge pass can park a chip beyond the layout bounds: grow the
-      // canvas (right/bottom) so it is never clipped by the viewBox.
-      let needW = bw, needH = bh;
+      const labelPos = computeEdgeLabelPositions(routedEdges, nodeById, pad, groups);
+      // Layers, bottom to top: groups (above) → casings → edge paths → nodes →
+      // arrowheads → label chips and labels. Each edge's parts go to their own
+      // layer so a node can never paint over a label or an arrowhead.
+      const edgeStyle: EdgeStyle = { clean: cleanEdges, jumps, round: dt !== 'circuit' && dt !== 'pcb' };
+      let casings = '', paths = '', heads = '', labels = '';
       for (const e of routedEdges) {
-        const lp = labelPos.get(e.id);
-        if (!lp || !e.label) continue;
-        const r = chipRect(lp.x, lp.y, e.label);
-        needW = Math.max(needW, r.x + r.width + pad / 2); needH = Math.max(needH, r.y + r.height + pad / 2);
+        const parts = this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes, edgeStyle);
+        const id = this.esc(e.id);
+        if (parts.casing) casings += `    <g class="seldia-edge-casing" data-seldia-edge-ref="${id}">\n${parts.casing}    </g>\n`;
+        paths += `  <g class="seldia-edge" data-seldia-edge-id="${id}" data-src="${this.esc(e.sourceId)}" data-tgt="${this.esc(e.targetId)}">\n${parts.path}  </g>\n`;
+        if (parts.head) heads += `    <g class="seldia-edge-head" data-seldia-edge-ref="${id}">\n${parts.head}    </g>\n`;
+        if (parts.label) labels += `    <g class="seldia-edge-label" data-seldia-edge-ref="${id}">\n${parts.label}    </g>\n`;
       }
-      if (needW > bw || needH > bh) {
-        const W = Math.ceil(needW), H = Math.ceil(needH);
-        svg = svg.replace(`viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}"`, `viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"`)
-          .replace(`<rect width="${bw}" height="${bh}"`, `<rect width="${W}" height="${H}"`);
+      if (routedEdges.length) {
+        svg += `  <style>.seldia-edge:hover path:not([data-casing]){stroke-width:${DS.stroke.emphasis}}svg:has(.seldia-edge:hover) .seldia-edge:not(:hover),svg:has(.seldia-edge:hover) .seldia-edge-head,svg:has(.seldia-edge:hover) .seldia-edge-label{opacity:.35}svg:has(.seldia-edge:hover) .seldia-edge:hover,svg:has(.seldia-edge:hover) .seldia-edge-head:hover,svg:has(.seldia-edge:hover) .seldia-edge-label:hover{opacity:1}</style>\n`;
       }
-      for (const e of routedEdges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes)}  </g>\n`;
+      if (casings) svg += `  <g class="seldia-edge-casings">\n${casings}  </g>\n`;
+      svg += paths;
+      svg += groupTitles; groupTitles = '';
+      deferred = (heads ? `  <g class="seldia-edge-heads">\n${heads}  </g>\n` : '') + (labels ? `  <g class="seldia-edge-labels">\n${labels}  </g>\n` : '');
+      edgeExtents = (box) => {
+        for (const e of routedEdges) {
+          for (const p of e.waypoints || []) box.add(p.x + pad, p.y + pad);
+          const lp = labelPos.get(e.id);
+          if (lp && e.label) {
+            const r = chipRect(lp.x, lp.y, e.label);
+            box.add(r.x, r.y); box.add(r.x + r.width, r.y + r.height);
+            if (lp.leader) { box.add(lp.leader.from.x, lp.leader.from.y); box.add(lp.leader.to.x, lp.leader.to.y); }
+          }
+        }
+      };
     }
     for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
+    svg += deferred;
+
+    // Canvas trim: size the viewBox to the real content (nodes, groups, edges,
+    // chips, leaders) plus a uniform `pad`, so nothing is clipped at the left or
+    // top and no slack is left over. Content is shifted with one wrapping <g>
+    // so the viewBox keeps its "0 0 W H" origin (Marp and the editor read it).
+    // Types that paint outside the IR (lifelines, axes, floorplans...) only
+    // grow right/bottom as before.
+    if (edgeExtents) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      const box = { add(x: number, y: number) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } };
+      const trims = TRIM_TYPES.has(diagramType) || (diagramType as string) === 'circuit';
+      for (const n of nodes) { box.add(n.position.x + pad - 1, n.position.y + pad - 1); box.add(n.position.x + pad + n.size.width + 1, n.position.y + pad + n.size.height + 1); }
+      for (const g of groups) { box.add(g.position.x + pad, g.position.y + pad); box.add(g.position.x + pad + g.size.width, g.position.y + pad + g.size.height); }
+      edgeExtents(box);
+      if (x0 !== Infinity) {
+        let tx = 0, ty = 0, W = bw, H = bh;
+        if (trims) {
+          tx = Math.round(pad - x0); ty = Math.round(pad - y0);
+          W = Math.ceil(x1 - x0 + 2 * pad); H = Math.ceil(y1 - y0 + 2 * pad);
+        } else {
+          W = Math.max(bw, Math.ceil(x1 + pad / 2)); H = Math.max(bh, Math.ceil(y1 + pad / 2));
+        }
+        if (W !== bw || H !== bh || tx || ty) {
+          if (tx || ty) svg = svg.slice(0, headerEnd) + `  <g transform="translate(${tx},${ty})">\n` + svg.slice(headerEnd) + '  </g>\n';
+          svg = svg.replace(`viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}"`, `viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"`)
+            .replace(`<rect width="${bw}" height="${bh}"`, `<rect width="${W}" height="${H}"`);
+        }
+      }
+    }
     svg += '</svg>';
     return svg;
   }
@@ -855,7 +970,7 @@ class SelDiAEngine implements CoreEngine {
       case 'cloud':
         el = sketchy
           ? roughRect(x, y, w, h, { ...roughStyle, roughness: (roughStyle.roughness ?? 1.2) * 1.4 })
-          : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="25" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4,4"${op}/>\n`;
+          : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius * 3.5}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4,4"${op}/>\n`;
         break;
       case 'subroutine':
         if (sketchy) {
@@ -863,7 +978,7 @@ class SelDiAEngine implements CoreEngine {
           el += roughLine(x, y + 8, x + w, y + 8, roughStyle);
           el += roughLine(x, y + h - 8, x + w, y + h - 8, roughStyle);
         } else {
-          el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}/>\n    <line x1="${x}" y1="${y + 8}" x2="${x + w}" y2="${y + 8}" stroke="${stroke}" stroke-width="${sw}"/>\n    <line x1="${x}" y1="${y + h - 8}" x2="${x + w}" y2="${y + h - 8}" stroke="${stroke}" stroke-width="${sw}"/>\n`;
+          el = `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}/>\n    <line x1="${x}" y1="${y + 8}" x2="${x + w}" y2="${y + 8}" stroke="${stroke}" stroke-width="${sw}"/>\n    <line x1="${x}" y1="${y + h - 8}" x2="${x + w}" y2="${y + h - 8}" stroke="${stroke}" stroke-width="${sw}"/>\n`;
         }
         break;
       case 'stadium':
@@ -874,13 +989,18 @@ class SelDiAEngine implements CoreEngine {
       default:
         el = sketchy
           ? roughRect(x, y, w, h, roughStyle)
-          : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}/>\n`;
+          : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}/>\n`;
         break;
     }
-    const rawLabel = node.label || node.id;
+    let rawLabel = node.label || node.id;
+    // Non-rectangular outlines wrap to the text box inscribed in the shape, so a
+    // long label no longer spills over a diamond's or hexagon's slanted sides.
+    if (['diamond', 'hexagon', 'circle', 'parallelogram', 'stadium', 'cylinder'].includes(String(node.shape))) {
+      rawLabel = balancedWrap(rawLabel, Math.max(20, shapeTextBox(node).width - 8), fs).join('\n');
+    }
     const lineHeight = Math.round(fs * 1.3);
     const lineCount = rawLabel.split('\n').length;
-    const startY = cy + (String(node.shape) === 'cylinder' ? 6 : 0) - ((lineCount - 1) * lineHeight) / 2 + fs * 0.35;   // cylinders: centre on the face, between the end caps
+    const startY = cy - ((lineCount - 1) * lineHeight) / 2 + fs * 0.35;
     el += this.renderLabel(cx, startY, lineHeight, fs, ff, color, rawLabel);
     return el;
   }
@@ -898,8 +1018,14 @@ class SelDiAEngine implements CoreEngine {
     return routeEdgePolyline(edge, wps, src, tgt, fan, allNodes);
   }
 
-  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement, preRouted = false, allNodesIn?: IRNode[]): string {
-    if (diagramType === DiagramType.SEQUENCE) return renderSequenceMessage(edge, pad, sketchy, typeAccent);
+  /** Draw one edge as separate parts so the caller can stack them in layers:
+   *  `casing` (background-coloured under-stroke) and `path` sit under the nodes;
+   *  `head` (arrowhead) and `label` (chip, leader, text) sit above them. Types
+   *  with their own edge grammar (sequence, ER, Gantt...) return everything in
+   *  `path`, as before. */
+  private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement, preRouted = false, allNodesIn?: IRNode[], style?: EdgeStyle): EdgeParts {
+    const only = (path: string): EdgeParts => ({ casing: '', path, head: '', label: '' });
+    if (diagramType === DiagramType.SEQUENCE) return only(renderSequenceMessage(edge, pad, sketchy, typeAccent));
     if (diagramType === DiagramType.ER) {
       const raw = edge.waypoints || [];
       const src = byId?.get(edge.sourceId), tgt = byId?.get(edge.targetId);
@@ -910,17 +1036,17 @@ class SelDiAEngine implements CoreEngine {
         : (raw.length >= 2
             ? this.routedWaypoints(edge, raw, src, tgt, fan, allNodesIn ?? (byId ? [...byId.values()] : undefined))
             : raw);
-      return renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed, labelPos);
+      return only(renderErRelationship(edge, pad, sketchy, typeAccent.stroke, routed, labelPos));
     }
-    if (diagramType === DiagramType.GANTT) return renderGanttDependency(edge, pad, sketchy, typeAccent.stroke);
+    if (diagramType === DiagramType.GANTT) return only(renderGanttDependency(edge, pad, sketchy, typeAccent.stroke));
     if (diagramType === DiagramType.MINDMAP) {
       const srcNode = byId?.get(edge.sourceId);
       const branchIdx = ((srcNode?.data as any)?.mindmapBranch as number) ?? 0;
-      return renderMindmapBranch(edge, pad, sketchy, seriesColor(branchIdx));
+      return only(renderMindmapBranch(edge, pad, sketchy, seriesColor(branchIdx)));
     }
     if (diagramType === DiagramType.GITGRAPH) {
       const srcLane = (edge.data as any)?.srcLane;
-      return renderGitLane(edge, pad, sketchy, srcLane ?? 0);
+      return only(renderGitLane(edge, pad, sketchy, srcLane ?? 0));
     }
 
     const s = edge.style || {};
@@ -935,9 +1061,9 @@ class SelDiAEngine implements CoreEngine {
     const fanSlot = fanned && fan ? (fan.srcCount > 1 ? fan.srcIndex : fan.tgtIndex) : 0;
     const stroke = (s.stroke as string) || (fanned ? seriesColor(fanSlot) : DS.neutral.edge);
     const sw = (s.strokeWidth as number) || DS.stroke.edge;
-    const dash = (s.strokeStyle as string) === 'dashed' ? [6, 4] : undefined;
+    const dash = (s.strokeStyle as string) === 'dashed' ? DS.dash.edge : undefined;
     const rawWps = edge.waypoints || [];
-    if (rawWps.length < 2) return '';
+    if (rawWps.length < 2) return only('');
     let wps: Point[];
     if (preRouted) {
       wps = rawWps;
@@ -945,25 +1071,38 @@ class SelDiAEngine implements CoreEngine {
       const allNodes = allNodesIn ?? (byId ? [...byId.values()] : undefined);
       wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan, allNodes);
     }
+    const clean = style?.clean ?? true;
+    const dashAttr = dash ? ` stroke-dasharray="${dash}"` : '';
+    const polyPts = wps.map(p => `${p.x + pad},${p.y + pad}`).join(' ');
+    // Casing: the same line underneath in the surface colour, so where edges
+    // cross or run over a group tint each one stays a separate, traceable stroke.
+    const casing = `    <polyline points="${polyPts}" fill="none" stroke="${DS.neutral.surface}" stroke-width="${DS.stroke.edge + DS.stroke.casing}" stroke-linejoin="round"/>\n`;
     let el: string;
-    if (sketchy) {
-      const seed = seedFor(edge.id);
+    if (!clean && sketchy) {
+      const seed = seedFor(`${diagramType}:${edge.id}`);
       el = '';
       for (let i = 0; i < wps.length - 1; i++) {
         const a = wps[i], b = wps[i + 1];
         el += roughLine(a.x + pad, a.y + pad, b.x + pad, b.y + pad, { stroke, strokeWidth: sw, roughness: DS.roughness, seed: seed + i });
       }
+    } else if (clean) {
+      const d = edgePathD(wps, pad, pad, style?.jumps.get(edge.id), style?.round === false ? 0 : DS.bendRadius);
+      el = `    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="${sw}"${dashAttr}/>\n`;
     } else {
-      const pts = wps.map(p => `${p.x + pad},${p.y + pad}`).join(' ');
-      const dashAttr = dash ? ` stroke-dasharray="${dash.join(',')}"` : '';
-      el = `    <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="${sw}"${dashAttr}/>\n`;
+      el = `    <polyline points="${polyPts}" fill="none" stroke="${stroke}" stroke-width="${sw}"${dashAttr}/>\n`;
     }
 
+    let head = '';
     const last = wps[wps.length - 1], prev = wps[wps.length - 2];
     if (last && prev) {
       const arrowType = ((edge.data as any)?.arrowType as string) || 'flow';
-      el += this.renderArrowhead(arrowType, prev, last, pad, stroke);
+      // A use-case association (actor — use case) is a plain line: no head.
+      const isUsecaseAssoc = diagramType === DiagramType.USECASE
+        && (byId?.get(edge.sourceId)?.shape as string === 'actor' || byId?.get(edge.targetId)?.shape as string === 'actor'
+          || (byId?.get(edge.sourceId)?.data as any)?.usecaseKind === 'actor' || (byId?.get(edge.targetId)?.data as any)?.usecaseKind === 'actor');
+      if (!isUsecaseAssoc) head = this.renderArrowhead(arrowType, prev, last, pad, stroke, sw);
     }
+    let label = '';
     if (edge.label) {
       // Use the anti-overlap placement when available; otherwise fall back
       // to the midpoint of the middle segment (the original behaviour).
@@ -977,47 +1116,28 @@ class SelDiAEngine implements CoreEngine {
         lx = (mid.x + next.x) / 2 + pad;
         ly = (mid.y + next.y) / 2 + pad;
       }
-      const labelText = edge.label;
-      const chipW = Math.max(24, labelText.length * 6.5 + 12);
-      // Small neutral background chip so the label stays readable where it
-      // crosses the edge line. Chip border uses the diagram accent so the
-      // label belongs to the same colour family as its nodes.
-      el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="4" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${typeAccent.stroke}" stroke-opacity="0.35" stroke-width="1"/>\n`;
-      el += `    <text x="${lx}" y="${ly - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${this.esc(labelText)}</text>\n`;
+      // The chip rect is the placement module's own, so what is drawn is exactly
+      // what the label placer avoided collisions with. Chip border uses the
+      // diagram accent so the label belongs to the same colour family as its nodes.
+      const r = chipRect(lx, ly, edge.label);
+      const leader = labelPos?.leader;
+      if (leader) label += `    <line x1="${leader.from.x}" y1="${leader.from.y}" x2="${leader.to.x}" y2="${leader.to.y}" stroke="${stroke}" stroke-width="${DS.stroke.hairline}" stroke-dasharray="${DS.dash.leader}"/>\n`;
+      label += `    <rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="${DS.chip.rx}" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${typeAccent.stroke}" stroke-opacity="0.35" stroke-width="${DS.stroke.hairline}"/>\n`;
+      const lines = splitLabelLines(edge.label);
+      const lh = (r.height - 2 * DS.chip.padY) / lines.length;
+      const tspans = lines.map((line, i) => `<tspan x="${lx}" y="${r.y + DS.chip.padY + lh * (i + 0.5)}">${this.esc(line)}</tspan>`).join('');
+      label += `    <text text-anchor="middle" dominant-baseline="central" fill="${DS.neutral.text}" font-size="${EDGE_LABEL_FONT}" font-family="${DS.fontFamily}">${tspans}</text>\n`;
     }
-    return el;
+    return { casing, path: el, head, label };
   }
 
   /** Draw one of the UML-conventional arrowhead types onto the last segment
    *  of `prev → last` (reference image B): filled triangle (flow, the
    *  historical default), hollow triangle (generalization/inheritance),
-   *  open V (association), diamond (aggregation/composition). */
-  private renderArrowhead(kind: string, prev: Point, last: Point, pad: number, stroke: string): string {
-    const dx = last.x - prev.x, dy = last.y - prev.y, len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0 || kind === 'none') return '';
-    const nx = dx / len, ny = dy / len;
-    const ax = last.x + pad, ay = last.y + pad;
-    const asz = kind === 'generalization' ? 14 : 10;
-    const p1x = ax - asz * (nx * 0.8 - ny * 0.4), p1y = ay - asz * (ny * 0.8 + nx * 0.4);
-    const p2x = ax - asz * (nx * 0.8 + ny * 0.4), p2y = ay - asz * (ny * 0.8 - nx * 0.4);
-    switch (kind) {
-      case 'generalization':
-        // Hollow triangle pointing at the superclass.
-        return `    <polygon points="${p1x},${p1y} ${p2x},${p2y} ${ax},${ay}" fill="white" stroke="${stroke}" stroke-width="1.5"/>\n`;
-      case 'association':
-        // Open V — two lines, no fill.
-        return `    <polyline points="${p1x},${p1y} ${ax},${ay} ${p2x},${p2y}" fill="none" stroke="${stroke}" stroke-width="1.5"/>\n`;
-      case 'aggregation':
-      case 'composition': {
-        const midx = ax - asz * nx, midy = ay - asz * ny;
-        const fill = kind === 'composition' ? stroke : 'white';
-        return `    <polygon points="${ax},${ay} ${p1x},${p1y} ${midx},${midy} ${p2x},${p2y}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>\n`;
-      }
-      case 'dependency':
-      case 'flow':
-      default:
-        return `    <polygon points="${p1x},${p1y} ${p2x},${p2y} ${ax},${ay}" fill="${stroke}" stroke="${stroke}" stroke-width="1"/>\n`;
-    }
+   *  open V (association), diamond (aggregation/composition). The head's
+   *  length is `DS.arrowScale` × the edge stroke width. */
+  private renderArrowhead(kind: string, prev: Point, last: Point, pad: number, stroke: string, sw: number = DS.stroke.edge): string {
+    return arrowheadSvg(kind, prev, last, pad, stroke, sw);
   }
 
   private esc(s: string): string { return escapeXml(s); }

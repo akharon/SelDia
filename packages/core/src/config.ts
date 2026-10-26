@@ -74,6 +74,10 @@ export interface RenderConfig {
   /** Whether to use hand-drawn (sketchy) rendering style */
   sketchy: boolean;
 
+  /** Edge drawing: 'clean' = rounded orthogonal paths with casing and line
+   *  jumps (default); 'sketch' = hand-drawn rough lines (casing only). */
+  edgeStyle?: 'clean' | 'sketch';
+
   /** Whether to include Rough.js annotation data in output */
   includeRoughAnnotations: boolean;
 
@@ -199,6 +203,7 @@ export const DEFAULT_CONFIG: SelDiAConfig = {
     background: 'transparent',
     embedFonts: true,
     sketchy: true,
+    edgeStyle: 'clean',
     includeRoughAnnotations: false,
     padding: 20,
   },

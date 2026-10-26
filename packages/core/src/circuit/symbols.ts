@@ -112,14 +112,20 @@ function bjt(pnp: boolean): SymbolDef {
 /** N-channel JFET (gate arrow in). */
 const jfet = def2('J', 50, 60, [P('D', 40, 0, 'N'), P('G', 0, 30, 'W'), P('S', 40, 60, 'S')], (c) =>
   path(c, 'M0 30H22') + head(c, 22, 30, 1, 0, 7, 3.5) + path(c, 'M24 12V48', 'none', 1.6) + path(c, 'M24 12H40V0M24 48H40V60'));
-/** Enhancement MOSFET with broken channel and body pin (pins D,G,S,B). */
-function mosfet(p: boolean): SymbolDef {
-  return def2('M', 50, 60, [P('D', 40, 0, 'N'), P('G', 0, 30, 'W'), P('S', 40, 60, 'S'), P('B', 50, 30, 'E')], (c) =>
+/** Enhancement MOSFET with broken channel. Pins D,G,S[,B]: NMOS has D on top and S below,
+ *  PMOS the other way round (S to the supply above, D to the output below), G on the left.
+ *  `bodyTied` drops the separate body pin (the usual case: body wired to source). */
+export function mosfetSymbol(p: boolean, bodyTied = false): SymbolDef {
+  const top = p ? 'S' : 'D', bottom = p ? 'D' : 'S';
+  const byName: Record<string, SymbolPin> = { [top]: P(top, 40, 0, 'N'), G: P('G', 0, 30, 'W'), [bottom]: P(bottom, 40, 60, 'S'), B: P('B', 50, 30, 'E') };
+  const pins = ['D', 'G', 'S', ...(bodyTied ? [] : ['B'])].map((n) => byName[n]);
+  return def2('M', 50, 60, pins, (c) =>
     path(c, 'M0 30H14') + path(c, 'M14 16V44', 'none', 1.6)
     + path(c, 'M22 12V20M22 26V34M22 40V48', 'none', 1.6)
-    + path(c, 'M22 16H40V0M22 44H40V60') + path(c, 'M22 30H50')
+    + path(c, 'M22 16H40V0M22 44H40V60') + (bodyTied ? path(c, 'M22 30H34') : path(c, 'M22 30H50'))
     + (p ? head(c, 34, 30, 1, 0, 7, 3.5) : head(c, 22, 30, -1, 0, 7, 3.5)));
 }
+function mosfet(p: boolean): SymbolDef { return mosfetSymbol(p, false); }
 
 function ground(): SymbolDef {
   return def2('GND', 20, 20, [P('1', 10, 0, 'N')], (c) => path(c, 'M10 0V10M0 10H20M4 14H16M8 18H12'));
@@ -180,7 +186,8 @@ const OPAMP_ROLE: Array<RegExp> = [/^(in)?\+$|^inp$|^in\+$|^noninv/i, /^(in)?-$|
  *  (a 5-pin "R", an `X` subcircuit) get a generic box carrying their own pins;
  *  an `X` with op-amp-shaped pin names gets the triangle. `modelType` / `value`
  *  select polarity and flavour (NPN/PNP, NMOS/PMOS, LED, ZENER, polarised C, AC). */
-export function symbolFor(kind: string, pinNames: string[], modelType = '', value = ''): SymbolDef {
+export function symbolFor(kind: string, pinNames: string[], modelType = '', value = '', bodyTied = false): SymbolDef {
+  if (kind === 'M' && bodyTied && pinNames.length === 4 && pinNames.join('') === 'DGSB') return mosfetSymbol(/^PMOS/i.test(modelType), true);
   if (kind === 'X' && (pinNames.length === 3 || pinNames.length === 5)) {
     const ok = pinNames.every((n, i) => OPAMP_ROLE[i].test(n));
     if (ok) return opampSymbol(pinNames);

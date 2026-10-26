@@ -9,6 +9,7 @@ import type { SelDiAConfig } from '../config.js';
 import type { ShapeType } from '../types/shapes.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+import { sizeForShape } from '../render/node-label-geometry.js';
 const ROUTING_MAP: Record<string, EdgeRouting> = {
   straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
   orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
@@ -33,7 +34,7 @@ export const flowchartPlugin: DiagramPlugin = {
         description: nd.description || undefined,
         shape: nd.shape as ShapeType,
         position: { x: 0, y: 0 },
-        size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 100, 50),
+        size: sizeForShape(nd.label, String(nd.shape), (nd.style?.fontSize as number) || 14, 100, 50),
         style: nd.style ? { ...nd.style } : {},
         ports: [],
         classList: nd.classList || [],

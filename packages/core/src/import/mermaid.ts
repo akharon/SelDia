@@ -23,6 +23,7 @@ import { DiagramType, EdgeRouting } from '../ir/types.js';
 import { ShapeType } from '../types/shapes.js';
 import { StrokeStyle, type NodeStyle, type EdgeStyle } from '../types/style.js';
 import { sizeForLabel } from '../layout/text-measure.js';
+import { sizeForShape } from '../render/node-label-geometry.js';
 import { erEntitySize } from '../render/custom-renderers.js';
 
 export interface MermaidImportDiagnostic {
@@ -205,7 +206,7 @@ function makeNode(id: string, label: string, shape: ShapeType): IRNode {
     shape,
     position: { x: 0, y: 0 },
     // Cylinders lose 2x12px of height to their end caps; give the face room for the label.
-    size: sizeForLabel(label, 14, 100, shape === ShapeType.CYLINDER ? 64 : 50),
+    size: sizeForShape(label, String(shape), 14, 100, 50),
     style: {},
     ports: [],
     classList: [],
@@ -344,6 +345,14 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
     const gid = currentGroup();
     if (!gid) return;
     const g = groups.get(gid)!;
+    // A node lives in ONE group: the first subgraph that mentions it keeps it
+    // (a later mention is just a reference), unless that group is an enclosing
+    // one, in which case the more specific innermost group takes it.
+    for (const [hid, h] of groups) {
+      if (hid === gid || !h.childNodeIds.includes(nodeId)) continue;
+      if (!groupStack.includes(hid)) return;
+      h.childNodeIds.splice(h.childNodeIds.indexOf(nodeId), 1);
+    }
     if (!g.childNodeIds.includes(nodeId)) g.childNodeIds.push(nodeId);
   };
 
@@ -359,7 +368,7 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
       // mention — Mermaid lets you declare `a --> b` before `b[Real Label]`.
       if (parsed.label !== parsed.id) {
         existing.label = parsed.label;
-        existing.size = sizeForLabel(parsed.label, 14, 100, 50);
+        existing.size = sizeForShape(parsed.label, String(existing.shape), 14, 100, 50);
       }
       if (parsed.shape !== ShapeType.RECTANGLE) existing.shape = parsed.shape;
     } else {
@@ -537,7 +546,7 @@ function importSequence(lines: string[], diagnostics: MermaidImportDiagnostic[])
     if (existing) {
       if (label) {
         existing.label = label;
-        existing.size = sizeForLabel(label, 14, 100, 50);
+        existing.size = sizeForShape(label, String(existing.shape), 14, 100, 50);
       }
       return;
     }

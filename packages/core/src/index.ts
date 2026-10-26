@@ -63,6 +63,8 @@ export type { CircuitModel, CircuitPart } from './circuit/model.js';
 export { SYMBOLS, symbolFor, orient } from './circuit/symbols.js';
 export type { SymbolDef, SymbolPin } from './circuit/symbols.js';
 export { circuitPlugin, parseNetlist, importCircuit } from './diagrams/circuit.js';
+export { fenceToSource } from './import/fence.js';
+export type { FenceKind, FenceSource } from './import/fence.js';
 
 // PCB board view (render-only KiCad .kicad_pcb).
 export { parseKicadPcb, parseSExp, boardBounds } from './pcb/kicad-pcb.js';

@@ -2,13 +2,14 @@
 // SelDiA — layout quality metrics: unit tests + corpus regression gate
 // =============================================================================
 import { describe, it, expect } from 'vitest';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as core from '../src/index.js';
 // @ts-expect-error plain .mjs shared with scripts/layout-metrics.mjs
 import { measureCorpus } from '../../../scripts/layout-metrics-lib.mjs';
-import { measureLayout } from '../src/layout/metrics.js';
+import { measureLayout, tokenViolations, tokenHistogram, lowContrastText } from '../src/layout/metrics.js';
 import { DiagramType, EdgeRouting, type DiagramIR, type IRNode, type IREdge, type IRGroup } from '../src/ir/types.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -98,22 +99,28 @@ describe('measureLayout units', () => {
 // ── Corpus regression gate ───────────────────────────────────────────────────
 // Aggregated per diagram TYPE with tolerance, so an ELK/dagre version bump that
 // jitters one diagram does not break CI, while a real regression still does.
-const GATED = ['crossings', 'edgeOverlaps', 'borderHugs', 'nodeLabelHits', 'edgeNodeHits', 'labelOverlaps', 'groupViolations'] as const;
-const allowed = (base: number) => base + Math.max(1, Math.ceil(base * 0.1));
+const GATED = ['crossings', 'edgeOverlaps', 'borderHugs', 'nodeLabelHits', 'edgeNodeHits', 'labelOverlaps', 'labelDetached', 'labelOnArrowhead', 'labelEdgeHits', 'parallelRunLength', 'groupViolations', 'groupTitleHits', 'nodeTextOverflow'] as const;
+/** Label counts: at most +max(1, 10%). parallelRunLength is in px: +10% only. */
+const PCT_ONLY = new Set<string>(['parallelRunLength']);
+const allowed = (k: string, base: number) => PCT_ONLY.has(k)
+  ? base + Math.ceil(base * 0.1)
+  : base + Math.max(1, Math.ceil(base * 0.1));
 
+/** Sums per type. A key no diagram in the baseline has stays undefined, so a
+ *  metric newer than the baseline is recorded, not gated. */
 function byType(diagrams: Record<string, any>) {
-  const out: Record<string, Record<string, number>> = {};
+  const out: Record<string, Record<string, number | undefined>> = {};
   for (const d of Object.values(diagrams)) {
-    if (d.error) continue;
-    const t = (out[d.type] ??= Object.fromEntries(GATED.map((k) => [k, 0])));
-    for (const k of GATED) t[k] += d[k];
+    if (d.error || d.unsupported) continue;
+    const t = (out[d.type] ??= {});
+    for (const k of GATED) if (d[k] !== undefined) t[k] = (t[k] ?? 0) + d[k];
   }
   return out;
 }
 
 describe('layout metrics corpus regression', () => {
   it('stays within baseline per diagram type', async () => {
-    const current = await measureCorpus(core, EXAMPLES, 'defaults');
+    const current = await measureCorpus({ ...core, tokenViolations, tokenHistogram, lowContrastText }, EXAMPLES, 'defaults');
     if (process.env.UPDATE_LAYOUT_BASELINE === '1') {
       writeFileSync(BASELINE, JSON.stringify(current, null, 2) + '\n');
       return;
@@ -123,8 +130,51 @@ describe('layout metrics corpus regression', () => {
     const cur = byType(current.diagrams), ref = byType(base.diagrams);
     for (const [type, b] of Object.entries(ref)) {
       for (const k of GATED) {
-        expect(cur[type]?.[k] ?? 0, `${type}.${k}`).toBeLessThanOrEqual(allowed(b[k]));
+        if (b[k] === undefined) continue; // not in the baseline yet: record only
+        expect(cur[type]?.[k] ?? 0, `${type}.${k}`).toBeLessThanOrEqual(allowed(k, b[k]!));
       }
     }
+    // tokenViolations: reported, not gated yet.
+    const tokens = Object.values(current.diagrams).reduce((n: number, d: any) => n + (d.tokenViolations ?? 0), 0);
+    console.info(`tokenViolations (not gated): ${tokens}`);
+    // unsupported blocks are listed, never counted in `failed`, and never gated.
+    console.info(`unsupported (not gated): ${current.unsupported}`);
+    // lowContrastText is gated absolutely (baseline 0, no tolerance): any text under 4.5:1 fails.
+    const low = Object.entries(current.diagrams).filter(([, d]: [string, any]) => (d.lowContrastText ?? 0) > 0).map(([k, d]: [string, any]) => `${k}=${d.lowContrastText}`);
+    expect(low, 'lowContrastText must be 0').toEqual([]);
   }, 120_000);
 });
+
+describe('corpus harness: unsupported vs failed (S7)', () => {
+  it('counts an importer-declined block as unsupported, a compile error as failed', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'seldia-metrics-'));
+    writeFileSync(path.join(dir, 'mixed.md'), [
+      '```plantuml',
+      '@startjson',
+      '{ "a": 1 }',
+      '@endjson',
+      '```',
+      '',
+      '```seldia',
+      'diagram flowchart {{{',
+      '```',
+      '',
+      '```seldia',
+      'diagram flowchart "ok" {',
+      '  a (Start)',
+      '  b [End]',
+      '  a -> b',
+      '}',
+      '```',
+      '',
+    ].join('\n'));
+    const r: any = await measureCorpus({ ...core, tokenViolations, tokenHistogram, lowContrastText }, dir, 'defaults');
+    expect(r.unsupported).toBe(1);
+    expect(r.failed).toBe(1);
+    expect(r.measured).toBe(1);
+    expect(r.diagrams['mixed.md#1'].unsupported).toBeTruthy();
+    expect(r.diagrams['mixed.md#1'].error).toBeUndefined();
+    expect(r.diagrams['mixed.md#2'].error).toBeDefined();
+  }, 60_000);
+});
+

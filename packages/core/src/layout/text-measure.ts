@@ -11,6 +11,32 @@
 /** Average glyph width as a fraction of font size, for a typical UI sans-serif. */
 const AVG_CHAR_WIDTH_EM = 0.56;
 
+/** Per-character width table for Inter-like UI sans (fractions of font size).
+ *  Narrow glyphs, capitals, digits and wide glyphs differ by ~2x, so a flat
+ *  average over- or under-sizes labels; anything unlisted uses the lowercase
+ *  default. Kept slightly generous so overflow stays the rare case. */
+const NARROW = new Set("iljtfI.,:;'|! ()[]\u2019`");
+const WIDE = new Set('mwMW@%\u2014');
+const NARROW_EM = 0.3;
+const WIDE_EM = 0.86;
+const CAP_EM = 0.68;
+const DIGIT_EM = 0.6;
+const LOWER_EM = AVG_CHAR_WIDTH_EM - 0.02;
+
+/** Estimated width of one line of text at `fontSize` (px). */
+export function textWidth(line: string, fontSize: number): number {
+  let em = 0;
+  for (const ch of line) {
+    if (NARROW.has(ch)) em += NARROW_EM;
+    else if (WIDE.has(ch)) em += WIDE_EM;
+    else if (ch >= 'A' && ch <= 'Z') em += CAP_EM;
+    else if (ch >= '0' && ch <= '9') em += DIGIT_EM;
+    else if (ch > '\u2e7f') em += 1; // CJK and other full-width glyphs
+    else em += LOWER_EM;
+  }
+  return em * fontSize;
+}
+
 export interface MeasuredText {
   lines: string[];
   /** Widest line's estimated pixel width. */
@@ -24,8 +50,7 @@ export interface MeasuredText {
 export function measureLabel(label: string, fontSize: number): MeasuredText {
   const lines = (label || '').split('\n');
   const lineHeight = Math.round(fontSize * 1.35);
-  const charWidth = fontSize * AVG_CHAR_WIDTH_EM;
-  const width = Math.max(1, ...lines.map((l) => l.length)) * charWidth;
+  const width = Math.max(fontSize * AVG_CHAR_WIDTH_EM, ...lines.map((l) => textWidth(l, fontSize)));
   const height = lines.length * lineHeight;
   return { lines, width, height, lineHeight };
 }

@@ -15,18 +15,24 @@ const engine = val('--engine', 'defaults');
 if (!['dagre', 'elk', 'defaults'].includes(engine)) { console.error('--engine must be dagre|elk (or omit)'); process.exit(2); }
 const out = val('--out', join(root, 'docs/layout-metrics.json'));
 
-const core = await import(pathToFileURL(join(root, 'packages/core/dist/index.js')).href);
+const index = await import(pathToFileURL(join(root, 'packages/core/dist/index.js')).href);
+// tokenViolations/tokenHistogram/lowContrastText are not re-exported from the core index; take them from the metrics module.
+const metrics = await import(pathToFileURL(join(root, 'packages/core/dist/layout/metrics.js')).href);
+const core = { ...index, tokenViolations: metrics.tokenViolations, tokenHistogram: metrics.tokenHistogram, lowContrastText: metrics.lowContrastText };
 const result = await measureCorpus(core, join(root, 'docs/examples'), engine);
 writeFileSync(out, JSON.stringify(result, null, 2) + '\n');
 
 const t = result.totals;
-console.log(`engine=${engine} measured=${result.measured} failed=${result.failed} | crossings=${t.crossings} edgeOverlaps=${t.edgeOverlaps} borderHugs=${t.borderHugs} nodeLabelHits=${t.nodeLabelHits} edgeNodeHits=${t.edgeNodeHits} labelOverlaps=${t.labelOverlaps} groupViolations=${t.groupViolations} bends=${t.bends}`);
+console.log(`engine=${engine} measured=${result.measured} failed=${result.failed} unsupported=${result.unsupported} | crossings=${t.crossings} edgeOverlaps=${t.edgeOverlaps} borderHugs=${t.borderHugs} nodeLabelHits=${t.nodeLabelHits} edgeNodeHits=${t.edgeNodeHits} labelOverlaps=${t.labelOverlaps} labelDetached=${t.labelDetached} labelOnArrowhead=${t.labelOnArrowhead} labelEdgeHits=${t.labelEdgeHits} groupTitleHits=${t.groupTitleHits} nodeTextOverflow=${t.nodeTextOverflow} parallelRunLength=${t.parallelRunLength} groupViolations=${t.groupViolations} bends=${t.bends} tokenViolations=${t.tokenViolations} (not gated) lowContrastText=${t.lowContrastText} (gated, baseline 0)`);
+// Token histogram: every off-token value with its count, worst first, so the fix is obvious.
+for (const [k, c] of Object.entries(result.tokenHistogram ?? {})) console.log(`  ${k} ×${c}`);
 if (!flag('--quiet')) {
-  console.log('\n| diagram | type | cross | ovl | hug | hits | labels | bends | group | gap | aspect |\n|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|');
+  console.log('\n| diagram | type | cross | ovl | hug | hits | labels | detach | arrow | edgeHit | run | bends | group | gtitle | ovfl | tok | gap | aspect |\n|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|');
   for (const [k, d] of Object.entries(result.diagrams)) {
-    if (d.error) console.log(`| ${k} | ${d.lang} | error: ${d.error} |||||||`);
-    else if (d.crossings || d.edgeOverlaps || d.borderHugs || d.edgeNodeHits || d.labelOverlaps || d.groupViolations)
-      console.log(`| ${k} | ${d.type} | ${d.crossings} | ${d.edgeOverlaps} | ${d.borderHugs} | ${d.edgeNodeHits} | ${d.labelOverlaps} | ${d.bends} | ${d.groupViolations} | ${d.endpointGap} | ${d.aspectRatio} |`);
+    if (d.error) console.log(`| ${k} | ${d.lang} | error: ${d.error} |||||||||||||||`);
+    else if (d.crossings || d.edgeOverlaps || d.borderHugs || d.edgeNodeHits || d.labelOverlaps || d.labelDetached || d.labelOnArrowhead || d.labelEdgeHits || d.parallelRunLength || d.groupViolations || d.groupTitleHits || d.nodeTextOverflow || d.tokenViolations || d.lowContrastText)
+      console.log(`| ${k} | ${d.type} | ${d.crossings} | ${d.edgeOverlaps} | ${d.borderHugs} | ${d.edgeNodeHits} | ${d.labelOverlaps} | ${d.labelDetached} | ${d.labelOnArrowhead} | ${d.labelEdgeHits} | ${d.parallelRunLength} | ${d.bends} | ${d.groupViolations} | ${d.groupTitleHits} | ${d.nodeTextOverflow} | ${d.tokenViolations} | ${d.endpointGap} | ${d.aspectRatio} |`);
   }
+  for (const [k, d] of Object.entries(result.diagrams)) if (d.unsupported) console.log(`unsupported ${k} (${d.lang}): ${d.unsupported}`);
   console.log('\n(only diagrams with a nonzero defect are listed; full data in ' + out + ')');
 }

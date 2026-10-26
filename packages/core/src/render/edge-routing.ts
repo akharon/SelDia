@@ -18,6 +18,8 @@
 // then agree by construction, for any relative placement of the two nodes.
 // =============================================================================
 
+import { DS } from './design-system.js';
+import { iconLabelLayout } from './node-label-geometry.js';
 import { clipStartToShape, clipEndToShape, isBoxShape } from './shape-clip.js';
 export { clipToShape } from './shape-clip.js';
 import { EdgeRouting, type IRNode, type IREdge } from '../ir/types.js';
@@ -39,6 +41,19 @@ export function nodeRect(n: IRNode, gap = 0): Rect {
     width: n.size.width + gap * 2,
     height: n.size.height + gap * 2,
   };
+}
+
+/** The box edges must respect: the node, plus — for network devices, whose
+ *  label sits BELOW the icon — that label, so a route leaving the bottom stops
+ *  under the text instead of striking through it. */
+export function routeRect(n: IRNode, gap = 0): Rect {
+  const r = nodeRect(n, gap);
+  if (!(n.data as any)?.networkKind) return r;
+  const lb = iconLabelLayout(n)?.box;
+  if (!lb) return r;
+  const x0 = Math.min(r.x, lb.x - gap), y0 = Math.min(r.y, lb.y - gap);
+  const x1 = Math.max(r.x + r.width, lb.x + lb.width + gap), y1 = Math.max(r.y + r.height, lb.y + lb.height + gap);
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 export function pointInRect(p: Point, r: Rect): boolean {
@@ -107,7 +122,7 @@ export function polylineIntersectsAnyNode(
 ): boolean {
   for (let i = 0; i < pts.length - 1; i++) {
     for (const obs of obstacles) {
-      if (lineSegmentIntersectsRect(pts[i], pts[i + 1], nodeRect(obs, 0), gap)) return true;
+      if (lineSegmentIntersectsRect(pts[i], pts[i + 1], routeRect(obs, 0), gap)) return true;
     }
   }
   return false;
@@ -333,7 +348,7 @@ function gridLines(
 ): number[] {
   const s = new Set<number>();
   for (const o of obstacles) {
-    const r = nodeRect(o, gap);
+    const r = routeRect(o, gap);
     if (axis === 'x') {
       s.add(r.x);
       s.add(r.x + r.width);
@@ -367,7 +382,7 @@ const GRID_GAP = EDGE_GAP + 12;
 function hClear(x0: number, x1: number, y: number, obstacles: IRNode[], gap: number): boolean {
   const E = 1e-4;
   for (const o of obstacles) {
-    const r = nodeRect(o, gap);
+    const r = routeRect(o, gap);
     // Segment must not cross the obstacle's interior.
     // If the segment's y is strictly above or below the obstacle, it's clear.
     if (y <= r.y + E || y >= r.y + r.height - E) continue;
@@ -383,7 +398,7 @@ function hClear(x0: number, x1: number, y: number, obstacles: IRNode[], gap: num
 function vClear(x: number, y0: number, y1: number, obstacles: IRNode[], gap: number): boolean {
   const E = 1e-4;
   for (const o of obstacles) {
-    const r = nodeRect(o, gap);
+    const r = routeRect(o, gap);
     if (x <= r.x + E || x >= r.x + r.width - E) continue;
     const top = Math.min(y0, y1), bot = Math.max(y0, y1);
     if (bot > r.y + E && top < r.y + r.height - E) return false;
@@ -565,6 +580,17 @@ function obstaclesFor(
   return allNodes.filter((n) => !exclude.has(n.id));
 }
 
+/** Border-clip the start of a route to `n`: its outline, then (network devices)
+ *  the label under the icon as well. */
+function clipStartNode(pts: Point[], n: IRNode): Point[] {
+  let out = isBoxShape(n) ? clipStart(pts, routeRect(n, EDGE_GAP)) : clipStartToShape(pts, n, EDGE_GAP);
+  if (!isBoxShape(n) && (n.data as any)?.networkKind) out = clipStart(out, routeRect(n, EDGE_GAP));
+  return out;
+}
+function clipEndNode(pts: Point[], n: IRNode): Point[] {
+  return clipStartNode([...pts].reverse(), n).reverse();
+}
+
 /** Route an edge between two nodes: try the shortest clean path (straight →
  *  primary elbow → alternate elbow → detour), then clip to both borders.
  *  `raw` is the layout engine's point list, used as-is for non-orthogonal
@@ -619,8 +645,8 @@ export function routeBetween(
     pts = raw;
   }
 
-  if (src) pts = isBoxShape(src) ? clipStart(pts, nodeRect(src, EDGE_GAP)) : clipStartToShape(pts, src, EDGE_GAP);
-  if (tgt) pts = isBoxShape(tgt) ? clipEnd(pts, nodeRect(tgt, EDGE_GAP)) : clipEndToShape(pts, tgt, EDGE_GAP);
+  if (src) pts = clipStartNode(pts, src);
+  if (tgt) pts = clipEndNode(pts, tgt);
   pts = dedupe(pts);
   return pts.length >= 2 ? pts : raw;
 }
@@ -631,8 +657,8 @@ export function routeBetween(
  *  are the user's own and must survive untouched. */
 export function clipRouteToNodes(raw: Point[], src?: IRNode, tgt?: IRNode): Point[] {
   let pts = raw;
-  if (src) pts = isBoxShape(src) ? clipStart(pts, nodeRect(src, EDGE_GAP)) : clipStartToShape(pts, src, EDGE_GAP);
-  if (tgt) pts = isBoxShape(tgt) ? clipEnd(pts, nodeRect(tgt, EDGE_GAP)) : clipEndToShape(pts, tgt, EDGE_GAP);
+  if (src) pts = clipStartNode(pts, src);
+  if (tgt) pts = clipEndNode(pts, tgt);
   pts = dedupe(pts);
   return pts.length >= 2 ? pts : raw;
 }
@@ -663,8 +689,35 @@ export function routeEdgePolyline(
   // The layout engine (ELK) already produced an obstacle-aware route: keep it
   // and only trim the endpoints onto the node borders.
   if ((edge.data as any)?.exactEnds) return wps; // circuit wires end exactly on symbol pins
-  if (edge.layoutRouted) return clipRouteToNodes(wps, src, tgt);
-  return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes);
+  if (edge.layoutRouted) return applyPortStubs(clipRouteToNodes(wps, src, tgt), allNodes);
+  return applyPortStubs(routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes), allNodes);
+}
+
+const isH = (a: Point, b: Point) => Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5;
+const isV = (a: Point, b: Point) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+
+/** Lengthen the first segment (leaving the source) and the last (arriving at
+ *  the target) to at least `DS.portStub` where the route allows, so an arrow
+ *  meets a diamond/ellipse head-on instead of skimming its side. A stub grows
+ *  by sliding the first two bends along the stub's own direction; it is only
+ *  applied when the shifted route stays orthogonal, keeps the following
+ *  segment pointing the same way and does not newly cross a node. */
+export function applyPortStubs(pts: Point[], allNodes?: IRNode[], stub = DS.portStub): Point[] {
+  if (pts.length < 4) return pts;
+  const growStart = (p: Point[]): Point[] => {
+    const d0 = Math.hypot(p[1].x - p[0].x, p[1].y - p[0].y);
+    if (d0 >= stub || !((isH(p[0], p[1]) && isV(p[1], p[2])) || (isV(p[0], p[1]) && isH(p[1], p[2])))) return p;
+    const ux = Math.sign(p[1].x - p[0].x), uy = Math.sign(p[1].y - p[0].y);
+    const delta = stub - d0;
+    // p2→p3 must stay pointing the same way along the stub axis after the slide.
+    const along = (p[3].x - p[2].x) * ux + (p[3].y - p[2].y) * uy;
+    if (along <= delta + 1) return p;
+    const q = p.map((pt) => ({ ...pt }));
+    for (const i of [1, 2]) { q[i].x += ux * delta; q[i].y += uy * delta; }
+    if (allNodes && !polylineIntersectsAnyNode(p, allNodes, 0) && polylineIntersectsAnyNode(q, allNodes, 0)) return p;
+    return q;
+  };
+  return growStart(growStart(pts).slice().reverse()).reverse();
 }
 
 /** Route every edge that has layout waypoints, exactly as the renderer does
@@ -677,6 +730,103 @@ export function routeAllEdges(edges: IREdge[], nodes: IRNode[]): Map<string, Poi
     const raw = e.waypoints || [];
     if (raw.length < 2) continue;
     out.set(e.id, routeEdgePolyline(e, raw, nodeById.get(e.sourceId), nodeById.get(e.targetId), fans.get(e.id), nodes));
+  }
+  return out;
+}
+
+/** Side of `n` an end point `p` sits on. */
+export function sideOf(n: IRNode, p: Point): 'T' | 'B' | 'L' | 'R' {
+  const c = centerOf(n);
+  const dx = (p.x - c.x) / (n.size.width / 2 || 1), dy = (p.y - c.y) / (n.size.height / 2 || 1);
+  return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'B' : 'T');
+}
+
+/** Shapes whose outline has a single vertex on each axis side. */
+const APEX_SHAPES = new Set(['diamond', 'circle', 'ellipse']);
+
+/** Move the LAST point of `pts` onto the apex/vertex of `n` on the side the final
+ *  segment arrives from, shifting the final segment (and the bend before it) to
+ *  the node's centre line so the stub runs straight into the vertex. Only when
+ *  the arrival is along an axis (segment orthogonal), the node is the only edge
+ *  on that side (`fanned` false) and the arrival lies within the node span, keeps a stub of at
+ *  least half DS.portStub and does not newly cut into a node. */
+export function snapApexEnd(pts: Point[], n: IRNode | undefined, fanned: boolean, allNodes?: IRNode[]): Point[] {
+  if (!n || fanned || pts.length < 2 || !APEX_SHAPES.has(String(n.shape))) return pts;
+  const c = centerOf(n);
+  const k = pts.length;
+  const a = pts[k - 2], b = pts[k - 1];
+  const vertical = isV(a, b), horizontal = isH(a, b);
+  if (!vertical && !horizontal) return pts;
+  const hw = n.size.width / 2, hh = n.size.height / 2;
+  const off = vertical ? b.x - c.x : b.y - c.y;
+  const limit = (vertical ? hw : hh) * 0.98;
+  if (Math.abs(off) < 0.5 || Math.abs(off) > limit) return pts;
+  const dir = vertical ? Math.sign(b.y - a.y) : Math.sign(b.x - a.x);
+  const apex: Point = vertical
+    ? { x: c.x, y: c.y - dir * (hh + EDGE_GAP) }
+    : { x: c.x - dir * (hw + EDGE_GAP), y: c.y };
+  const len = vertical ? Math.abs(apex.y - a.y) : Math.abs(apex.x - a.x);
+  if ((vertical ? (apex.y - a.y) * dir : (apex.x - a.x) * dir) <= 0 || len < DS.portStub / 2) return pts;
+  let q: Point[];
+  if (k >= 3) {
+    // The bend before the stub slides along the previous (perpendicular) segment.
+    const prev = pts[k - 3];
+    const slides = vertical ? isH(prev, a) : isV(prev, a);
+    if (!slides) return pts;
+    q = pts.map((p) => ({ ...p }));
+    if (vertical) q[k - 2].x = c.x; else q[k - 2].y = c.y;
+  } else {
+    // Straight two-point route: jog at mid-length onto the centre line.
+    const mid = vertical ? (a.y + apex.y) / 2 : (a.x + apex.x) / 2;
+    q = vertical
+      ? [a, { x: a.x, y: mid }, { x: c.x, y: mid }, apex]
+      : [a, { x: mid, y: a.y }, { x: mid, y: c.y }, apex];
+    q = q.map((p) => ({ ...p }));
+  }
+  q[q.length - 1] = apex;
+  if (allNodes) {
+    const others = allNodes.filter((o) => o.id !== n.id);
+    if (polylineIntersectsAnyNode(q, others, 0) && !polylineIntersectsAnyNode(pts, others, 0)) return pts;
+  }
+  return dedupe(q);
+}
+
+/** Snap every route end that is the ONLY end on its side of a diamond / circle /
+ *  ellipse onto that side's vertex (see snapApexEnd). Ends sharing a side stay
+ *  where they are so they can fan along the slanted faces. */
+export function snapApexes(routes: Map<string, Point[]>, nodes: IRNode[]): Map<string, Point[]> {
+  const apexNodes = nodes.filter((n) => APEX_SHAPES.has(String(n.shape)));
+  if (!apexNodes.length) return routes;
+  const near = (n: IRNode, p: Point) => p.x >= n.position.x - 8 && p.x <= n.position.x + n.size.width + 8
+    && p.y >= n.position.y - 8 && p.y <= n.position.y + n.size.height + 8;
+  const count = new Map<string, number>();
+  // The side an end belongs to follows the way the edge arrives (its last
+  // segment's axis), not where the point lands on a slanted face.
+  const sideKey = (n: IRNode, pts: Point[], end: 0 | 1): string => {
+    const p = end ? pts[pts.length - 1] : pts[0], q = end ? pts[pts.length - 2] : pts[1];
+    if (isV(p, q)) return `${n.id}:${q.y < p.y ? 'T' : 'B'}`;
+    if (isH(p, q)) return `${n.id}:${q.x < p.x ? 'L' : 'R'}`;
+    return `${n.id}:${sideOf(n, p)}`;
+  };
+  const hit = (pts: Point[], end: 0 | 1): IRNode | undefined => {
+    const p = end ? pts[pts.length - 1] : pts[0];
+    return apexNodes.find((n) => near(n, p));
+  };
+  for (const pts of routes.values()) for (const end of [0, 1] as const) {
+    const n = hit(pts, end); if (!n) continue;
+    const k = sideKey(n, pts, end);
+    count.set(k, (count.get(k) ?? 0) + 1);
+  }
+  const out = new Map<string, Point[]>();
+  for (const [id, pts0] of routes) {
+    let pts = pts0;
+    for (const end of [1, 0] as const) {
+      const n = hit(pts, end); if (!n) continue;
+      const k = sideKey(n, pts, end);
+      if ((count.get(k) ?? 0) !== 1) continue;
+      pts = end ? snapApexEnd(pts, n, false, nodes) : snapApexEnd([...pts].reverse(), n, false, nodes).reverse();
+    }
+    out.set(id, pts);
   }
   return out;
 }

@@ -76,6 +76,7 @@ function annotateSvg() {
   const map: [string, string][] = [
     ['data-seldia-node-id', 'node'],
     ['data-seldia-edge-id', 'edge'],
+    ['data-seldia-edge-ref', 'edge'],   // casing / arrowhead / label layers of an edge
     ['data-seldia-group-id', 'group'],
   ];
   for (const [attr, type] of map) {

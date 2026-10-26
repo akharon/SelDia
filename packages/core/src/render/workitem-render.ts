@@ -13,7 +13,7 @@
 
 import type { IRNode } from '../ir/types.js';
 import { roughRect, seedFor } from './rough.js';
-import { DS, type Swatch } from './design-system.js';
+import { DS, readableTextOn, type Swatch } from './design-system.js';
 import { sectionsFor, type WorkItemType } from '../workitem/schema.js';
 import { escapeXml as esc } from './escape.js';
 
@@ -203,9 +203,9 @@ export function renderWorkItem(node: IRNode, pad: number, sketchy: boolean, swat
 
   // Type badge, then the id, on the header's first line.
   const badge = BADGE[itemType] || 'ITEM';
-  const badgeW = badge.length * 7.5 + 12;
+  const badgeW = badge.length * 8.5 + 12;
   el += `    <rect x="${x + PAD_X}" y="${y + 8}" width="${badgeW}" height="15" rx="3" fill="${accent.stroke}"/>\n`;
-  el += `    <text x="${x + PAD_X + badgeW / 2}" y="${y + 19}" text-anchor="middle" fill="#ffffff" font-size="${DS.fontSize.small - 1}" font-weight="700" font-family="${DS.fontFamily}">${esc(badge)}</text>\n`;
+  el += `    <text x="${x + PAD_X + badgeW / 2}" y="${y + 19}" text-anchor="middle" fill="${readableTextOn(accent.stroke, '#ffffff')}" font-size="${DS.fontSize.meta}" font-weight="700" font-family="${DS.fontFamily}">${esc(badge)}</text>\n`;
   el += `    <text x="${x + PAD_X + badgeW + 8}" y="${y + 19.5}" text-anchor="start" fill="${DS.neutral.muted}" font-size="${DS.fontSize.small}" font-family="${DS.monoFamily}">${esc(node.id)}</text>\n`;
 
   // Title, wrapped to at most two lines.

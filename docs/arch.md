@@ -100,11 +100,11 @@ diagram <type> ["<title>"] [<metadata>] {
 diagram flowchart "User Login" {
     theme sketchy-dark
 
-    start: (Start)
-    login: [Enter Credentials]
-    validate: {Valid?}
-    dashboard: [Show Dashboard]
-    error: [Show Error]
+    start (Start)
+    login [Enter Credentials]
+    validate diamond "Valid?"
+    dashboard [Show Dashboard]
+    error [Show Error]
 
     start --> login
     login --> validate
@@ -236,9 +236,9 @@ diagram c4 context "Internet Banking" {
 
 ```seldia
 diagram c4 container "Internet Banking" {
-    container spa: "SPA" "React" "Client-side application"
-    container api: "API" "Go" "RESTful API"
-    containerDb db: "Database" "PostgreSQL" "Stores user data"
+    container spa "SPA" "React" "Client-side application"
+    container api "API" "Go" "RESTful API"
+    database db "Database" "PostgreSQL" "Stores user data"
 
     spa --> api: "JSON/HTTPS"
     api --> db: "SQL/TCP"
@@ -248,13 +248,13 @@ diagram c4 container "Internet Banking" {
 #### 3.6.4 BPMN 2.0
 ```seldia
 diagram bpmn "Order Fulfillment" {
-    startEvent start: "Order Received"
-    task validate: "Validate Order"
-    gateway payment: "Payment OK?"
-    task ship: "Ship Order"
-    task refund: "Process Refund"
-    endEvent done: "Order Complete"
-    endEvent cancelled: "Order Cancelled"
+    start "Order Received"
+    validate "Validate Order"
+    gateway payment "Payment OK?"
+    ship "Ship Order"
+    refund "Process Refund"
+    done "Order Complete"
+    cancelled "Order Cancelled"
 
     start --> validate
     validate --> payment
@@ -361,18 +361,17 @@ plain nodes and edges to express the same tree.)*
 #### 3.6.9 Form Definition
 ```seldia
 diagram form "User Registration" {
-    section "Personal Info" {
-        name: "Field: name (text, required)\nplaceholder: Full name"
-        email: "Field: email (email, required)"
-        age: "Field: age (number, 18-120)"
-    }
-    section "Preferences" {
-        newsletter: "Field: newsletter (checkbox)\nSubscribe to newsletter"
-        theme: "Field: theme (select)\nLight | Dark | System"
-    }
-    submit: "Submit: Register"
+    name [Name: text, required]
+    email [Email: email, required]
+    age [Age: number, 18-120]
+    newsletter [Newsletter: checkbox]
+    theme [Theme: Light / Dark / System]
+    submit [Submit: Register]
 
-    age --> submit
+    name --> email
+    email --> age
+    age --> newsletter
+    newsletter --> theme
     theme --> submit
 }
 ```
@@ -463,70 +462,64 @@ edgeOp         ::= "-->" | "<-->" | "---" | "..>" | "==>" | "-..->"
 
 ```seldia
 diagram block "SelDiA Architecture" {
-    // ── Entry Points ──
     group "Entry Points" {
-        block cli: "CLI (@cli)" { style: { fill: "#bbdefb" } }
-        block web: "Web App (@web)" { style: { fill: "#bbdefb" } }
-        block vscode: "VS Code (@vscode)" { style: { fill: "#bbdefb" } }
-        block lib: "Library (@core)" { style: { fill: "#bbdefb" } }
-        block api: "REST API (future)" { style: { fill: "#bbdefb" } }
+        cli [CLI (@cli)]
+        web [Web App (@web)]
+        vscode [VS Code (@vscode)]
+        lib [Library (@core)]
+        api [REST API (future)]
     }
 
-    // ── Plugin Layer ──
     group "Plugin Layer" {
-        block fc: "Flowchart Plugin" { style: { fill: "#fff9c4" } }
-        block cls: "Class Plugin" { style: { fill: "#fff9c4" } }
-        block seq: "Sequence Plugin" { style: { fill: "#fff9c4" } }
-        block more: "... 20+ plugins" { style: { fill: "#fff9c4" } }
+        fc [Flowchart Plugin]
+        cls [Class Plugin]
+        seq [Sequence Plugin]
+        more [... 20+ plugins]
     }
 
-    // ── Core Layer ──
     group "Core Layer" {
-        block parser: "Parser (Lexer + Parser)" { style: { fill: "#c8e6c9" } }
-        block ast: "AST Types" { style: { fill: "#c8e6c9" } }
-        block sem: "Semantic Analyzer" { style: { fill: "#c8e6c9" } }
-        block pm: "Plugin Manager (Registry, Lifecycle)" { style: { fill: "#c8e6c9" } }
+        parser [Parser (Lexer + Parser)]
+        ast [AST Types]
+        sem [Semantic Analyzer]
+        pm [Plugin Manager]
     }
 
-    // ── Layout Layer ──
     group "Layout Layer" {
-        block dagre: "Dagre (graphs)" { style: { fill: "#ffccbc" } }
-        block elk: "ELK.js (hierarchical)" { style: { fill: "#ffccbc" } }
-        block custom: "Custom Layouts" { style: { fill: "#ffccbc" } }
-        block solver: "Constraint Solver (kiwi.js)" { style: { fill: "#ffccbc" } }
+        elk [ELK.js (default, layered)]
+        dagre [Dagre (fallback)]
+        custom [Custom Layouts]
+        post [postRoute (edge-layer)]
     }
 
-    // ── Render Layer ──
     group "Render Layer" {
-        block rough: "Rough.js Renderer" { style: { fill: "#e1bee7" } }
-        block shapes: "Shapes Library" { style: { fill: "#e1bee7" } }
-        block theme: "Theme Manager" { style: { fill: "#e1bee7" } }
-        block export: "Export (SVG/PNG/PDF)" { style: { fill: "#e1bee7" } }
+        rough [Rough.js Renderer]
+        shapes [Shapes Library]
+        theme [Theme Manager]
+        export [Export (SVG/PNG/PDF)]
     }
 
-    // ── Interaction Layer ──
     group "Interaction Layer" {
-        block zoom: "Zoom / Pan" { style: { fill: "#b2dfdb" } }
-        block sel: "Selection Manager" { style: { fill: "#b2dfdb" } }
-        block dd: "Drag & Drop" { style: { fill: "#b2dfdb" } }
-        block a11y: "Accessibility (ARIA)" { style: { fill: "#b2dfdb" } }
+        zoom [Zoom / Pan]
+        sel [Selection Manager]
+        dd [Drag and Drop]
+        a11y [Accessibility (ARIA)]
     }
 
-    // ── Vertical dependencies ──
-    cli --> fc
-    web --> fc
-    vscode --> fc
-    fc --> parser
-    cls --> ast
-    parser --> dagre
-    ast --> dagre
-    sem --> dagre
-    dagre --> rough
-    elk --> shapes
-    custom --> theme
-    rough --> zoom
-    shapes --> sel
-    theme --> dd
+    cli -> fc
+    web -> fc
+    vscode -> fc
+    fc -> parser
+    cls -> ast
+    parser -> elk
+    ast -> elk
+    sem -> dagre
+    elk -> post
+    dagre -> post
+    post -> rough
+    custom -> shapes
+    rough -> zoom
+    shapes -> sel
+    theme -> dd
 }
 ```
 
@@ -534,21 +527,27 @@ diagram block "SelDiA Architecture" {
 
 ```seldia
 diagram flowchart "SelDiA Data Pipeline" {
-    dsl: [DSL Text]
-    lexer: [Lexer (tokens)]
-    parser: [Parser (CST)]
-    sem: [Semantic Analyzer (AST + Symbols)]
-    transform: [Plugin-Specific Model Transform (AST → IR)]
-    layout: [Layout Engine (IR → Positioned Geometry)]
-    renderer: [Renderer (Geometry → SVG/Canvas)]
-    interaction: [Interaction Layer (optional)]
+    dsl [DSL Text]
+    lexer [Lexer - tokens]
+    parser [Parser - CST]
+    sem [Semantic Analyzer - AST + Symbols]
+    transform [Plugin Transform - AST to IR]
+    layout [Layout - ELK or Dagre, IR to positions]
+    route [Route and clip - layoutRouted waypoints]
+    post [postRoute - edge-layer pass]
+    labels [Label placement]
+    renderer [Renderer - SVG]
+    interaction [Interaction Layer - optional]
 
     dsl --> lexer
     lexer --> parser
     parser --> sem
     sem --> transform
     transform --> layout
-    layout --> renderer
+    layout --> route
+    route --> post
+    post --> labels
+    labels --> renderer
     renderer --> interaction
 }
 ```
@@ -596,35 +595,59 @@ interface IRNode {
 
 **Key Classes:**
 
+**Compile pipeline**
+
 ```seldia
-diagram class "CoreEngine Classes" {
+diagram class "CoreEngine Classes - Compile pipeline" {
     CoreEngine: "CoreEngine\n+compile(source: string): CompileResult\n+getTheme(name: string): Theme\n+getPlugin(type: string): DiagramPlugin"
-
     Lexer: "Lexer\n+tokenize(source: string): Token[]"
-
     Parser: "Parser\n+parse(tokens: Token[]): CST\n+toAST(cst: CST): DiagramAST"
-
-    SemanticAnalyzer: "SemanticAnalyzer\n+analyze(ast: DiagramAST): AnalysisResult"
-    SymbolTable: "SymbolTable\n+resolve(name: string): Symbol\n+define(symbol: Symbol): void"
-    TypeChecker: "TypeChecker\n+check(node: ASTNode): TypeResult"
-    ReferenceResolver: "ReferenceResolver\n+resolve(ref: Reference): ASTNode"
-
-    PluginManager: "PluginManager\n+register(plugin: DiagramPlugin): void\n+get(type: DiagramType): DiagramPlugin"
-    PluginRegistry: "PluginRegistry\n+list(): DiagramPlugin[]"
-    PluginLifecycle: "PluginLifecycle\n+init(plugin: DiagramPlugin): void\n+destroy(plugin: DiagramPlugin): void"
-
-    ConfigManager: "ConfigManager\n+load(path: string): SelDiAConfig"
-    DiagnosticsCollector: "DiagnosticsCollector\n+report(diag: Diagnostic): void\n+all(): Diagnostic[]"
+    SemanticAnalyzer: "SemanticAnalyzer"
+    PluginManager: "PluginManager"
 
     CoreEngine --> Lexer: "uses"
     CoreEngine --> Parser: "uses"
     CoreEngine --> SemanticAnalyzer: "uses"
     CoreEngine --> PluginManager: "uses"
+}
+```
+
+**Configuration and diagnostics**
+
+```seldia
+diagram class "CoreEngine Classes - Configuration and diagnostics" {
+    CoreEngine: "CoreEngine"
+    ConfigManager: "ConfigManager"
+    DiagnosticsCollector: "DiagnosticsCollector"
+
     CoreEngine --> ConfigManager: "uses"
     CoreEngine --> DiagnosticsCollector: "uses"
+}
+```
+
+**Semantic analysis**
+
+```seldia
+diagram class "CoreEngine Classes - Semantic analysis" {
+    SemanticAnalyzer: "SemanticAnalyzer\n+analyze(ast: DiagramAST): AnalysisResult"
+    SymbolTable: "SymbolTable\n+resolve(name: string): Symbol\n+define(symbol: Symbol): void"
+    TypeChecker: "TypeChecker\n+check(node: ASTNode): TypeResult"
+    ReferenceResolver: "ReferenceResolver\n+resolve(ref: Reference): ASTNode"
+
     SemanticAnalyzer --> SymbolTable: "has"
     SemanticAnalyzer --> TypeChecker: "has"
     SemanticAnalyzer --> ReferenceResolver: "has"
+}
+```
+
+**Plugin management**
+
+```seldia
+diagram class "CoreEngine Classes - Plugin management" {
+    PluginManager: "PluginManager\n+register(plugin: DiagramPlugin): void\n+get(type: DiagramType): DiagramPlugin"
+    PluginRegistry: "PluginRegistry\n+list(): DiagramPlugin[]"
+    PluginLifecycle: "PluginLifecycle\n+init(plugin: DiagramPlugin): void\n+destroy(plugin: DiagramPlugin): void"
+
     PluginManager --> PluginRegistry: "has"
     PluginManager --> PluginLifecycle: "has"
 }
@@ -643,50 +666,65 @@ diagram class "CoreEngine Classes" {
 
 | Diagram Type | Layout Algorithm |
 |-------------|-----------------|
-| Flowchart, Activity, BPMN | Dagre (hierarchical) |
-| Class, ER, Component | Dagre / ELK.js |
-| C4 (all levels) | Dagre (top-down) + container nesting |
+| Flowchart, Activity, BPMN, DMN | Dagre (hierarchical); ELK when grouped (`elkWhenGrouped`) |
+| Class, State, Component, Network, Block, Work items | ELK.js (layered) |
+| ER, Use Case, Deployment, Cloud, Form, Wireframe | Dagre; ELK when grouped |
+| C4 (all levels) | Dagre (top-down); ELK when grouped |
 | Sequence | Custom (lifeline-based) |
-| State | Dagre / ELK (top-down) |
-| Use Case | Grid + force-directed |
-| Deployment | ELK.js (layered) |
 | MindMap | Custom (radial tree) |
 | Gantt, Timeline | Custom (time-scaled) |
-| Network | Force-directed (d3-force) |
 | Chart, Sankey | Custom (coordinate-based) |
 | Git Graph | Custom (git-log style) |
-| Form | Simple vertical flow |
-| DMN | Table-based grid |
-| Block | Grid / freeform |
+| Circuit | ELK.js (port layout) |
+| PCB | Render-only (placement from the netlist) |
+
+Defaults come from `layoutEngineByType` in `src/config.ts`; a diagram's own `layout` line overrides them, and an ELK failure falls back to dagre.
 
 **Key Classes:**
 
+**Layout algorithms**
+
 ```seldia
-diagram class "LayoutEngine Classes" {
+diagram class "LayoutEngine Classes - Layout algorithms" {
     LayoutEngine: "LayoutEngine\n+layout(ir: DiagramIR): PositionedIR\n+setAlgorithm(algo: LayoutAlgorithm): void"
-
-    HierarchicalLayout: "HierarchicalLayout\n+layout(ir: DiagramIR): PositionedIR"
-    ForceDirectedLayout: "ForceDirectedLayout\n+layout(ir: DiagramIR): PositionedIR"
-    LayeredLayout: "LayeredLayout\n+layout(ir: DiagramIR): PositionedIR"
-    SequenceLayout: "SequenceLayout\n+layout(ir: DiagramIR): PositionedIR"
-    RadialLayout: "RadialLayout\n+layout(ir: DiagramIR): PositionedIR"
-    GridLayout: "GridLayout\n+layout(ir: DiagramIR): PositionedIR"
-    TimelineLayout: "TimelineLayout\n+layout(ir: DiagramIR): PositionedIR"
-
-    EdgeRouter: "EdgeRouter\n+route(edges: IREdge[]): RoutedEdge[]"
-    SplineRouter: "SplineRouter\n+route(edges: IREdge[]): RoutedEdge[]"
-    OrthogonalRouter: "OrthogonalRouter\n+route(edges: IREdge[]): RoutedEdge[]"
-    StraightRouter: "StraightRouter\n+route(edges: IREdge[]): RoutedEdge[]"
-
-    LabelPlacer: "LabelPlacer\n+place(labels: Label[]): PositionedLabel[]"
+    HierarchicalLayout: "HierarchicalLayout"
+    ForceDirectedLayout: "ForceDirectedLayout"
+    LayeredLayout: "LayeredLayout"
+    SequenceLayout: "SequenceLayout"
 
     LayoutEngine --> HierarchicalLayout: "contains"
     LayoutEngine --> ForceDirectedLayout: "contains"
     LayoutEngine --> LayeredLayout: "contains"
     LayoutEngine --> SequenceLayout: "contains"
+}
+```
+
+**More layout algorithms**
+
+```seldia
+diagram class "LayoutEngine Classes - More layout algorithms" {
+    LayoutEngine: "LayoutEngine"
+    RadialLayout: "RadialLayout"
+    GridLayout: "GridLayout"
+    TimelineLayout: "TimelineLayout"
+
     LayoutEngine --> RadialLayout: "contains"
     LayoutEngine --> GridLayout: "contains"
     LayoutEngine --> TimelineLayout: "contains"
+}
+```
+
+**Routing and labels**
+
+```seldia
+diagram class "LayoutEngine Classes - Routing and labels" {
+    LayoutEngine: "LayoutEngine"
+    EdgeRouter: "EdgeRouter\n+route(edges: IREdge[]): RoutedEdge[]"
+    LabelPlacer: "LabelPlacer\n+place(labels: Label[]): PositionedLabel[]"
+    SplineRouter: "SplineRouter\n+route(edges: IREdge[]): RoutedEdge[]"
+    OrthogonalRouter: "OrthogonalRouter\n+route(edges: IREdge[]): RoutedEdge[]"
+    StraightRouter: "StraightRouter\n+route(edges: IREdge[]): RoutedEdge[]"
+
     LayoutEngine --> EdgeRouter: "contains"
     LayoutEngine --> LabelPlacer: "contains"
     EdgeRouter --> SplineRouter: "variant"
@@ -714,54 +752,96 @@ diagram class "LayoutEngine Classes" {
 
 **Key Classes:**
 
-```seldia
-diagram class "RenderEngine Classes" {
-    RenderEngine: "RenderEngine\n+render(ir: PositionedIR): SVGString\n+setTheme(theme: Theme): void"
+**Renderers and output**
 
-    RoughRenderer: "RoughRenderer\n+render(ir: PositionedIR): SVGString"
+```seldia
+diagram class "RenderEngine Classes - Renderers and output" {
+    RenderEngine: "RenderEngine\n+render(ir: PositionedIR): SVGString\n+setTheme(theme: Theme): void"
+    RoughRenderer: "RoughRenderer"
+    SmoothRenderer: "SmoothRenderer"
+    ThemeApplicator: "ThemeApplicator"
+    ShapeFactory: "ShapeFactory"
+
+    RenderEngine --> RoughRenderer: "contains"
+    RenderEngine --> SmoothRenderer: "contains"
+    RenderEngine --> ThemeApplicator: "contains"
+    RenderEngine --> ShapeFactory: "contains"
+}
+```
+
+**Writers and export**
+
+```seldia
+diagram class "RenderEngine Classes - Writers and export" {
+    RenderEngine: "RenderEngine"
+    SVGWriter: "SVGWriter"
+    CanvasWriter: "CanvasWriter"
+    Exporter: "Exporter\n+export(svg: string, format: ExportFormat): Buffer"
+
+    RenderEngine --> SVGWriter: "contains"
+    RenderEngine --> CanvasWriter: "contains"
+    RenderEngine --> Exporter: "contains"
+}
+```
+
+**RoughRenderer parts**
+
+```seldia
+diagram class "RenderEngine Classes - RoughRenderer parts" {
+    RoughRenderer: "RoughRenderer"
     NodeRenderer: "NodeRenderer\n+render(node: IRNode): SVGElement"
     EdgeRenderer: "EdgeRenderer\n+render(edge: IREdge): SVGElement"
     GroupRenderer: "GroupRenderer\n+render(group: IRGroup): SVGElement"
+
+    RoughRenderer --> NodeRenderer: "has"
+    RoughRenderer --> EdgeRenderer: "has"
+    RoughRenderer --> GroupRenderer: "has"
+}
+```
+
+**RoughRenderer text and icons**
+
+```seldia
+diagram class "RenderEngine Classes - RoughRenderer text and icons" {
+    RoughRenderer: "RoughRenderer"
     LabelRenderer: "LabelRenderer\n+render(label: Label): SVGElement"
     IconRenderer: "IconRenderer\n+render(icon: Icon): SVGElement"
 
-    SmoothRenderer: "SmoothRenderer\n+render(ir: PositionedIR): SVGString"
+    RoughRenderer --> LabelRenderer: "has"
+    RoughRenderer --> IconRenderer: "has"
+}
+```
 
-    ThemeApplicator: "ThemeApplicator\n+apply(theme: Theme, ir: PositionedIR): StyledIR"
+**Shape family**
 
+```seldia
+diagram class "RenderEngine Classes - Shape family" {
     ShapeFactory: "ShapeFactory\n+create(type: ShapeType): Shape"
     RectangleShape: "RectangleShape"
     DiamondShape: "DiamondShape"
     CircleShape: "CircleShape"
     CylinderShape: "CylinderShape"
     HexagonShape: "HexagonShape"
+
+    ShapeFactory --> RectangleShape: "creates"
+    ShapeFactory --> DiamondShape: "creates"
+    ShapeFactory --> CircleShape: "creates"
+    ShapeFactory --> CylinderShape: "creates"
+    ShapeFactory --> HexagonShape: "creates"
+}
+```
+
+**More shapes**
+
+```seldia
+diagram class "RenderEngine Classes - More shapes" {
+    ShapeFactory: "ShapeFactory\n+create(type: ShapeType): Shape"
     ParallelogramShape: "ParallelogramShape"
     StadiumShape: "StadiumShape"
     CloudShape: "CloudShape"
     ActorShape: "ActorShape"
     CustomPathShape: "CustomPathShape"
 
-    SVGWriter: "SVGWriter\n+write(elements: SVGElement[]): string"
-    CanvasWriter: "CanvasWriter\n+write(elements: CanvasElement[]): string"
-    Exporter: "Exporter\n+export(svg: string, format: ExportFormat): Buffer"
-
-    RenderEngine --> RoughRenderer: "contains"
-    RenderEngine --> SmoothRenderer: "contains"
-    RenderEngine --> ThemeApplicator: "contains"
-    RenderEngine --> ShapeFactory: "contains"
-    RenderEngine --> SVGWriter: "contains"
-    RenderEngine --> CanvasWriter: "contains"
-    RenderEngine --> Exporter: "contains"
-    RoughRenderer --> NodeRenderer: "has"
-    RoughRenderer --> EdgeRenderer: "has"
-    RoughRenderer --> GroupRenderer: "has"
-    RoughRenderer --> LabelRenderer: "has"
-    RoughRenderer --> IconRenderer: "has"
-    ShapeFactory --> RectangleShape: "creates"
-    ShapeFactory --> DiamondShape: "creates"
-    ShapeFactory --> CircleShape: "creates"
-    ShapeFactory --> CylinderShape: "creates"
-    ShapeFactory --> HexagonShape: "creates"
     ShapeFactory --> ParallelogramShape: "creates"
     ShapeFactory --> StadiumShape: "creates"
     ShapeFactory --> CloudShape: "creates"
@@ -851,21 +931,19 @@ The VS Code extension provides a **Mermaid-like experience**: SelDiA diagrams ar
 #### 5.8.1 Core User Experience
 
 ```seldia
-diagram block "VS Code — Markdown + SelDiA Preview" {
+diagram block "VS Code - Markdown + SelDiA Preview" {
     group "VS Code Window" {
-        block editor: "README.md Editor" { style: { fill: "#e3f2fd" } }
-        block toolbar: "🔄 Preview  [</> Code]" { style: { fill: "#e8eaf6" } }
-        block preview: "Built-in Markdown Preview" { style: { fill: "#e8f5e9" } }
-
-        group "Preview renders SelDiA inline" {
-            block diagram: "📐 C4 Context Diagram (rendered SVG)\n┌──────────┐          ┌──────────┐\n│  🙋 User  │─────────▶│  💻 My App │\n└──────────┘  Uses    └──────────┘" { style: { fill: "#fff9c4" } }
-            block controls: "[ Zoom: 100% ]  [ Theme ]  [ Export ]" { style: { fill: "#f3e5f5" } }
-        }
+        editor [README.md Editor]
+        toolbar [Preview toolbar: Code / Edit visually]
+        preview [Built-in Markdown Preview]
+        diagram [C4 Context Diagram - rendered SVG]
+        controls [Zoom, Theme, Export]
     }
 
-    editor --> preview: "Cmd+Shift+V"
-    preview --> diagram: "renders"
-    diagram --> controls: "toolbar"
+    editor -> preview: "Cmd+Shift+V"
+    preview -> diagram: "renders"
+    diagram -> controls: "toolbar"
+    toolbar -> preview
 }
 ```
 
@@ -1693,6 +1771,12 @@ Auto layout runs as four stages:
 3. **Shape-aware clip.** `clipRouteToNodes` (`src/render/edge-routing.ts`) trims each route to the real shape outline.
 4. **Labels.** `src/render/edge-label-placement.ts` scores candidate label positions, then nudges labels off edges and other obstacles.
 
+**Render z-order.** Layers are emitted in this order: groups, edge casings, edges, nodes, arrowheads, then label chips, labels and group titles. Nodes therefore never paint over a label, and a casing separates each edge from what it crosses.
+
+**postRoute pass.** Between routing and label placement, `postRoute` (`src/render/edge-layer.ts`) runs for the types in `POST_ROUTE_TYPES`: it nudges overlapping collinear runs apart (ports stay fixed), snaps bend apexes, steers vertical runs out of group title bands and label chips, and adds line jumps at crossings. `layout/metrics.ts` calls the same pass, so it measures what is drawn.
+
+**Token contract.** Every stroke width, font size, radius, dash and arrow size comes from `DS` (`render/design-system.ts`). `tokenViolations(svg)` in `layout/metrics.ts` counts SVG values that are not tokens, and `label-legibility.test.ts` requires zero over the corpus.
+
 ### 7.2 Constraint System
 
 Users can add layout hints in the DSL:
@@ -1841,25 +1925,25 @@ The interaction layer supports a **visual edit mode** that enables direct manipu
 #### 9.4.1 Edit Operations
 
 ```seldia
-diagram block "Visual Edit Operations" {
-    group "Drag & Drop" {
-        card drag_move: "Move node"
-        card drag_resize: "Resize"
-        card drag_reroute: "Reroute edge"
-        card drag_reorder: "Reorder z-index"
+diagram flowchart "Visual Edit Operations" {
+    group "Drag and Drop" {
+        drag_move [Move node]
+        drag_resize [Resize]
+        drag_reroute [Reroute edge]
+        drag_reorder [Reorder z-index]
     }
 
     group "Inline Edit" {
-        card inline_label: "Edit label"
-        card inline_style: "Edit style properties"
-        card inline_shape: "Change shape type"
+        inline_label [Edit label]
+        inline_style [Edit style properties]
+        inline_shape [Change shape type]
     }
 
     group "Structural Edit" {
-        card struct_add: "Add node"
-        card struct_del: "Delete node"
-        card struct_edge: "Add/remove edge"
-        card struct_group: "Group/ungroup"
+        struct_add [Add node]
+        struct_del [Delete node]
+        struct_edge [Add or remove edge]
+        struct_group [Group or ungroup]
     }
 }
 ```
@@ -2126,7 +2210,6 @@ SelDiA/
 │   │   │   │   └── straight.ts      # Straight line routing
 │   │   │   ├── constraints/
 │   │   │   │   ├── index.ts
-│   │   │   │   ├── solver.ts        # kiwi.js constraint solver wrapper
 │   │   │   │   └── constraints.ts   # Predefined constraints
 │   │   │   └── label-placement/
 │   │   │       ├── index.ts
@@ -2328,7 +2411,7 @@ SelDiA/
 | **Monorepo** | Turborepo + npm workspaces | Fast, incremental builds |
 | **Parsing** | Peggy (PEG.js successor) | Expressive grammar, good error messages, no build-step grammar conflicts |
 | **Rendering** | Rough.js 4.x | Hand-drawn SVG/Canvas primitives |
-| **Layout** | Dagre, ELK.js, d3-force, kiwi.js | Battle-tested graph layout libraries |
+| **Layout** | Dagre, ELK.js | Battle-tested graph layout libraries |
 | **CLI Framework** | Commander.js | Mature, lightweight CLI framework |
 | **Web Components** | Lit (lit-html/lit-element) | Lightweight, framework-agnostic |
 | **React Wrapper** | React 18+ (optional peer dep) | For React ecosystem integration |

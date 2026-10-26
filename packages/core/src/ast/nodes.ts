@@ -49,6 +49,7 @@ export interface ASTMetadata {
 export type ASTStatement =
   | ASTThemeDecl
   | ASTLayoutDecl
+  | ASTEdgeStyleDecl
   | ASTStyleDecl
   | ASTNodeDecl
   | ASTEdgeDecl
@@ -70,6 +71,12 @@ export interface ASTThemeDecl extends ASTNode {
 // -----------------------------------------------------------------------------
 // Layout Declaration
 // -----------------------------------------------------------------------------
+
+/** `edges sketch|clean`: per-diagram edge drawing style (overrides config render.edgeStyle). */
+export interface ASTEdgeStyleDecl extends ASTNode {
+  kind: 'EdgeStyleDecl';
+  style: 'sketch' | 'clean';
+}
 
 export interface ASTLayoutDecl extends ASTNode {
   kind: 'LayoutDecl';

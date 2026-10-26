@@ -1,0 +1,11 @@
+CMOS inverter, 1.8 V
+V1 VDD 0 DC 1.8
+V2 in 0 PULSE(0 1.8 0 1n 1n 5n 10n)
+M1 out in VDD VDD PMOS_MOD W=2u L=0.18u
+M2 out in 0 0 NMOS_MOD W=1u L=0.18u
+C1 out 0 10f
+.model NMOS_MOD NMOS (VTO=0.5 KP=170u)
+.model PMOS_MOD PMOS (VTO=-0.5 KP=60u)
+.tran 0.1n 40n
+.print tran v(out)
+.end

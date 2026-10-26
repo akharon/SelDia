@@ -1,0 +1,15 @@
+Inverting amplifier, gain = -R2/R1 = -10
+.subckt OPAMP inp inn out vcc vee
+Rin inp inn 10meg
+Eg mid 0 inp inn 1e5
+Ro mid out 75
+Rsup vcc vee 1meg
+.ends OPAMP
+V1 in 0 DC 0.5
+R1 in inn 10k
+R2 inn out 100k
+X1 0 inn out VCC VEE OPAMP
+V2 VCC 0 DC 15
+V3 VEE 0 DC -15
+.op
+.end

@@ -50,3 +50,21 @@ export type { DiagramDiff, NodeDiff, EdgeDiff } from './diff/diff.js';
 // Config
 export type { SelDiAConfig } from './config.js';
 export { DEFAULT_CONFIG } from './config.js';
+
+// Layout quality metrics — yardstick for layout work (see layout/metrics.ts).
+export type { LayoutMetrics } from './layout/metrics.js';
+export { measureLayout } from './layout/metrics.js';
+
+// Circuit schematics (SPICE / KiCad netlists).
+export { parseSpice } from './circuit/spice.js';
+export { parseKicadNetlist, isKicadNetlist } from './circuit/kicad.js';
+export { circuitToIR, MAX_PARTS } from './circuit/model.js';
+export type { CircuitModel, CircuitPart } from './circuit/model.js';
+export { SYMBOLS, symbolFor, orient } from './circuit/symbols.js';
+export type { SymbolDef, SymbolPin } from './circuit/symbols.js';
+export { circuitPlugin, parseNetlist, importCircuit } from './diagrams/circuit.js';
+
+// PCB board view (render-only KiCad .kicad_pcb).
+export { parseKicadPcb, parseSExp, boardBounds } from './pcb/kicad-pcb.js';
+export type { Board as PcbBoard } from './pcb/kicad-pcb.js';
+export { pcbPlugin, renderBoard, importPcb } from './diagrams/pcb.js';

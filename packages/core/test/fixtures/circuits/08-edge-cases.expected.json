@@ -1,0 +1,17 @@
+{
+  "parts": [
+    {"ref": "Vsrc", "kind": "V", "pins": ["+", "-"], "value": "PULSE(0 5 0 1n 1n 1u 2u 4u)"},
+    {"ref": "Rin", "kind": "R", "pins": ["1", "2"], "value": "1MEG"},
+    {"ref": "C1", "kind": "C", "pins": ["1", "2"], "value": "4.7U"},
+    {"ref": "R2", "kind": "R", "pins": ["1", "2"], "value": "2.2k"},
+    {"ref": "L1", "kind": "L", "pins": ["1", "2"], "value": "100m"},
+    {"ref": "c2", "kind": "C", "pins": ["1", "2"], "value": "100n"}
+  ],
+  "nets": {
+    "in": ["Rin.1", "Vsrc.+"],
+    "mid": ["Rin.2", "C1.1", "R2.1"],
+    "out": ["R2.2", "L1.1", "c2.1"],
+    "0": ["Vsrc.-", "C1.2", "L1.2", "c2.2"]
+  },
+  "powerNets": ["0"]
+}

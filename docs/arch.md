@@ -1686,12 +1686,12 @@ Plugins are discovered via:
 
 ### 7.1 Strategy
 
-The layout engine is **algorithm-first, constraint-second**:
+Auto layout runs as four stages:
 
-1. A primary layout algorithm places nodes
-2. A constraint solver (kiwi.js) applies manual overrides
-3. An edge router finds paths avoiding node overlaps
-4. A label placer finds optimal text positions
+1. **Place.** The engine is chosen in this order: the diagram's own `layout` line, then `layoutEngineByType`, then `elkWhenGrouped` for grouped diagrams, then `defaultLayoutEngine`. `elk` runs elkjs's layered algorithm. The synchronous path drives it through a `FakeWorker` dispatcher (`src/layout/elk-sync.ts`). `dagre` runs dagre with cluster compounds. An ELK failure falls back to dagre.
+2. **Route ownership.** Engines that route edges set `layoutRouted: true` and supply waypoints (`src/layout/engines.ts`). The renderer uses those waypoints and does not reroute.
+3. **Shape-aware clip.** `clipRouteToNodes` (`src/render/edge-routing.ts`) trims each route to the real shape outline.
+4. **Labels.** `src/render/edge-label-placement.ts` scores candidate label positions, then nudges labels off edges and other obstacles.
 
 ### 7.2 Constraint System
 

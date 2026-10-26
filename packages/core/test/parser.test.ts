@@ -92,6 +92,23 @@ describe('bare theme declarations', () => {
   });
 });
 
+describe('layout declaration', () => {
+  it('does not swallow the identifier after `layout elk`', () => {
+    const p = engine.parse('fl "T" { a (S)\n b (E)\n a -> b\n layout elk\n c (E) }');
+    expect(p.ok).toBe(true);
+    const body = p.ok ? (p.value.body as any[]) : [];
+    expect(body.find((s) => s.kind === 'LayoutDecl').engine).toBe('elk');
+    expect(JSON.stringify(body)).toContain('"c"');
+  });
+  it('still reads `layout dagre spacing 40 rank 80`', () => {
+    const p = engine.parse('fl "T" { layout dagre spacing 40 rank 80\n a (S) }');
+    const l = (p.ok ? (p.value.body as any[]) : []).find((s) => s.kind === 'LayoutDecl');
+    expect(l.options.nodeSpacing).toBe(40);
+    expect(l.options.rankSpacing).toBe(80);
+    expect(JSON.stringify(p.ok ? p.value.body : [])).toContain('"a"');
+  });
+});
+
 describe('group declarations', () => {
   it('accepts a quoted label directly as the group name', () => {
     const p = engine.parse('block "T" { group "Entry Points" { a (S) } }');

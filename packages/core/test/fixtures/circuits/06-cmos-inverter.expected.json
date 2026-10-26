@@ -1,0 +1,16 @@
+{
+  "parts": [
+    {"ref": "V1", "kind": "V", "pins": ["+", "-"], "value": "DC 1.8"},
+    {"ref": "V2", "kind": "V", "pins": ["+", "-"], "value": "PULSE(0 1.8 0 1n 1n 5n 10n)"},
+    {"ref": "M1", "kind": "M", "pins": ["D", "G", "S", "B"], "value": "PMOS_MOD"},
+    {"ref": "M2", "kind": "M", "pins": ["D", "G", "S", "B"], "value": "NMOS_MOD"},
+    {"ref": "C1", "kind": "C", "pins": ["1", "2"], "value": "10f"}
+  ],
+  "nets": {
+    "VDD": ["V1.+", "M1.S", "M1.B"],
+    "in": ["V2.+", "M1.G", "M2.G"],
+    "out": ["M1.D", "M2.D", "C1.1"],
+    "0": ["V1.-", "V2.-", "M2.S", "M2.B", "C1.2"]
+  },
+  "powerNets": ["0", "VDD"]
+}

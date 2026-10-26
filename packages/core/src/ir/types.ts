@@ -44,6 +44,8 @@ export enum DiagramType {
   WIREFRAME = 'wireframe',
   CLOUD = 'cloud',
   WORKITEM = 'workitem',
+  CIRCUIT = 'circuit',
+  PCB = 'pcb',
   FLOORPLAN = 'floorplan',
 }
 
@@ -166,6 +168,14 @@ export interface IREdge {
 
   /** Computed waypoints (set by edge router) */
   waypoints?: Point[];
+
+  /** True when the layout engine (ELK) already routed `waypoints` as a full
+   *  obstacle-aware polyline. The renderer then only clips the endpoints to
+   *  the node borders and skips fan anchoring / the manhattan router. */
+  layoutRouted?: boolean;
+
+  /** Centre of the label as placed by the layout engine (diagram space). */
+  layoutLabel?: Point;
 
   /** Z-index layer */
   layerId?: ID;

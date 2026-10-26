@@ -28,7 +28,7 @@
 // =============================================================================
 
 import type { CoreEngine, DiagramIR } from '@seldia/core';
-import { importMermaid, importPlantUml } from '@seldia/core';
+import { importMermaid, importPlantUml, importCircuit, importPcb } from '@seldia/core';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 import { blockIdForSource } from '../edit/blocks.js';
 import { nextDiagramNumber, anchorForDiagram, captionFor, titleFromDsl, registerDiagram } from './numbering.js';
@@ -166,6 +166,30 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
       if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
         try {
           const rendered = renderPlantUmlBlock(engine, token.content, docUriOf(env), includeSprite, env, effectiveCaptionsEnabled);
+          if (rendered) { commitSprite(); return tocMarker + rendered; }
+        } catch {
+          /* fall through to the default fence */
+        }
+      }
+
+      // ```pcb / ```kicad_pcb (or a ```kicad fence whose body is a board, not a
+      // netlist): render-only KiCad board view.
+      if (lang === 'pcb' || lang === 'kicad_pcb' || (lang === 'kicad' && /^\s*\(\s*kicad_pcb\b/.test(token.content))) {
+        try {
+          const { ir, diagnostics } = importPcb(token.content);
+          const rendered = renderImportedBlock(engine, token.content, docUriOf(env), 'pcb', 'KiCad PCB', ir, diagnostics, includeSprite, env, effectiveCaptionsEnabled);
+          if (rendered) { commitSprite(); return tocMarker + rendered; }
+        } catch {
+          /* fall through to the default fence */
+        }
+      }
+
+      // ```spice / ```circuit / ```netlist: a raw SPICE or KiCad netlist,
+      // imported straight to the circuit IR (same path as the CLI command).
+      if (lang === 'spice' || lang === 'circuit' || lang === 'netlist' || lang === 'kicad') {
+        try {
+          const { ir, diagnostics } = importCircuit(token.content);
+          const rendered = renderImportedBlock(engine, token.content, docUriOf(env), 'circuit', 'SPICE', ir, diagnostics, includeSprite, env, effectiveCaptionsEnabled);
           if (rendered) { commitSprite(); return tocMarker + rendered; }
         } catch {
           /* fall through to the default fence */

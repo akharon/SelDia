@@ -1,0 +1,7 @@
+LED driver: 5 V supply, 330 ohm series resistor
+V1 VCC 0 DC 5
+R1 VCC anode 330
+D1 anode 0 LEDRED
+.model LEDRED D(IS=1e-20 N=2 RS=5)
+.op
+.end

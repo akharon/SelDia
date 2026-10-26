@@ -629,6 +629,8 @@ class Parser {
       workitem: 'workitem', wi: 'workitem', work: 'workitem',
       trace: 'workitem', backlog: 'workitem',
       floorplan: 'floorplan', fp: 'floorplan', floor: 'floorplan',
+      circuit: 'circuit', schematic: 'circuit', spice: 'circuit', netlist: 'circuit', ckt: 'circuit',
+      pcb: 'pcb', board: 'pcb', kicadpcb: 'pcb',
     };
     type = TYPE_ALIASES[type] || type;
 
@@ -1267,11 +1269,16 @@ class Parser {
     }
 
     // spacing and rank
+    // Only consume a keyword when it is really `spacing N` / `rank N`; a
+    // following identifier (the next statement) must be left alone.
     while (this.peek().type === TokenType.IDENT) {
-      const kwd = this.consume().value.toLowerCase();
-      if ((kwd === 'spacing' || kwd === 'space') && this.peek().type === TokenType.NUMBER) {
+      const kwd = String(this.peek().value).toLowerCase();
+      const next = this.peek(1);
+      if ((kwd === 'spacing' || kwd === 'space') && next?.type === TokenType.NUMBER) {
+        this.consume();
         options.nodeSpacing = parseFloat(this.consume().value);
-      } else if (kwd === 'rank' && this.peek().type === TokenType.NUMBER) {
+      } else if (kwd === 'rank' && next?.type === TokenType.NUMBER) {
+        this.consume();
         options.rankSpacing = parseFloat(this.consume().value);
       } else {
         break;
@@ -1419,7 +1426,8 @@ export function checkSyntax(source: string, filePath?: string): SyntaxCheckResul
     'c4c','c4con','c4comp','c4code','flowchart','sequence','class','state','usecase',
     'activity','component','deployment','mindmap','network','gitgraph','timeline',
     'wireframe','cloud','wire','chart-bar','chart-line','chart-pie','chart-radar','chart-scatter',
-    'workitem','wi','work','trace','backlog','floorplan','fp','floor'];
+    'workitem','wi','work','trace','backlog','floorplan','fp','floor',
+    'circuit','schematic','spice','netlist','ckt','pcb','board','kicadpcb'];
   // The tokenizer skips comments and blank lines, so this pre-check has to as
   // well — reading the raw first word made a leading `// ...` banner (which
   // every file in examples/ opens with) look like the diagram declaration and
@@ -1446,8 +1454,30 @@ export function checkSyntax(source: string, filePath?: string): SyntaxCheckResul
   return { valid: diagnostics.length === 0, diagnostics };
 }
 
+const RAW_BODY_TYPES: Record<string, string> = { circuit: 'circuit', schematic: 'circuit', spice: 'circuit', netlist: 'circuit', ckt: 'circuit', pcb: 'pcb', board: 'pcb', kicadpcb: 'pcb' };
+
+/** Circuit fences carry a raw netlist, not DSL: split the header off and keep
+ *  the body verbatim so SPICE/KiCad text never reaches the lexer.
+ *    circuit "Title" { <netlist> }     or     circuit\n<netlist> */
+function parseRawBody(source: string): DiagramAST | undefined {
+  const m = /^((?:[ \t]*(?:\/\/[^\n]*)?\n)*)[ \t]*([A-Za-z]+)[ \t]*("(?:[^"\\]|\\.)*")?[ \t]*(\{)?[ \t]*\n?/.exec(source);
+  if (!m || !RAW_BODY_TYPES[m[2].toLowerCase()]) return undefined;
+  let body = source.slice(m[0].length);
+  if (m[4]) {
+    const end = body.lastIndexOf('}');
+    if (end >= 0) body = body.slice(0, end);
+  }
+  return {
+    kind: 'Diagram', type: RAW_BODY_TYPES[m[2].toLowerCase()] as any, title: m[3] ? JSON.parse(m[3]) : undefined,
+    metadata: {}, body: [], raw: body,
+    loc: { file: '<unknown>', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1, offset: 0 },
+  } as DiagramAST;
+}
+
 export function parseDSL(source: string, filePath?: string): Result<DiagramAST> {
   try {
+    const rawAst = parseRawBody(source);
+    if (rawAst) return { ok: true, value: rawAst };
     // Run syntax check first
     const syntaxResult = checkSyntax(source, filePath);
     if (!syntaxResult.valid) {

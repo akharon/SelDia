@@ -17,6 +17,8 @@
 // =============================================================================
 
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
+import { layoutPcb } from '../diagrams/pcb.js';
+import { layoutCircuit } from '../circuit/layout.js';
 import type { Point, Rect } from '../types/common.js';
 import type { FpDimension, FpMeasure, FpBox, FpWallSeg } from '../floorplan/dimensions.js';
 import { wallDimensionStrings, clearGap, formatLength } from '../floorplan/dimensions.js';
@@ -762,6 +764,8 @@ export function customLayoutFor(type: string): ((ir: DiagramIR) => CustomLayoutR
     case 'gitgraph': return layoutGitgraph;
     case 'chart-bar': case 'chart-line': case 'chart-pie': case 'chart-radar': case 'chart-scatter': return layoutChart;
     case 'floorplan': return layoutFloorplan;
+    case 'circuit': return layoutCircuit;
+    case 'pcb': return layoutPcb;
     default: return undefined;
   }
 }

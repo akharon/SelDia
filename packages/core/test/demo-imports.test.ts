@@ -36,7 +36,7 @@ function compile(source: string, importer: (s: string) => { ir: unknown; diagnos
 }
 
 describe('demo_plantuml.md', () => {
-  const md = read('demo_plantuml.md');
+  const md = read('docs/examples/demo-plantuml.md');
   const blocks = fences(md, 'plantuml');
 
   it('has a block per documented family', () => {
@@ -64,7 +64,7 @@ describe('demo_plantuml.md', () => {
 });
 
 describe('demo_mermaid.md', () => {
-  const blocks = fences(read('demo_mermaid.md'), 'mermaid');
+  const blocks = fences(read('docs/examples/demo-mermaid.md'), 'mermaid');
 
   it('has a block per documented type', () => {
     expect(blocks.length).toBeGreaterThanOrEqual(9);

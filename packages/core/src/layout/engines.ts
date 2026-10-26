@@ -18,6 +18,8 @@ import type { Point, Rect } from '../types/common.js';
 import { Direction } from '../types/common.js';
 import { centerOf } from '../render/edge-routing.js';
 import dagre from 'dagre';
+import { layoutSync as layoutElkGraph } from './elk-sync.js';
+import { measureLabel } from './text-measure.js';
 
 export interface AutoLayoutOptions {
   direction: Direction;
@@ -30,6 +32,9 @@ export interface AutoLayoutResult {
   nodes: IRNode[];
   edges: IREdge[];
   bounds: Rect;
+  /** Compound-node rectangles chosen by the layout engine, keyed by group id.
+   *  When present, `layoutGroups` keeps these instead of re-deriving bounds. */
+  groupBounds?: Map<string, Rect>;
 }
 
 /** Used when the engine reported no usable route. Centre-to-centre: the
@@ -204,75 +209,217 @@ function dirToElk(d: Direction): string {
   }
 }
 
-/** Async layered layout via elkjs. elkjs has no synchronous API, so this is
- *  only reachable from compile() (not compileSync()). */
-export async function layoutWithElk(ir: DiagramIR, opts: AutoLayoutOptions): Promise<AutoLayoutResult> {
-  const ELK = (await import('elkjs/lib/elk.bundled.js')).default;
-  const elk = new ELK();
-
-  const elkGraph = {
-    id: 'root',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': dirToElk(opts.direction),
-      'elk.spacing.nodeNode': String(opts.nodeSpacing),
-      'elk.layered.spacing.nodeNodeBetweenLayers': String(opts.rankSpacing),
-      'elk.spacing.edgeNode': String(opts.edgeSpacing),
-    },
-    children: ir.nodes.map((n) => ({
-      id: n.id,
-      width: Math.max(n.size.width || 140, 60),
-      height: Math.max(n.size.height || 60, 40),
-    })),
-    edges: ir.edges
-      .filter((e) => ir.nodes.some((n) => n.id === e.sourceId) && ir.nodes.some((n) => n.id === e.targetId))
-      .map((e) => ({
-        id: e.id,
-        sources: [e.sourceId],
-        targets: [e.targetId],
-        // Reserve space for the edge label so it doesn't collide with other
-        // geometry (docs/improvement_request.md item 6).
-        ...(e.label ? { labels: [{ text: e.label, width: Math.max(20, e.label.length * 7), height: 18 }] } : {}),
-      })),
+/** ELK layout options for graph-style diagrams (plan F1/T1.5). */
+function elkGraphOptions(opts: AutoLayoutOptions): Record<string, string> {
+  return {
+    'elk.algorithm': 'layered',
+    'elk.direction': dirToElk(opts.direction),
+    'elk.edgeRouting': 'ORTHOGONAL',
+    'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+    'elk.spacing.nodeNode': String(opts.nodeSpacing),
+    'elk.layered.spacing.nodeNodeBetweenLayers': String(opts.rankSpacing),
+    'elk.spacing.edgeNode': String(opts.edgeSpacing),
+    'elk.spacing.edgeEdge': '12',
+    'elk.layered.spacing.edgeEdgeBetweenLayers': '15',
+    'elk.layered.spacing.edgeNodeBetweenLayers': String(Math.max(10, Math.round(opts.edgeSpacing))),
+    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+    'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+    'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
+    'elk.layered.nodePlacement.bk.fixedAlignment': 'BALANCED',
+    'elk.layered.edgeLabels.sideSelection': 'SMART_DOWN',
+    'elk.layered.mergeEdges': 'false',
+    'elk.layered.feedbackEdges': 'true',
+    'elk.layered.thoroughness': '10',
   };
+}
 
-  const result = await elk.layout(elkGraph as any);
+interface GroupTree {
+  /** Group ids that hold at least one node, directly or through a descendant. */
+  live: Set<string>;
+  /** Parent group of each live group (absent for top-level ones). */
+  parent: Map<string, string>;
+  /** Innermost live group owning each node (absent for top-level nodes). */
+  owner: Map<string, string>;
+  /** Live groups, shallowest first. */
+  ordered: string[];
+}
 
-  const positions = new Map<string, { x: number; y: number; width: number; height: number }>();
-  for (const child of result.children || []) {
-    positions.set(child.id!, { x: child.x || 0, y: child.y || 0, width: child.width || 140, height: child.height || 60 });
+/** Resolve IRGroups into a strict tree for ELK: each node has one innermost
+ *  owner, each group one parent. Returns null when there are no groups or the
+ *  ids collide with node ids (ELK needs unique ids across the hierarchy). */
+function buildGroupTree(ir: DiagramIR): GroupTree | null {
+  if (!ir.groups?.length) return null;
+  const nodeIds = new Set(ir.nodes.map((n) => n.id));
+  if (ir.groups.some((g) => nodeIds.has(g.id))) return null;
+  const byId = new Map(ir.groups.map((g) => [g.id, g]));
+  const parent = new Map<string, string>();
+  for (const g of ir.groups) {
+    for (const c of g.childGroupIds ?? []) if (byId.has(c) && c !== g.id && !parent.has(c)) parent.set(c, g.id);
   }
-  const nodes = ir.nodes.map((n) => {
-    const p = positions.get(n.id);
-    return p ? { ...n, position: { x: p.x, y: p.y }, size: { width: p.width, height: p.height } } : n;
-  });
-
-  const edgeBends = new Map<string, Point[]>();
-  for (const re of result.edges || []) {
-    const sections = (re as any).sections as Array<{ startPoint?: Point; endPoint?: Point; bendPoints?: Point[] }> | undefined;
-    if (sections && sections.length) {
-      // ELK reports the route as startPoint → bendPoints → endPoint; keep the
-      // endpoints so the polyline actually spans the two nodes (a bends-only
-      // list is often empty for a straight edge, which left the arrow missing).
-      const sec = sections[0];
-      const pts: Point[] = [];
-      if (sec.startPoint) pts.push({ x: sec.startPoint.x, y: sec.startPoint.y });
-      if (sec.bendPoints) for (const b of sec.bendPoints) pts.push({ x: b.x, y: b.y });
-      if (sec.endPoint) pts.push({ x: sec.endPoint.x, y: sec.endPoint.y });
-      edgeBends.set(re.id!, pts);
+  // Break cycles (a group that is its own ancestor): drop the back-link.
+  for (const g of ir.groups) {
+    const seen = new Set<string>([g.id]);
+    let cur = parent.get(g.id);
+    while (cur) {
+      if (seen.has(cur)) { parent.delete(g.id); break; }
+      seen.add(cur);
+      cur = parent.get(cur);
     }
   }
+  const depth = (id: string): number => { let d = 0; for (let c = parent.get(id); c; c = parent.get(c)) d++; return d; };
+  const owner = new Map<string, string>();
+  for (const g of ir.groups) {
+    for (const nid of g.childNodeIds) {
+      if (!nodeIds.has(nid)) continue;
+      const cur = owner.get(nid);
+      if (!cur || depth(g.id) > depth(cur)) owner.set(nid, g.id);
+    }
+  }
+  const live = new Set<string>();
+  for (const gid of owner.values()) for (let c: string | undefined = gid; c && !live.has(c); c = parent.get(c)) live.add(c);
+  if (!live.size) return null;
+  const ordered = [...live].sort((a, b) => depth(a) - depth(b));
+  return { live, parent, owner, ordered };
+}
+
+/** Section chain → one polyline (ELK may split an edge into several sections). */
+export function sectionsToPoints(sections: any[]): Point[] {
+  if (!sections.length) return [];
+  const byId = new Map<string, any>(sections.map((s) => [s.id, s]));
+  let cur = sections.find((s) => !s.incomingSections?.length) ?? sections[0];
+  const pts: Point[] = [];
+  const seen = new Set<any>();
+  const push = (p?: Point) => {
+    if (!p) return;
+    const last = pts[pts.length - 1];
+    if (!last || last.x !== p.x || last.y !== p.y) pts.push({ x: p.x, y: p.y });
+  };
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    push(cur.startPoint);
+    for (const b of cur.bendPoints ?? []) push(b);
+    push(cur.endPoint);
+    cur = cur.outgoingSections?.length ? byId.get(cur.outgoingSections[0]) : undefined;
+  }
+  return pts;
+}
+
+/** Layered layout via ELK, synchronous. Groups become nested ELK compound
+ *  nodes (edges declared in their lowest common ancestor); node, edge-route,
+ *  edge-label and group-bound results are converted back to absolute
+ *  coordinates. Throws if ELK fails — the caller falls back to dagre. */
+export function layoutWithElkSync(ir: DiagramIR, opts: AutoLayoutOptions): AutoLayoutResult {
+  const tree = buildGroupTree(ir);
+  const groupById = new Map((ir.groups ?? []).map((g) => [g.id, g]));
+  const nodeIds = new Set(ir.nodes.map((n) => n.id));
+
+  const elkNode = (n: IRNode) => ({
+    id: n.id,
+    width: Math.max(n.size.width || 140, 60),
+    height: Math.max(n.size.height || 60, 40),
+  });
+  const groupNode = (gid: string): any => {
+    const g = groupById.get(gid)!;
+    const pad = g.style?.padding ?? 16;
+    return {
+      id: gid,
+      layoutOptions: { 'elk.padding': `[top=${Math.max(30, pad + 22)},left=${pad},bottom=${pad},right=${pad}]` },
+      children: [] as any[],
+      edges: [] as any[],
+    };
+  };
+
+  const root: any = { id: '__root__', layoutOptions: elkGraphOptions(opts), children: [] as any[], edges: [] as any[] };
+  const containers = new Map<string, any>();
+  if (tree) for (const gid of tree.ordered) containers.set(gid, groupNode(gid));
+  const ownerOf = (id: string): string | undefined => tree?.owner.get(id);
+  const containerFor = (gid: string | undefined) => (gid ? containers.get(gid) : root);
+  if (tree) for (const gid of tree.ordered) containerFor(tree.parent.get(gid))!.children.push(containers.get(gid));
+  for (const n of ir.nodes) containerFor(ownerOf(n.id))!.children.push(elkNode(n));
+
+  const ancestors = (id: string, isGroup: boolean): string[] => {
+    const chain: string[] = [];
+    for (let c = isGroup ? id : ownerOf(id); c; c = tree?.parent.get(c)) chain.push(c);
+    return chain; // innermost → outermost
+  };
+  /** Where each edge was declared, to rebase its coordinates afterwards. */
+  const edgeHome = new Map<string, string | undefined>();
+  for (const e of ir.edges) {
+    if (!nodeIds.has(e.sourceId) || !nodeIds.has(e.targetId)) continue;
+    const sa = ancestors(e.sourceId, false), ta = new Set(ancestors(e.targetId, false));
+    const lca = sa.find((g) => ta.has(g)); // innermost shared group, or undefined = root
+    edgeHome.set(e.id, lca);
+    let labels: any[] | undefined;
+    if (e.label) {
+      const m = measureLabel(e.label, 12);
+      labels = [{ id: `${e.id}__label`, text: e.label, width: Math.ceil(m.width) + 10, height: Math.ceil(m.height) + 6,
+        layoutOptions: { 'elk.edgeLabels.placement': 'CENTER' } }];
+    }
+    containerFor(lca)!.edges.push({ id: e.id, sources: [e.sourceId], targets: [e.targetId], ...(labels ? { labels } : {}) });
+  }
+
+  const result = layoutElkGraph(root);
+
+  // Absolute origin of every container, then absolute node / group rects.
+  const origin = new Map<string | undefined, Point>([[undefined, { x: 0, y: 0 }]]);
+  const rects = new Map<string, Rect>();
+  const walk = (node: any, ox: number, oy: number, isRoot: boolean) => {
+    for (const c of node.children ?? []) {
+      const ax = ox + (c.x || 0), ay = oy + (c.y || 0);
+      rects.set(c.id, { x: ax, y: ay, width: c.width || 0, height: c.height || 0 });
+      if (containers.has(c.id)) { origin.set(c.id, { x: ax, y: ay }); walk(c, ax, ay, false); }
+    }
+    void isRoot;
+  };
+  walk(result, 0, 0, true);
+
+  const nodes = ir.nodes.map((n) => {
+    const r = rects.get(n.id);
+    return r ? { ...n, position: { x: r.x, y: r.y }, size: { width: r.width, height: r.height } } : n;
+  });
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+  const routed = new Map<string, { pts: Point[]; label?: Point }>();
+  const collect = (node: any, cid: string | undefined) => {
+    const o = origin.get(cid) ?? { x: 0, y: 0 };
+    for (const re of node.edges ?? []) {
+      const pts = sectionsToPoints(re.sections ?? []).map((p) => ({ x: p.x + o.x, y: p.y + o.y }));
+      const l = re.labels?.[0];
+      const label = l && l.x !== undefined ? { x: o.x + l.x + (l.width || 0) / 2, y: o.y + l.y + (l.height || 0) / 2 } : undefined;
+      routed.set(re.id, { pts, label });
+    }
+    for (const c of node.children ?? []) if (containers.has(c.id)) collect(c, c.id);
+  };
+  collect(result, undefined);
+
   const edges = ir.edges.map((e) => {
-    const src = nodes.find((n) => n.id === e.sourceId);
-    const tgt = nodes.find((n) => n.id === e.targetId);
-    const bends = edgeBends.get(e.id);
-    return { ...e, waypoints: bends && bends.length >= 2 ? bends : fallbackRoute(src, tgt) };
+    const r = routed.get(e.id);
+    const src = nodeById.get(e.sourceId), tgt = nodeById.get(e.targetId);
+    if (r && r.pts.length >= 2) {
+      return { ...e, waypoints: r.pts, layoutRouted: true, ...(r.label && e.label ? { layoutLabel: r.label } : {}) };
+    }
+    return { ...e, waypoints: fallbackRoute(src, tgt) };
   });
 
-  return { nodes, edges, bounds: computeBounds(nodes, edges) };
+  const groupBounds = new Map<string, Rect>();
+  for (const gid of containers.keys()) { const r = rects.get(gid); if (r) groupBounds.set(gid, r); }
+
+  const bounds = computeBounds(nodes, edges);
+  for (const r of groupBounds.values()) {
+    bounds.width = Math.max(bounds.width, r.x + r.width - bounds.x + 40);
+    bounds.height = Math.max(bounds.height, r.y + r.height - bounds.y + 40);
+    if (r.x < bounds.x) { bounds.width += bounds.x - r.x; bounds.x = r.x; }
+    if (r.y < bounds.y) { bounds.height += bounds.y - r.y; bounds.y = r.y; }
+  }
+  return { nodes, edges, bounds, groupBounds };
+}
+
+/** Async entry point (kept for existing callers); same engine as the sync one. */
+export async function layoutWithElk(ir: DiagramIR, opts: AutoLayoutOptions): Promise<AutoLayoutResult> {
+  return layoutWithElkSync(ir, opts);
 }
 
 /** Layout engines that can run synchronously (available to compileSync). */
-export const SYNC_LAYOUT_ENGINES = new Set(['dagre']);
+export const SYNC_LAYOUT_ENGINES = new Set(['dagre', 'elk']);
 /** All selectable layout engine ids, sync or async. */
 export const LAYOUT_ENGINES = new Set(['dagre', 'elk']);

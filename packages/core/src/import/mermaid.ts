@@ -204,7 +204,8 @@ function makeNode(id: string, label: string, shape: ShapeType): IRNode {
     label,
     shape,
     position: { x: 0, y: 0 },
-    size: sizeForLabel(label, 14, 100, 50),
+    // Cylinders lose 2x12px of height to their end caps; give the face room for the label.
+    size: sizeForLabel(label, 14, 100, shape === ShapeType.CYLINDER ? 64 : 50),
     style: {},
     ports: [],
     classList: [],

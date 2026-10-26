@@ -1,6 +1,6 @@
 {
   "name": "@seldia/core",
-  "version": "1.68.0",
+  "version": "1.69.0",
   "description": "SelDiA core: parser, engine, types, plugin system for 21+ diagram types",
   "type": "module",
   "main": "./dist/index.js",
@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "dagre": "^0.8.5",
-    "elkjs": "^0.11.1",
+    "elkjs": "0.11.1",
     "roughjs": "^4.6.6"
   },
   "devDependencies": {

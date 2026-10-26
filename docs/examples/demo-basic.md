@@ -729,3 +729,37 @@ fp "Apartment 4B" {
     f12 --> f10
 }
 ```
+
+## Circuit schematic
+
+A raw SPICE netlist (or a KiCad/SKiDL `(export …)` netlist) between the braces. The first line is the SPICE title unless a quoted title follows `circuit`.
+
+```seldia
+circuit "RC low-pass" {
+V1 in 0 AC 1
+R1 in out 1k
+C1 out 0 100n
+.ac dec 10 1 1meg
+}
+```
+
+## PCB board view
+
+Render-only view of a KiCad `.kicad_pcb` (front by default; add `side: back` to mirror).
+
+```seldia
+pcb "Blinky board" {
+(kicad_pcb (version 20221018)
+  (gr_rect (start 100 100) (end 126 116) (layer "Edge.Cuts") (width 0.1))
+  (footprint "R_0805" (layer "F.Cu") (at 108 106 0)
+    (fp_text reference "R1" (at 0 -1.8) (layer "F.SilkS"))
+    (pad "1" smd roundrect (at -1 0) (size 1 1.4) (layers "F.Cu"))
+    (pad "2" smd roundrect (at 1 0) (size 1 1.4) (layers "F.Cu")))
+  (footprint "PinHeader_1x02" (layer "F.Cu") (at 120 106 0)
+    (fp_text reference "J1" (at 0 -2.4) (layer "F.SilkS"))
+    (pad "1" thru_hole rect (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu"))
+    (pad "2" thru_hole circle (at 0 2.54) (size 1.7 1.7) (drill 1) (layers "*.Cu")))
+  (segment (start 109 106) (end 120 106) (width 0.4) (layer "F.Cu") (net 1))
+  (via (at 114 106) (size 0.8) (drill 0.4)))
+}
+```

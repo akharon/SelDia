@@ -19,15 +19,24 @@ import { DS, typeSwatch, roleSwatch, seriesColor, type Swatch } from './design-s
 import { ganttDayLabel } from './custom-layout.js';
 import { FontWeight, FontStyle, type GroupStyle } from '../types/style.js';
 import { escapeXml as esc } from './escape.js';
+import { iconLabelLayout, C4_DB_RY, C4_DB_LABEL_Y } from './node-label-geometry.js';
 
 function splitLabelLines(label: string): string[] {
   return (label || '').replace(/\\n/g, '\n').split('\n');
 }
 
-function textBlock(x: number, startY: number, lineHeight: number, fs: number, ff: string, color: string, label: string, anchor: 'middle' | 'start' = 'middle', weight = '400'): string {
+function textBlock(x: number, startY: number, lineHeight: number, fs: number, ff: string, color: string, label: string, anchor: 'middle' | 'start' | 'end' = 'middle', weight = '400'): string {
   const lines = splitLabelLines(label);
   const tspans = lines.map((line, i) => `<tspan x="${x}" y="${startY + i * lineHeight}">${esc(line)}</tspan>`).join('');
   return `    <text text-anchor="${anchor}" fill="${color}" font-size="${fs}" font-family="${ff}" font-weight="${weight}">${tspans}</text>\n`;
+}
+
+/** Draw an icon node's label where node-label-geometry says it goes (beside or
+ *  above the glyph, never on it). `off` is the diagram padding. */
+function iconLabel(node: IRNode, off: number, color: string, weight: string): string {
+  const L = iconLabelLayout(node);
+  if (!L) return '';
+  return textBlock(L.x + off, L.y + off, L.lineHeight, L.fontSize, DS.fontFamily, color, L.text, L.anchor, weight);
 }
 
 // -----------------------------------------------------------------------------
@@ -494,7 +503,7 @@ export function renderC4Node(node: IRNode, pad: number, sketchy: boolean, swatch
   const roughStyle: RoughStyle = { stroke, strokeWidth: DS.stroke.node, fill, roughness: DS.roughness, fillStyle: 'solid', seed };
   let el = '';
   if (isDb) {
-    const ry = 10;
+    const ry = C4_DB_RY;
     el = sketchy
       ? roughRect(x, y + ry, w, h - ry * 2, roughStyle) + roughEllipse(cx, y + ry, w, ry * 2, roughStyle) + roughEllipse(cx, y + h - ry, w, ry * 2, roughStyle)
       : `    <rect x="${x}" y="${y + ry}" width="${w}" height="${h - ry * 2}" fill="${fill}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + ry}" rx="${w / 2}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + h - ry}" rx="${w / 2}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n`;
@@ -504,7 +513,7 @@ export function renderC4Node(node: IRNode, pad: number, sketchy: boolean, swatch
       ? roughRect(x, y, w, h, { ...roughStyle, roughness: isExternal ? DS.roughness * 1.3 : DS.roughness })
       : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="${DS.stroke.node}"${dashAttr}/>\n`;
   }
-  let ty = y + (isDb ? 30 : 26);
+  let ty = y + (isDb ? C4_DB_LABEL_Y : 26);
   el += textBlock(cx, ty, 16, DS.fontSize.label, DS.fontFamily, textColor, node.label, 'middle', '700');
   ty += 18;
   el += textBlock(cx, ty, 12, DS.fontSize.small, DS.fontFamily, isExternal ? DS.neutral.muted : textColor, `[${C4_TAG[kind]}]`, 'middle', '400');
@@ -640,7 +649,7 @@ export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swat
         : `    <circle cx="${cx}" cy="${cy}" r="${r - 5}" fill="none" stroke="${role.stroke}" stroke-width="1.5"/>\n`;
     }
     el += bpmnEventGlyph(cx, cy, r, subKind, role.stroke);
-    el += textBlock(cx, y + h + 16, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '500');
+    el += iconLabel(node, pad, DS.neutral.text, '500');
     return el;
   }
 
@@ -651,7 +660,7 @@ export function renderBpmnNode(node: IRNode, pad: number, sketchy: boolean, swat
     let el = sketchy ? roughPolygon([[cx, y], [x + w, cy], [cx, y + h], [x, cy]], style)
       : `    <polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" fill="${role.fill}" stroke="${role.stroke}" stroke-width="2"/>\n`;
     el += bpmnGatewayMarker(cx, cy, subKind || 'exclusiveGateway', role.stroke, Math.min(w, h) / 2);
-    el += textBlock(cx, y + h + 16, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '500');
+    el += iconLabel(node, pad, DS.neutral.text, '500');
     return el;
   }
 
@@ -852,7 +861,7 @@ export function renderDeploymentNode(node: IRNode, pad: number, sketchy: boolean
     let el = sketchy
       ? roughRect(x, y + ry, w, h - ry * 2, style) + roughEllipse(cx, y + ry, w, ry * 2, style) + roughEllipse(cx, y + h - ry, w, ry * 2, style)
       : `    <rect x="${x}" y="${y + ry}" width="${w}" height="${h - ry * 2}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + ry}" rx="${w / 2}" ry="${ry}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n    <ellipse cx="${cx}" cy="${y + h - ry}" rx="${w / 2}" ry="${ry}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
-    el += textBlock(cx, y + h / 2 + 20, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '600');
+    el += textBlock(cx, y + h / 2 + 9, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '600');
     return el;
   }
   if (kind === 'artifact') {
@@ -981,7 +990,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
     for (const r of [10, 16]) {
       el += `    <path d="M ${cx - r} ${cy + r * 0.3} A ${r} ${r} 0 0 1 ${cx + r} ${cy + r * 0.3}" fill="none" stroke="${swatch.stroke}" stroke-width="1.5" opacity="0.7"/>\n`;
     }
-    el += textBlock(cx, y + h + 16, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+    el += iconLabel(node, pad, DS.neutral.text, '600');
     return el;
   }
   if (kind === 'switch') {
@@ -1009,7 +1018,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
         el += `    <rect x="${Math.max(x + 10, bx)}" y="${ry}" width="${brickW - 2}" height="${brickH - 2}" fill="none" stroke="${swatch.stroke}" stroke-width="1" opacity="0.6"/>\n`;
       }
     }
-    el += textBlock(cx, y + h + 16, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+    el += iconLabel(node, pad, DS.neutral.text, '600');
     return el;
   }
   if (kind === 'cloud' || kind === 'internet') {
@@ -1031,7 +1040,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
         ? roughEllipse(pcx, pcy, pw, ph, style)
         : `    <ellipse cx="${pcx}" cy="${pcy}" rx="${pw / 2}" ry="${ph / 2}" fill="${swatch.fill}" stroke="${swatch.stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     }
-    el += textBlock(cx, cy + h * 0.1, Math.round(w * 0.8), DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '600');
+    el += iconLabel(node, pad, DS.neutral.text, '600');
     return el;
   }
   if (kind === 'loadbalancer') {
@@ -1044,7 +1053,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
       el += `    <line x1="${cx}" y1="${forkY}" x2="${fx}" y2="${botY}" stroke="${swatch.stroke}" stroke-width="1.5"/>\n`;
       el += `    <circle cx="${fx}" cy="${botY}" r="3" fill="${swatch.stroke}"/>\n`;
     }
-    el += textBlock(cx, y + h * 0.62 - 8, 15, DS.fontSize.meta, DS.fontFamily, swatch.text, node.label, 'middle', '700');
+    el += iconLabel(node, pad, DS.neutral.text, '700');
     return el;
   }
   if (kind === 'database' || kind === 'storage') {
@@ -1060,7 +1069,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
         el += `    <line x1="${x + 8}" y1="${y + h * frac}" x2="${x + w - 8}" y2="${y + h * frac}" stroke="${swatch.stroke}" stroke-width="1" opacity="0.5"/>\n`;
       }
     }
-    el += textBlock(cx, y + h + 16, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+    el += iconLabel(node, pad, DS.neutral.text, '600');
     return el;
   }
   if (kind === 'accesspoint') {
@@ -1071,7 +1080,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
     for (const r of [8, 14, 20]) {
       el += `    <path d="M ${cx - r} ${y + h * 0.3 - r * 0.15} A ${r} ${r} 0 0 1 ${cx + r} ${y + h * 0.3 - r * 0.15}" fill="none" stroke="${swatch.stroke}" stroke-width="1.25" opacity="0.6"/>\n`;
     }
-    el += textBlock(cx, y + h + 4, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+    el += iconLabel(node, pad, DS.neutral.text, '600');
     return el;
   }
   // server / workstation — a monitor-like rectangle on a small stand.
@@ -1086,7 +1095,7 @@ export function renderNetworkNode(node: IRNode, pad: number, sketchy: boolean, s
       el += `    <line x1="${x + 10}" y1="${y + screenH * frac}" x2="${x + w - 10}" y2="${y + screenH * frac}" stroke="${swatch.stroke}" stroke-width="1" opacity="0.5"/>\n`;
     }
   }
-  el += textBlock(cx, y + h + 4, 14, DS.fontSize.small, DS.fontFamily, DS.neutral.text, node.label, 'middle', '600');
+  el += iconLabel(node, pad, DS.neutral.text, '600');
   return el;
 }
 

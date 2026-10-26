@@ -343,3 +343,41 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     expect(matches.length).toBe(1);
   });
 });
+
+describe('gallery fences through the preview fence rule', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs');
+  const { fileURLToPath } = require('node:url') as typeof import('node:url');
+  const doc = (n: string) => readFileSync(fileURLToPath(new URL(`../../../docs/examples/${n}`, import.meta.url)), 'utf8');
+  const fences = (n: string) => [...doc(n).matchAll(/```(\w+)\n([\s\S]*?)```/g)].map((m) => ({ info: m[1], content: m[2] }));
+  const rule = () => {
+    const md: any = { renderer: { rules: {} }, core: { ruler: { before: () => {} } } };
+    createSelDiAMarkdownItPlugin(engine)(md);
+    return md.renderer.rules.fence as (t: any[], i: number, o: any, e: any, s: any) => string;
+  };
+
+  for (const file of ['demo-circuits.md', 'demo-basic.md']) {
+    it(`${file}: every seldia/spice fence renders an svg with no error box`, () => {
+      const fence = rule();
+      const fs = fences(file).filter((f) => f.info === 'seldia' || f.info === 'spice' || f.info === 'circuit');
+      expect(fs.length).toBeGreaterThan(0);
+      for (const f of fs) {
+        const out = fence([f], 0, {}, {}, {});
+        expect(out, f.content.slice(0, 40)).toContain('<svg');
+        expect(out, f.content.slice(0, 40)).not.toContain('seldia-error');
+      }
+    });
+  }
+
+  it('a ```spice fence renders through the importer', () => {
+    const out = rule()([{ info: 'spice', content: 'rc\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n' }], 0, {}, {}, {});
+    expect(out).toContain('<svg');
+  });
+
+  it('grouped flowchart and state diagram compile synchronously with ELK', () => {
+    const mer = engine.compileIRSync;
+    expect(typeof mer).toBe('function');
+    const fl = rule()([{ info: 'mermaid', content: 'flowchart TD\n subgraph G\n a-->b\n end\n b-->c' }], 0, {}, {}, {});
+    const st = rule()([{ info: 'mermaid', content: 'stateDiagram-v2\n [*] --> A\n A --> B\n B --> [*]' }], 0, {}, {}, {});
+    for (const o of [fl, st]) { expect(o).toContain('<svg'); expect(o).not.toContain('seldia-error'); }
+  });
+});

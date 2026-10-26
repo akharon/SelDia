@@ -1,0 +1,13 @@
+Full-bridge rectifier with smoothing capacitor and load
+V1 acA acB SIN(0 17 60)
+D1 acA pos D1N4007
+D2 acB pos D1N4007
+D3 0 acA D1N4007
+D4 0 acB D1N4007
+C1 pos 0 470u
+R1 pos 0 1k
+.model D1N4007 D(IS=76.9p RS=42m N=1.45 BV=1000 IBV=5u)
+.tran 0.1m 50m
+.options gmin=1e-9 itl4=500
+.print tran v(pos)
+.end

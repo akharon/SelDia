@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { Command } from 'commander';
-import { createEngine, importMermaid, importPlantUml, exportMermaid, exportPlantUml, exportBpmn, exportSqlDdl, diffDiagrams, BUILTIN_PALETTES } from '@seldia/core';
+import { createEngine, importMermaid, importPlantUml, importCircuit, exportMermaid, exportPlantUml, exportBpmn, exportSqlDdl, diffDiagrams, BUILTIN_PALETTES } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename, join, relative as pathRelative } from 'path';
 import { scanRepo } from './scan.js';
@@ -158,6 +158,7 @@ function registerImportRenderCommand(
 
 registerImportRenderCommand('mermaid', 'Mermaid', '.mmd/.mermaid', importMermaid);
 registerImportRenderCommand('plantuml', 'PlantUML', '.puml/.plantuml/.iuml/.wsd', importPlantUml);
+registerImportRenderCommand('circuit', 'SPICE / KiCad netlist', '.cir/.sp/.net', importCircuit);
 
 // ── render ────────────────────────────────────────────────────────────────────
 // Repository-wide batch render: finds every standalone .sld file and every

@@ -100,6 +100,15 @@ pnpm add @seldia/new-feature --workspace
 
 ---
 
+## Layout Engine Settings
+
+Set in `packages/core/src/config.ts` (`DEFAULT_CONFIG`), and overridable per engine via `createEngine({ config })`.
+
+| Key | Default | Purpose | Where |
+|-----|---------|---------|-------|
+| `layoutEngineByType` | `elk` for `class`, `state`, `component`, `network`, `block`, `workitem`; `dagre` for the rest | Per-type auto-layout engine. Consulted after a diagram's own `layout` line and before `defaultLayoutEngine`. Custom-layout types ignore it | `packages/core/src/config.ts` |
+| `elkWhenGrouped` | `true` | A diagram that would default to `dagre` and has a group with members uses `elk` instead. An explicit `layout` line still wins | `packages/core/src/config.ts` |
+
 ## Build Profiles
 
 **Development** (default):

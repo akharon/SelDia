@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createEngine } from '../src/index.js';
 
-const demoPath = fileURLToPath(new URL('../../../demo.md', import.meta.url));
+const demoPath = fileURLToPath(new URL('../../../docs/examples/demo-basic.md', import.meta.url));
 const engine = createEngine();
 
 function demoBlocks(): string[] {

@@ -1,0 +1,13 @@
+{
+  "parts": [
+    {"ref": "V1", "kind": "V", "pins": ["+", "-"], "value": "DC 5"},
+    {"ref": "R1", "kind": "R", "pins": ["1", "2"], "value": "330"},
+    {"ref": "D1", "kind": "D", "pins": ["anode", "cathode"], "value": "LEDRED"}
+  ],
+  "nets": {
+    "VCC": ["V1.+", "R1.1"],
+    "anode": ["R1.2", "D1.anode"],
+    "0": ["V1.-", "D1.cathode"]
+  },
+  "powerNets": ["0", "VCC"]
+}

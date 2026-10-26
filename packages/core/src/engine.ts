@@ -22,13 +22,16 @@ import { statePlugin } from './diagrams/state.js';
 import { erPlugin } from './diagrams/er.js';
 import { workitemPlugin } from './diagrams/workitem.js';
 import { floorplanPlugin } from './diagrams/floorplan.js';
+import { pcbPlugin } from './diagrams/pcb.js';
+import { circuitPlugin } from './diagrams/circuit.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
-import { layoutWithDagre, layoutWithElk, LAYOUT_ENGINES } from './layout/engines.js';
-import { routeBetween, centerOf, computeFans, clipRouteToNodes, type Fan } from './render/edge-routing.js';
-import { computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
+import { layoutWithDagre, layoutWithElkSync, type AutoLayoutResult } from './layout/engines.js';
+import { routeEdgePolyline, manualEdgeRoute, centerOf, computeFans, type Fan } from './render/edge-routing.js';
+import { iconLabelLayout } from './render/node-label-geometry.js';
+import { chipRect, computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './render/rough.js';
 import { DS, typeSwatch, roleSwatch, seriesColor, setPaletteOverride, clearPaletteOverride, resolvePalette, type Swatch, type SemanticRole } from './render/design-system.js';
 import { customLayoutFor } from './render/custom-layout.js';
@@ -174,12 +177,13 @@ class SelDiAEngine implements CoreEngine {
       plugins: { ...DEFAULT_CONFIG.plugins, ...options?.config?.plugins },
       output: { ...DEFAULT_CONFIG.output, ...options?.config?.output },
       debug: { ...DEFAULT_CONFIG.debug, ...options?.config?.debug },
+      layoutEngineByType: { ...DEFAULT_CONFIG.layoutEngineByType, ...options?.config?.layoutEngineByType },
     } as SelDiAConfig;
     this.plugins = new DefaultPluginManager();
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin, floorplanPlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin, floorplanPlugin, circuitPlugin, pcbPlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -294,10 +298,14 @@ class SelDiAEngine implements CoreEngine {
    *  node positions are final. Every layout path (dagre, elk, custom, manual)
    *  must run this before returning, or a group's position/size stay at the
    *  zero-value the parser left them with. */
-  private layoutGroups(ir: DiagramIR, nodes: IRNode[]): IRGroup[] {
+  private layoutGroups(ir: DiagramIR, nodes: IRNode[], engineBounds?: Map<string, Rect>): IRGroup[] {
     if (!ir.groups.length) return ir.groups;
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     return ir.groups.map((g) => {
+      // A layout engine that laid out compound nodes (ELK) owns the box: its
+      // padding and header band already account for the contents.
+      const eb = engineBounds?.get(g.id);
+      if (eb) return { ...g, position: { x: eb.x, y: eb.y }, size: { width: eb.width, height: eb.height } };
       const { x, y, width, height } = computeGroupBounds(g, ir.groups, nodeById);
       return { ...g, position: { x, y }, size: { width, height } };
     });
@@ -333,31 +341,38 @@ class SelDiAEngine implements CoreEngine {
       };
       return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
     }
-    // Synchronous path only has dagre available; an "elk" request is honored
-    // by layoutAsync() (used by compile()), not here.
-    const { nodes, edges, bounds } = layoutWithDagre(ir, this.resolvedLayoutOptions(ir));
-    const positioned: DiagramIR = { ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes) };
+    const { nodes, edges, bounds, groupBounds } = this.autoLayout(ir);
+    const positioned: DiagramIR = { ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes, groupBounds) };
     return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
   }
 
-  async layoutAsync(ir: DiagramIR): Promise<Result<LayoutResult>> {
-    if (this.isManuallyLaidOut(ir)) return this.layoutManual(ir);
-    const custom = customLayoutFor(ir.type);
-    if (custom) {
-      const { nodes, edges, bounds, metadataPatch } = custom(ir);
-      const positioned: DiagramIR = {
-        ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes),
-        metadata: metadataPatch ? { ...ir.metadata, ...metadataPatch } : ir.metadata,
-      };
-      return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
-    }
-    const requested = (ir.metadata?.layoutEngine as string | undefined) || this.config.defaultLayoutEngine;
+  /** The engine an auto-laid-out diagram asks for: its own `layout …` line,
+   *  then the per-type config map, then the global default. */
+  private requestedEngine(ir: DiagramIR): 'dagre' | 'elk' {
+    const explicit = ir.metadata?.layoutEngine as string | undefined;
+    const r = explicit
+      || (this.config.defaultLayoutEngine === 'elk' ? 'elk' : undefined) // explicit global opt-in wins over the per-type map
+      || this.config.layoutEngineByType?.[ir.type]
+      || this.config.defaultLayoutEngine;
+    if (r === 'elk') return 'elk';
+    // Dagre here came only from the per-type default: grouped diagrams go to ELK
+    // (dagre's compound clusters overlap; ELK keeps them apart).
+    if (!explicit && this.config.elkWhenGrouped && ir.groups?.some((g) => g.childNodeIds.length > 0)) return 'elk';
+    return 'dagre';
+  }
+
+  /** Auto layout with the requested engine; ELK failure degrades to dagre. */
+  private autoLayout(ir: DiagramIR): AutoLayoutResult {
     const opts = this.resolvedLayoutOptions(ir);
-    const { nodes, edges, bounds } = requested === 'elk' && LAYOUT_ENGINES.has('elk')
-      ? await layoutWithElk(ir, opts)
-      : layoutWithDagre(ir, opts);
-    const positioned: DiagramIR = { ...ir, nodes, edges: this.applyManualEdgeRoutes(edges, nodes), groups: this.layoutGroups(ir, nodes) };
-    return { ok: true, value: { diagram: positioned, bounds, warnings: [] } };
+    if (this.requestedEngine(ir) === 'elk') {
+      try { return layoutWithElkSync(ir, opts); }
+      catch { /* fall through to dagre */ }
+    }
+    return layoutWithDagre(ir, opts);
+  }
+
+  async layoutAsync(ir: DiagramIR): Promise<Result<LayoutResult>> {
+    return this.layout(ir);
   }
 
   /** Diagram-wide manual layout: pinned nodes (manual `{x,y}`) keep their
@@ -371,7 +386,7 @@ class SelDiAEngine implements CoreEngine {
       ...ir,
       nodes: ir.nodes.map((n) => ({ ...n, size: n.size.width > 0 ? n.size : { width: 140, height: 60 } })),
     };
-    const auto = layoutWithDagre(sized, this.resolvedLayoutOptions(sized));
+    const auto = this.autoLayout(sized);
     const autoById = new Map(auto.nodes.map((n) => [n.id, n]));
 
     // Anchor the auto-arranged cluster relative to the pinned nodes: shift
@@ -406,11 +421,7 @@ class SelDiAEngine implements CoreEngine {
    *  over anything layout would otherwise compute. Odd-length or empty
    *  arrays are treated as absent rather than guessed at. */
   private manualEdgeRoute(edge: IREdge): Point[] | undefined {
-    const via = edge.style?.via;
-    if (!Array.isArray(via) || via.length < 4 || via.length % 2 !== 0) return undefined;
-    const pts: Point[] = [];
-    for (let i = 0; i < via.length; i += 2) pts.push({ x: via[i], y: via[i + 1] });
-    return pts;
+    return manualEdgeRoute(edge);
   }
 
   /** Centre-to-centre; renderEdge clips it back to both node borders. Anchoring
@@ -435,6 +446,12 @@ class SelDiAEngine implements CoreEngine {
     for (const n of nodes) {
       minX = Math.min(minX, n.position.x); minY = Math.min(minY, n.position.y);
       maxX = Math.max(maxX, n.position.x + n.size.width); maxY = Math.max(maxY, n.position.y + n.size.height);
+      // Icon nodes draw their label beside/above the glyph, outside the node box.
+      const lb = iconLabelLayout(n)?.box;
+      if (lb) {
+        minX = Math.min(minX, lb.x); minY = Math.min(minY, lb.y);
+        maxX = Math.max(maxX, lb.x + lb.width); maxY = Math.max(maxY, lb.y + lb.height);
+      }
     }
     // Also include edge waypoints so routed edges that extend beyond node
     // boundaries (obstacle avoidance, fanned anchors) are not clipped by
@@ -527,7 +544,7 @@ class SelDiAEngine implements CoreEngine {
     // outward, plus the thickest stroke width in use, so nothing gets
     // clipped by the viewBox at any zoom level (see improvement_request.md
     // item 7).
-    const sketchy = this.config.render.sketchy !== false;
+    const sketchy = this.config.render.sketchy !== false && (diagramType as string) !== 'circuit' && (diagramType as string) !== 'pcb';
     const maxStroke = Math.max(2, ...nodes.map((n) => (n.style?.strokeWidth as number) || 2));
     const displacement = sketchy ? 6 : 0;
     const pad = (this.config.render.padding || 20) + maxStroke + displacement;
@@ -736,6 +753,20 @@ class SelDiAEngine implements CoreEngine {
       }
       const routedEdges = edges.map((e) => routedWps.has(e.id) ? { ...e, waypoints: routedWps.get(e.id) } : e);
       const labelPos = computeEdgeLabelPositions(routedEdges, nodeById, pad);
+      // The nudge pass can park a chip beyond the layout bounds: grow the
+      // canvas (right/bottom) so it is never clipped by the viewBox.
+      let needW = bw, needH = bh;
+      for (const e of routedEdges) {
+        const lp = labelPos.get(e.id);
+        if (!lp || !e.label) continue;
+        const r = chipRect(lp.x, lp.y, e.label);
+        needW = Math.max(needW, r.x + r.width + pad / 2); needH = Math.max(needH, r.y + r.height + pad / 2);
+      }
+      if (needW > bw || needH > bh) {
+        const W = Math.ceil(needW), H = Math.ceil(needH);
+        svg = svg.replace(`viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}"`, `viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"`)
+          .replace(`<rect width="${bw}" height="${bh}"`, `<rect width="${W}" height="${H}"`);
+      }
       for (const e of routedEdges) svg += `  <g class="seldia-edge" data-seldia-edge-id="${this.esc(e.id)}">\n${this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes)}  </g>\n`;
     }
     for (const n of nodes) svg += `  <g class="seldia-node" data-seldia-node-id="${this.esc(n.id)}">\n${this.renderNode(n, pad, sketchy, diagramType, nodeSwatch(n, diagramType))}  </g>\n`;
@@ -849,7 +880,7 @@ class SelDiAEngine implements CoreEngine {
     const rawLabel = node.label || node.id;
     const lineHeight = Math.round(fs * 1.3);
     const lineCount = rawLabel.split('\n').length;
-    const startY = cy - ((lineCount - 1) * lineHeight) / 2 + fs * 0.35;
+    const startY = cy + (String(node.shape) === 'cylinder' ? 6 : 0) - ((lineCount - 1) * lineHeight) / 2 + fs * 0.35;   // cylinders: centre on the face, between the end caps
     el += this.renderLabel(cx, startY, lineHeight, fs, ff, color, rawLabel);
     return el;
   }
@@ -864,9 +895,7 @@ class SelDiAEngine implements CoreEngine {
    *  `manualOverride` already applies to a dragged node — and only gets
    *  border-clipped, same as the router's own final step. */
   private routedWaypoints(edge: IREdge, wps: Point[], src?: IRNode, tgt?: IRNode, fan?: Fan, allNodes?: IRNode[]): Point[] {
-    if (wps.length < 2) return wps;
-    if (this.manualEdgeRoute(edge)) return clipRouteToNodes(wps, src, tgt);
-    return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes);
+    return routeEdgePolyline(edge, wps, src, tgt, fan, allNodes);
   }
 
   private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement, preRouted = false, allNodesIn?: IRNode[]): string {
@@ -965,7 +994,7 @@ class SelDiAEngine implements CoreEngine {
    *  open V (association), diamond (aggregation/composition). */
   private renderArrowhead(kind: string, prev: Point, last: Point, pad: number, stroke: string): string {
     const dx = last.x - prev.x, dy = last.y - prev.y, len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) return '';
+    if (len === 0 || kind === 'none') return '';
     const nx = dx / len, ny = dy / len;
     const ax = last.x + pad, ay = last.y + pad;
     const asz = kind === 'generalization' ? 14 : 10;

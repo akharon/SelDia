@@ -1,0 +1,18 @@
+{
+  "parts": [
+    {"ref": "V1", "kind": "V", "pins": ["+", "-"], "value": "SIN(0 17 60)"},
+    {"ref": "D1", "kind": "D", "pins": ["anode", "cathode"], "value": "D1N4007"},
+    {"ref": "D2", "kind": "D", "pins": ["anode", "cathode"], "value": "D1N4007"},
+    {"ref": "D3", "kind": "D", "pins": ["anode", "cathode"], "value": "D1N4007"},
+    {"ref": "D4", "kind": "D", "pins": ["anode", "cathode"], "value": "D1N4007"},
+    {"ref": "C1", "kind": "C", "pins": ["1", "2"], "value": "470u"},
+    {"ref": "R1", "kind": "R", "pins": ["1", "2"], "value": "1k"}
+  ],
+  "nets": {
+    "acA": ["V1.+", "D1.anode", "D3.cathode"],
+    "acB": ["V1.-", "D2.anode", "D4.cathode"],
+    "pos": ["D1.cathode", "D2.cathode", "C1.1", "R1.1"],
+    "0": ["D3.anode", "D4.anode", "C1.2", "R1.2"]
+  },
+  "powerNets": ["0"]
+}

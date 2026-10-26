@@ -1,0 +1,19 @@
+{
+  "parts": [
+    {"ref": "V1", "kind": "V", "pins": ["+", "-"], "value": "DC 0.5"},
+    {"ref": "R1", "kind": "R", "pins": ["1", "2"], "value": "10k"},
+    {"ref": "R2", "kind": "R", "pins": ["1", "2"], "value": "100k"},
+    {"ref": "X1", "kind": "X", "pins": ["inp", "inn", "out", "vcc", "vee"], "value": "OPAMP"},
+    {"ref": "V2", "kind": "V", "pins": ["+", "-"], "value": "DC 15"},
+    {"ref": "V3", "kind": "V", "pins": ["+", "-"], "value": "DC -15"}
+  ],
+  "nets": {
+    "in": ["R1.1", "V1.+"],
+    "inn": ["R1.2", "R2.1", "X1.inn"],
+    "out": ["R2.2", "X1.out"],
+    "VCC": ["V2.+", "X1.vcc"],
+    "VEE": ["V3.+", "X1.vee"],
+    "0": ["V1.-", "V2.-", "V3.-", "X1.inp"]
+  },
+  "powerNets": ["0", "VCC", "VEE"]
+}

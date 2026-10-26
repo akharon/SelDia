@@ -10,8 +10,13 @@ Guide to test data, golden values, fixtures, and reference data in SelDiA.
 |------|---------|--------|-------|
 | `packages/core/tests/fixtures/*.sld` | SelDiA DSL sample files | SelDiA DSL | Parser unit tests |
 | `packages/core/tests/fixtures/*.mmd` | Mermaid diagram samples | Mermaid | Input conversion tests |
+| `packages/core/test/fixtures/circuits/*.cir` + `*.expected.json` | 8 SPICE netlists with expected parts, nets, power nets (top-level only; `.subckt` internals not expanded; `value` = model/subckt name for D/Q/M/X) | SPICE / JSON | Circuit (`circuit` type) SPICE parser tests (T4.2) |
+| `packages/core/test/fixtures/circuits/09-skidl-rc.net` + `.expected.json` | KiCad netlist as SKiDL `generate_netlist()` writes it (pin functions B/C/E, `/mid` net name, single-pin net) | KiCad s-expr / JSON | KiCad importer test (T4.3); `test/circuit.test.ts` also covers the >40-part warning |
+| `packages/core/test/fixtures/pcb/blinky.kicad_pcb` | Hand-written 30x20 mm board: 2 resistors (one rotated), LED, 2-pin header, 4 tracks (F.Cu/B.Cu), 1 via, Edge.Cuts outline | KiCad s-expr | `test/pcb.test.ts` parser and render tests (`pcb` type, render-only) |
 | `packages/core/tests/fixtures/golden_ir.json` | Expected IR output | JSON | Comparison tests |
 | `packages/mermaid-renderer/tests/golden_*.svg` | Expected rendered SVGs | SVG | Visual regression tests |
+| `packages/core/test/fixtures/layout-baseline.json` | Layout-quality baseline per docs/examples fence, measured with the shipped defaults (`measureCorpus(..., 'defaults')`). Gated per diagram type on crossings, edgeOverlaps, borderHugs, nodeLabelHits, edgeNodeHits, labelOverlaps and groupViolations; `bends` is recorded but not gated | JSON | `layout-metrics.test.ts` gate: current <= baseline + max(1, ceil(10%)) per type. Regenerate from packages/core: `UPDATE_LAYOUT_BASELINE=1 npx vitest run test/layout-metrics.test.ts` |
+| `docs/layout-metrics.json` | Live layout-metrics report: per-fence values and totals from the corpus | JSON | Written by `node scripts/layout-metrics.mjs [--engine dagre\|elk] [--quiet] [--out file]` (no `--engine` = shipped defaults). Not gated; regenerate, do not hand-edit |
 
 ---
 

@@ -1,0 +1,14 @@
+Common-emitter NPN amplifier, voltage-divider bias
+V1 VCC 0 DC 12
+V2 src 0 AC 10m
+R1 VCC base 47k
+R2 base 0 10k
+R3 VCC coll 2.2k
+R4 emit 0 1k
+C1 src base 10u
+C2 coll out 10u
+Q1 coll base emit NPN_MOD
+R5 out 0 10k
+.model NPN_MOD NPN (BF=100 IS=1e-14 VAF=100)
+.op
+.end

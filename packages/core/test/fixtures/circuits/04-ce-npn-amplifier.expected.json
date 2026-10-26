@@ -1,0 +1,24 @@
+{
+  "parts": [
+    {"ref": "V1", "kind": "V", "pins": ["+", "-"], "value": "DC 12"},
+    {"ref": "V2", "kind": "V", "pins": ["+", "-"], "value": "AC 10m"},
+    {"ref": "R1", "kind": "R", "pins": ["1", "2"], "value": "47k"},
+    {"ref": "R2", "kind": "R", "pins": ["1", "2"], "value": "10k"},
+    {"ref": "R3", "kind": "R", "pins": ["1", "2"], "value": "2.2k"},
+    {"ref": "R4", "kind": "R", "pins": ["1", "2"], "value": "1k"},
+    {"ref": "C1", "kind": "C", "pins": ["1", "2"], "value": "10u"},
+    {"ref": "C2", "kind": "C", "pins": ["1", "2"], "value": "10u"},
+    {"ref": "Q1", "kind": "Q", "pins": ["C", "B", "E"], "value": "NPN_MOD"},
+    {"ref": "R5", "kind": "R", "pins": ["1", "2"], "value": "10k"}
+  ],
+  "nets": {
+    "VCC": ["V1.+", "R1.1", "R3.1"],
+    "base": ["R1.2", "R2.1", "C1.2", "Q1.B"],
+    "coll": ["R3.2", "C2.1", "Q1.C"],
+    "emit": ["R4.1", "Q1.E"],
+    "out": ["C2.2", "R5.1"],
+    "src": ["V2.+", "C1.1"],
+    "0": ["V1.-", "V2.-", "R2.2", "R4.2", "R5.2"]
+  },
+  "powerNets": ["0", "VCC"]
+}

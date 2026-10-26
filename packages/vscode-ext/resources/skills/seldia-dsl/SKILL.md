@@ -558,6 +558,21 @@ wi "Payments traceability" {
 }
 ```
 
+### Circuit
+
+Circuit fences take a raw SPICE netlist (not DSL). The first netlist line is the title. Layout hints go in `* @seldia` comments.
+
+```seldia
+circuit
+Voltage divider
+V1 in 0 DC 10
+R1 in out 10k
+R2 out 0 4.7k
+* @seldia rank in V1
+.op
+.end
+```
+
 ## Conventions
 
 1. **Descriptive kebab-case IDs** — `validate-payment`, not `a1`

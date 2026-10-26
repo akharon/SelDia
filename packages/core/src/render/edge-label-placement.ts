@@ -40,7 +40,7 @@ function chipSize(label: string): { w: number; h: number } {
 /** The bounding rect of a label chip centred at (cx, cy) where cy is the
  *  text baseline plus a small upward offset (the chip is drawn above the
  *  edge line). Returns the full chip box including the vertical offset. */
-function chipRect(cx: number, cy: number, label: string): Rect {
+export function chipRect(cx: number, cy: number, label: string): Rect {
   const { w, h } = chipSize(label);
   return {
     x: cx - w / 2,
@@ -293,6 +293,18 @@ export function computeEdgeLabelPositions(
         height: n.size.height,
       });
     }
+    // ELK already reserved space for this label and reports its centre; prefer
+    // that spot when it is free (chipRect is anchored on the text baseline, so
+    // shift by half the chip height). Otherwise fall through to scoring.
+    if (edge.layoutLabel) {
+      const lx = edge.layoutLabel.x + pad, ly = edge.layoutLabel.y + pad + (CHIP_H + CHIP_PAD_Y) / 2;
+      const cr = chipRect(lx, ly, edge.label!);
+      if (!overlapsAnyPlaced(lx, ly, edge.label!, placed) && !foreignNodes.some((nr) => rectsOverlap(cr, nr))) {
+        placements.set(edge.id, { x: lx, y: ly });
+        placed.push({ cx: lx, cy: ly, label: edge.label! });
+        continue;
+      }
+    }
     const candidates = sampleCandidates(wps, pad);
     if (candidates.length === 0) {
       // No usable segment — fall back to the old midpoint logic.
@@ -334,5 +346,56 @@ export function computeEdgeLabelPositions(
     }
   }
 
+  nudgeOffObstacles(labeled.map((l) => ({ id: l.edge.id, label: l.edge.label!, wps: l.wps })), nodeById, pad, placements);
   return placements;
+}
+
+/** Post-pass (F3-lite): a label still sitting on a node box or another chip
+ *  after scoring is slid along its own polyline, in fine steps, to the nearest
+ *  spot that is clear of both. Labels already clear are untouched, and a label
+ *  with no clear spot anywhere keeps its scored position. */
+function nudgeOffObstacles(
+  items: Array<{ id: string; label: string; wps: Point[] }>,
+  nodeById: Map<string, IRNode>,
+  pad: number,
+  placements: Map<string, LabelPlacement>
+): void {
+  const nodeRects: Rect[] = [...nodeById.values()].map((n) => ({
+    x: n.position.x + pad, y: n.position.y + pad, width: n.size.width, height: n.size.height,
+  }));
+  const chipOf = (id: string, label: string): Rect | undefined => {
+    const p = placements.get(id);
+    return p ? chipRect(p.x, p.y, label) : undefined;
+  };
+  const clashes = (r: Rect, selfId: string): boolean => {
+    for (const nr of nodeRects) if (rectsOverlap(r, nr)) return true;
+    for (const o of items) {
+      if (o.id === selfId) continue;
+      const orc = chipOf(o.id, o.label);
+      if (orc && rectsOverlap(r, orc)) return true;
+    }
+    return false;
+  };
+  for (const it of items) {
+    const cur = placements.get(it.id);
+    if (!cur || !clashes(chipRect(cur.x, cur.y, it.label), it.id)) continue;
+    let best: Point | null = null;
+    let bestD = Infinity;
+    for (let i = 0; i < it.wps.length - 1; i++) {
+      const a = it.wps[i], b = it.wps[i + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 1) continue;
+      const px = -(b.y - a.y) / len, py = (b.x - a.x) / len;
+      for (let d = 0; d <= len; d += 4) {
+        const bx = a.x + ((b.x - a.x) * d) / len + pad, by = a.y + ((b.y - a.y) * d) / len + pad;
+        for (const off of [0, 1, -1]) {
+          const x = bx + px * off * (CHIP_H + 2), y = by + py * off * (CHIP_H + 2);
+          const dist = Math.hypot(x - cur.x, y - cur.y) + Math.abs(off) * 6;
+          if (dist >= bestD) continue;
+          if (!clashes(chipRect(x, y, it.label), it.id)) { best = { x, y }; bestD = dist; }
+        }
+      }
+    }
+    if (best) placements.set(it.id, best);
+  }
 }

@@ -18,7 +18,9 @@
 // then agree by construction, for any relative placement of the two nodes.
 // =============================================================================
 
-import type { IRNode, IREdge } from '../ir/types.js';
+import { clipStartToShape, clipEndToShape, isBoxShape } from './shape-clip.js';
+export { clipToShape } from './shape-clip.js';
+import { EdgeRouting, type IRNode, type IREdge } from '../ir/types.js';
 import type { Point, Rect } from '../types/common.js';
 
 /** Gap left between a node's border and the edge that touches it, so an
@@ -617,8 +619,8 @@ export function routeBetween(
     pts = raw;
   }
 
-  if (src) pts = clipStart(pts, nodeRect(src, EDGE_GAP));
-  if (tgt) pts = clipEnd(pts, nodeRect(tgt, EDGE_GAP));
+  if (src) pts = isBoxShape(src) ? clipStart(pts, nodeRect(src, EDGE_GAP)) : clipStartToShape(pts, src, EDGE_GAP);
+  if (tgt) pts = isBoxShape(tgt) ? clipEnd(pts, nodeRect(tgt, EDGE_GAP)) : clipEndToShape(pts, tgt, EDGE_GAP);
   pts = dedupe(pts);
   return pts.length >= 2 ? pts : raw;
 }
@@ -629,8 +631,52 @@ export function routeBetween(
  *  are the user's own and must survive untouched. */
 export function clipRouteToNodes(raw: Point[], src?: IRNode, tgt?: IRNode): Point[] {
   let pts = raw;
-  if (src) pts = clipStart(pts, nodeRect(src, EDGE_GAP));
-  if (tgt) pts = clipEnd(pts, nodeRect(tgt, EDGE_GAP));
+  if (src) pts = isBoxShape(src) ? clipStart(pts, nodeRect(src, EDGE_GAP)) : clipStartToShape(pts, src, EDGE_GAP);
+  if (tgt) pts = isBoxShape(tgt) ? clipEnd(pts, nodeRect(tgt, EDGE_GAP)) : clipEndToShape(pts, tgt, EDGE_GAP);
   pts = dedupe(pts);
   return pts.length >= 2 ? pts : raw;
+}
+
+/** A user-pinned route: the flat `[x1,y1,x2,y2,...]` list from the DSL's `via:`
+ *  edge attribute, read as a style field that wins over anything layout would
+ *  otherwise compute. Odd-length or empty arrays are treated as absent. */
+export function manualEdgeRoute(edge: IREdge): Point[] | undefined {
+  const via = edge.style?.via;
+  if (!Array.isArray(via) || via.length < 4 || via.length % 2 !== 0) return undefined;
+  const pts: Point[] = [];
+  for (let i = 0; i < via.length; i += 2) pts.push({ x: via[i], y: via[i + 1] });
+  return pts;
+}
+
+/** The single source of truth for the polyline the renderer draws for one edge
+ *  (router + border clipping, or border-clipped `via` pins). */
+export function routeEdgePolyline(
+  edge: IREdge,
+  wps: Point[],
+  src?: IRNode,
+  tgt?: IRNode,
+  fan?: Fan,
+  allNodes?: IRNode[]
+): Point[] {
+  if (wps.length < 2) return wps;
+  if (manualEdgeRoute(edge)) return clipRouteToNodes(wps, src, tgt);
+  // The layout engine (ELK) already produced an obstacle-aware route: keep it
+  // and only trim the endpoints onto the node borders.
+  if ((edge.data as any)?.exactEnds) return wps; // circuit wires end exactly on symbol pins
+  if (edge.layoutRouted) return clipRouteToNodes(wps, src, tgt);
+  return routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes);
+}
+
+/** Route every edge that has layout waypoints, exactly as the renderer does
+ *  (fans computed across the whole edge set, all nodes as obstacles). */
+export function routeAllEdges(edges: IREdge[], nodes: IRNode[]): Map<string, Point[]> {
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const fans = computeFans(edges, nodeById);
+  const out = new Map<string, Point[]>();
+  for (const e of edges) {
+    const raw = e.waypoints || [];
+    if (raw.length < 2) continue;
+    out.set(e.id, routeEdgePolyline(e, raw, nodeById.get(e.sourceId), nodeById.get(e.targetId), fans.get(e.id), nodes));
+  }
+  return out;
 }

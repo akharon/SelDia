@@ -29,6 +29,8 @@ export interface DiagramAST extends ASTNode {
   title?: string;
   metadata: ASTMetadata;
   body: ASTStatement[];
+  /** Verbatim fence body for types whose source is not SelDiA DSL (circuit netlists). */
+  raw?: string;
 }
 
 export interface ASTMetadata {

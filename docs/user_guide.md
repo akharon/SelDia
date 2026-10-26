@@ -1916,6 +1916,64 @@ diagram timeline "Company History" {
 
 ---
 
+### 5.22 Circuit Schematics
+
+A `circuit` fence takes a raw netlist, not DSL. The netlist's first line is its title. Example:
+
+```seldia
+circuit
+RC low-pass filter
+V1 in 0 AC 1
+R1 in out 1k
+C1 out 0 100n
+.end
+```
+
+**Supported SPICE elements.** `R`, `C`, `L`, `V`, `I`, `D`, `Q`, `M`, `J` and `X` (subcircuit instance). `E` and `G` controlled sources are drawn as generic boxes. `.subckt`/`.ends` macros and `.model` cards are read so each part gets its type and pins. `+` continuation lines, `*` comments and `;` inline comments are supported. SI suffixes such as `10k` and `100n` are kept as label text.
+
+**Ignored directives.** `.op`, `.ac`, `.dc`, `.tran`, `.print`, `.plot`, `.options`, `.end` and other dot-cards are accepted and do not change the drawing. SelDiA does not run a simulation.
+
+**Power nets.** Ground is node `0`. `gnd`, `agnd`, `dgnd` and `pgnd` are the same node, case-insensitive. Rails are drawn with power symbols when named `VCC`, `VDD`, `VSS`, `VEE`, `AVCC` or `AVDD`, or as a signed voltage such as `+12V` or `-15V`.
+
+**Layout hints.** Hints sit in SPICE comments, so the netlist stays valid SPICE:
+
+```
+* @seldia rotate R1 90
+* @seldia flip Q1
+* @seldia rank in V1 R1
+* @seldia rank out RL
+```
+
+`rotate` turns a part by the given degrees. `flip` mirrors it. `rank in` places the listed parts in the first column, and `rank out` in the last. An unrecognised hint produces a warning and is otherwise ignored. Hints are read from SPICE only, so a KiCad `.net` file takes none.
+
+**Size.** The schematic budget is 40 parts. Above that, SelDiA still draws the schematic but warns that layout may be slow or cluttered. Split larger designs into subcircuits or separate fences.
+
+**SKiDL workflow.** Call `generate_netlist()` at the end of your SKiDL script. It writes a KiCad `.net` file. Either paste that file into a `circuit` fence (SelDiA detects the `(export …)` form) or render it directly:
+
+```
+seldia circuit my_circuit.net -o my_circuit.svg
+```
+
+### 5.23 PCB Board View
+
+A `pcb` fence (also ```` ```kicad_pcb ````, or a ```` ```kicad ```` fence whose body starts with `(kicad_pcb`) takes a raw KiCad `.kicad_pcb` file and draws the board. It is a render-only view: precise geometry, no hand-drawn jitter.
+
+```
+pcb "Blinky" {
+side: back
+scale: 6
+(kicad_pcb ... )
+}
+```
+
+**Supported.** `Edge.Cuts` outline (`gr_line`, `gr_rect`, `gr_arc`, `gr_circle`); footprints (`at` with rotation, layer, `fp_line`/`fp_rect`/`fp_circle` silk, reference text); pads `smd`/`thru_hole` as `rect`, `circle`, `oval`, `roundrect`, with drills; `segment` tracks; `via`; net names. Colours follow KiCad: F.Cu red, B.Cu green, silk white (front) or pale yellow (back).
+
+**Options.** `side: back` mirrors the board to the back view (front by default). `scale: N` sets pixels per mm (default 8). The canvas is the outline plus a 5 mm margin (item bounds when there is no `Edge.Cuts`).
+
+**Out of scope.** Zones and fills, text fonts beyond plain SVG text, 3D, autoplacement and autorouting.
+
+---
+
 ## 6. Styling & Themes
 
 ### 6.1 Built-in Themes
@@ -2005,27 +2063,36 @@ theme "my-company" {
 
 ### 7.1 Layout Engines
 
-| Engine | Best For |
-|--------|----------|
-| `dagre` (default) | Flowcharts, class, activity, most directed graphs |
-| `elk` | Layered graphs, deployment, complex nesting |
-| `force` | Network, undirected graphs |
-| `radial` | Mind maps, org charts |
-| `grid` | Tables, DMN, forms |
-| `timeline` | Gantt, timelines |
-| `sequence` | Sequence diagrams (auto-selected) |
+SelDiA has two auto-layout engines, `dagre` and `elk` (ELK layered). Custom-layout types (sequence, charts, gantt, mind map, and similar) use their own layout and ignore both.
 
-### 7.2 Changing Layout
+**Per-type defaults**
+
+| Diagram type | Default engine |
+|--------------|----------------|
+| `class`, `state`, `component`, `network`, `block`, `workitem` | `elk` |
+| All other graph types (`flowchart`, `er`, `usecase`, `activity`, `deployment`, `c4-*`, `bpmn`, `dmn`, `cloud`, `form`, `wireframe`) | `dagre` |
+
+**Grouped diagrams.** A diagram that would otherwise use `dagre` and has a group with members uses `elk` instead, because dagre's cluster boxes can overlap. To turn this off, set `elkWhenGrouped: false` in the engine config:
+
+```ts
+const engine = createEngine({ config: { elkWhenGrouped: false } });
+```
+
+**Per-diagram override.** Put `layout dagre` or `layout elk` as the last line of the diagram block, just before the closing brace. An explicit line beats both the per-type default and `elkWhenGrouped`.
 
 ```
-diagram flowchart "Example" {
-    layout elk {
-        direction: left-to-right,
-        nodeSpacing: 100
-    }
-    // ...
+fl "User Login" {
+    start (Start)
+    login [Enter Credentials]
+    validate diamond "Valid?"
+
+    start -> login
+    login -> validate
+    layout elk
 }
 ```
+
+**Routing is automatic.** Edges are routed orthogonally by either engine, and arrows are clipped to the outline of the shape they touch, so they meet diamonds, ellipses and actors at the visible edge.
 
 ### 7.3 Manual Positioning
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createEngine } from '../src/engine.js';
-import { nudgeRoutes, findJumps, edgePathD, postRoute, avoidBands, groupTitleBands, POST_ROUTE_TYPES } from '../src/render/edge-layer.js';
+import { nudgeRoutes, findJumps, edgePathD, postRoute, avoidBands, unhugRoutes, groupTitleBands, POST_ROUTE_TYPES } from '../src/render/edge-layer.js';
 import { applyPortStubs, snapApexEnd } from '../src/render/edge-routing.js';
 import type { Point } from '../src/types/common.js';
 
@@ -75,14 +75,14 @@ describe('applyPortStubs', () => {
 });
 
 describe('layer z-order', () => {
-  it('emits groups, casings, edge paths, nodes, arrowheads, then labels', () => {
+  it('emits groups, edge paths, nodes, arrowheads, then labels', () => {
     const r = createEngine().compileSync('fl "T" { a (Start)\n b [Do]\n a -> b: "go" }');
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const svg = r.value.svg;
     const at = (s: string) => svg.indexOf(s);
-    expect(at('seldia-edge-casings')).toBeGreaterThan(-1);
-    expect(at('seldia-edge-casings')).toBeLessThan(at('class="seldia-edge"'));
+    expect(svg).not.toContain('seldia-edge-casing');
+    expect(svg).toContain('data-halo="1"');
     expect(at('class="seldia-edge"')).toBeLessThan(at('class="seldia-node"'));
     expect(at('class="seldia-node"')).toBeLessThan(at('seldia-edge-heads'));
     expect(at('seldia-edge-heads')).toBeLessThan(at('seldia-edge-labels'));
@@ -151,5 +151,35 @@ describe('vertical hops', () => {
     const jumps = findJumps(new Map([['a', a], ['b', b]]));
     expect(jumps.get('b')).toEqual([{ seg: 0, at: 50, vert: true }]);
     expect(edgePathD(b, 0, 0, jumps.get('b'))).toContain('A5,5 0 0 1 100,55');
+  });
+});
+
+describe('unhugRoutes (S4)', () => {
+  const node = (id: string, x: number, y: number, w = 100, h = 60) =>
+    ({ id, position: { x, y }, size: { width: w, height: h }, shape: 'rectangle' }) as any;
+  it('pushes an interior run hugging a node side off by DS.portStub', () => {
+    const n = node('n', 100, 100);
+    const r = [P(20, 0), P(20, 50), P(203, 50), P(203, 200), P(300, 200)];   // x=203 is 3px right of n (right = 200)
+    const out = unhugRoutes(new Map([['e', r]]), [n]).get('e')!;
+    expect(out[2].x).toBe(212);
+    expect(out[3].x).toBe(212);
+    expect(out[0]).toEqual(r[0]);
+    expect(out.at(-1)).toEqual(r.at(-1));
+  });
+  it('grows a stub at a port on the hugged node instead of detaching it', () => {
+    const n = node('n', 100, 100), t = node('t', 150, 300);
+    const r = [P(203, 120), P(203, 300)];
+    const out = unhugRoutes(new Map([['e', r]]), [n, t]).get('e')!;
+    expect(out[0]).toEqual(r[0]);
+    expect(out[1]).toEqual(P(212, 120));
+    expect(out.at(-1)).toEqual(P(212, 300));
+  });
+  it('leaves clear routes alone and is part of postRoute', () => {
+    const n = node('n', 100, 100);
+    const clear = [P(300, 0), P(300, 300)];
+    expect(unhugRoutes(new Map([['e', clear]]), [n]).get('e')).toBe(clear);
+    const hug = [P(20, 0), P(20, 50), P(203, 50), P(203, 200), P(300, 200)];
+    const out = postRoute({ nodes: [n] }, new Map([['e', hug]])).routes.get('e')!;
+    expect(out.some((q) => q.x === 203)).toBe(false);
   });
 });

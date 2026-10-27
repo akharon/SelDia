@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { POWER_CANDIDATES } from '../src/circuit/layout.js';
 import { parseSpice, parseKicadNetlist, parseNetlist, circuitToIR, createEngine, MAX_PARTS } from '../src/index.js';
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'circuits');
@@ -69,5 +70,28 @@ describe('circuit pipeline', () => {
     const m = parseSpice('t\nR1 a 0 1k\n.model foo D\n.ac dec 10 1 1k\n.tran 1n 1u\n.options x=1\n.print tran v(a)\n.end');
     expect(m.parts.length).toBe(1);
     expect(m.warnings).toEqual([]);
+  });
+});
+
+describe('power symbol placement (S5)', () => {
+  it('candidate set is deterministic: default then 12/24/36, right then left', () => {
+    expect(POWER_CANDIDATES.map((c) => `${c.stub}${c.lateral > 0 ? 'R' : 'L'}`)).toEqual(
+      ['20R', '20L', '12R', '12L', '24R', '24L', '36R', '36L']);
+  });
+  it('no power symbol overlaps a part or another symbol across the fixtures', async () => {
+    const eng = createEngine();
+    for (const f of readdirSync(dir).filter((x) => x.endsWith('.cir'))) {
+      const p = eng.parse('circuit {\n' + readFileSync(join(dir, f), 'utf8') + '\n}');
+      if (!p.ok) throw new Error(f);
+      const a = eng.analyze(p.value); if (!a.ok) throw new Error(f);
+      const t = eng.transform(a.value); if (!t.ok) throw new Error(f);
+      const l = await eng.layoutAsync(t.value); if (!l.ok) throw new Error(f);
+      const nodes = l.value.diagram.nodes;
+      const pw = nodes.filter((n) => (n.data as any).role === 'power');
+      const solid = nodes.filter((n) => !['power', 'junction'].includes((n.data as any).role));
+      const hit = (a: any, b: any) => a.position.x < b.position.x + b.size.width && a.position.x + a.size.width > b.position.x
+        && a.position.y < b.position.y + b.size.height && a.position.y + a.size.height > b.position.y;
+      for (const w of pw) for (const o of [...solid, ...pw.filter((x) => x !== w)]) expect(hit(w, o), `${f}: ${w.id} vs ${o.id}`).toBe(false);
+    }
   });
 });

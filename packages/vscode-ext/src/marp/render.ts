@@ -15,7 +15,7 @@
 // markdown-preview/plugin.ts, just chained one level deeper.
 // =============================================================================
 
-import { Direction, type CoreEngine } from '@seldia/core';
+import { Direction, fenceToSource, type CoreEngine } from '@seldia/core';
 import { renderSelDiABlock, renderMermaidBlock, renderPlantUmlBlock } from '../markdown-preview/plugin.js';
 
 /** Pull the diagram's own bounds out of the SVG `viewBox` a render call just
@@ -128,13 +128,14 @@ export function renderMarpDeck(engine: CoreEngine, markdown: string): MarpRender
     const token = tokens[idx];
     const lang = token.info?.trim().split(/\s+/)[0] || '';
 
-    if (lang === 'seldia' || lang.startsWith('seldia-')) {
+    const kind = lang.startsWith('seldia-') ? 'seldia' : fenceToSource(lang, token.content)?.kind;
+    if (kind === 'seldia') {
       return renderPreferringLandscape(engine, env, (e) => renderSelDiABlock(engine, token.content, '', true, e));
     }
-    if (lang === 'mermaid') {
+    if (kind === 'mermaid') {
       return renderPreferringLandscape(engine, env, (e) => renderMermaidBlock(engine, token.content, '', true, e));
     }
-    if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
+    if (kind === 'plantuml') {
       return renderPreferringLandscape(engine, env, (e) => renderPlantUmlBlock(engine, token.content, '', true, e));
     }
 

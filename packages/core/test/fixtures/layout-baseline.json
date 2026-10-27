@@ -1,25 +1,29 @@
 {
   "engine": "defaults",
-  "measured": 78,
-  "failed": 1,
+  "measured": 96,
+  "failed": 0,
+  "unsupported": 1,
   "totals": {
-    "crossings": 4,
-    "edgeOverlaps": 4,
-    "borderHugs": 1,
+    "crossings": 1,
+    "edgeOverlaps": 0,
+    "borderHugs": 0,
     "nodeLabelHits": 0,
     "edgeNodeHits": 0,
     "labelOverlaps": 0,
     "labelDetached": 0,
     "labelOnArrowhead": 0,
     "labelEdgeHits": 0,
-    "parallelRunLength": 232,
-    "bends": 342,
-    "groupViolations": 1,
+    "parallelRunLength": 0,
+    "bends": 443,
+    "groupViolations": 0,
     "groupTitleHits": 0,
-    "nodeTextOverflow": 1,
-    "tokenViolations": 0
+    "nodeTextOverflow": 0,
+    "tokenViolations": 8,
+    "lowContrastText": 0
   },
-  "tokenHistogram": {},
+  "tokenHistogram": {
+    "font-size=8": 8
+  },
   "diagrams": {
     "demo-basic.md#1": {
       "lang": "seldia",
@@ -41,7 +45,8 @@
       "endpointGap": 3,
       "area": 151680,
       "aspectRatio": 0.68,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#2": {
       "lang": "seldia",
@@ -61,9 +66,10 @@
       "bends": 0,
       "groupViolations": 0,
       "endpointGap": 0,
-      "area": 23000,
-      "aspectRatio": 9.2,
-      "tokenViolations": 0
+      "area": 23925,
+      "aspectRatio": 9.57,
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#3": {
       "lang": "seldia",
@@ -85,7 +91,8 @@
       "endpointGap": 3,
       "area": 333680,
       "aspectRatio": 2.22,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#4": {
       "lang": "seldia",
@@ -107,7 +114,8 @@
       "endpointGap": 3,
       "area": 406818,
       "aspectRatio": 1.2,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#5": {
       "lang": "seldia",
@@ -129,7 +137,8 @@
       "endpointGap": 3,
       "area": 123200,
       "aspectRatio": 0.32,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#6": {
       "lang": "seldia",
@@ -151,7 +160,8 @@
       "endpointGap": 3,
       "area": 96800,
       "aspectRatio": 9.68,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#7": {
       "lang": "seldia",
@@ -173,7 +183,8 @@
       "endpointGap": 3,
       "area": 97200,
       "aspectRatio": 12,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#8": {
       "lang": "seldia",
@@ -195,7 +206,8 @@
       "endpointGap": 3,
       "area": 403500,
       "aspectRatio": 4.48,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#9": {
       "lang": "seldia",
@@ -217,7 +229,8 @@
       "endpointGap": 3,
       "area": 305600,
       "aspectRatio": 0.52,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#10": {
       "lang": "seldia",
@@ -239,7 +252,8 @@
       "endpointGap": 3,
       "area": 335500,
       "aspectRatio": 0.9,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#11": {
       "lang": "seldia",
@@ -261,7 +275,8 @@
       "endpointGap": 3,
       "area": 434520,
       "aspectRatio": 1.16,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#12": {
       "lang": "seldia",
@@ -283,7 +298,8 @@
       "endpointGap": 3,
       "area": 80660,
       "aspectRatio": 1.7,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#13": {
       "lang": "seldia",
@@ -305,7 +321,8 @@
       "endpointGap": 3,
       "area": 77760,
       "aspectRatio": 0.33,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#14": {
       "lang": "seldia",
@@ -324,10 +341,11 @@
       "parallelRunLength": 0,
       "bends": 6,
       "groupViolations": 0,
-      "endpointGap": 3,
+      "endpointGap": 3.7,
       "area": 471700,
       "aspectRatio": 0.42,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#15": {
       "lang": "seldia",
@@ -349,7 +367,8 @@
       "endpointGap": 0,
       "area": 261360,
       "aspectRatio": 2.4,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#16": {
       "lang": "seldia",
@@ -371,7 +390,8 @@
       "endpointGap": 0,
       "area": 488536,
       "aspectRatio": 1.25,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#17": {
       "lang": "seldia",
@@ -393,7 +413,8 @@
       "endpointGap": 11.12,
       "area": 830606,
       "aspectRatio": 0.68,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#18": {
       "lang": "seldia",
@@ -415,7 +436,8 @@
       "endpointGap": 0,
       "area": 172800,
       "aspectRatio": 1.69,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#19": {
       "lang": "seldia",
@@ -437,7 +459,8 @@
       "endpointGap": 0,
       "area": 172800,
       "aspectRatio": 1.69,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#20": {
       "lang": "seldia",
@@ -459,7 +482,8 @@
       "endpointGap": 0,
       "area": 104000,
       "aspectRatio": 1.54,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#21": {
       "lang": "seldia",
@@ -481,7 +505,8 @@
       "endpointGap": 0,
       "area": 128000,
       "aspectRatio": 1.25,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#22": {
       "lang": "seldia",
@@ -503,7 +528,8 @@
       "endpointGap": 0,
       "area": 172800,
       "aspectRatio": 1.69,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#23": {
       "lang": "seldia",
@@ -525,7 +551,8 @@
       "endpointGap": 0,
       "area": 40136,
       "aspectRatio": 2.98,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#24": {
       "lang": "seldia",
@@ -547,13 +574,14 @@
       "endpointGap": 3.03,
       "area": 99000,
       "aspectRatio": 0.49,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#25": {
       "lang": "seldia",
       "type": "sankey",
-      "crossings": 2,
-      "edgeOverlaps": 2,
+      "crossings": 0,
+      "edgeOverlaps": 0,
       "borderHugs": 0,
       "nodeLabelHits": 0,
       "nodeTextOverflow": 0,
@@ -563,13 +591,14 @@
       "labelOnArrowhead": 0,
       "labelEdgeHits": 0,
       "groupTitleHits": 0,
-      "parallelRunLength": 116,
-      "bends": 12,
+      "parallelRunLength": 0,
+      "bends": 0,
       "groupViolations": 0,
-      "endpointGap": 3,
-      "area": 114000,
-      "aspectRatio": 1.27,
-      "tokenViolations": 0
+      "endpointGap": 0,
+      "area": 124285,
+      "aspectRatio": 1.16,
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#26": {
       "lang": "seldia",
@@ -591,7 +620,8 @@
       "endpointGap": 3,
       "area": 297360,
       "aspectRatio": 1.17,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#27": {
       "lang": "seldia",
@@ -613,7 +643,8 @@
       "endpointGap": 3,
       "area": 74900,
       "aspectRatio": 15.29,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#28": {
       "lang": "seldia",
@@ -635,7 +666,8 @@
       "endpointGap": 0,
       "area": 509600,
       "aspectRatio": 0.31,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#29": {
       "lang": "seldia",
@@ -657,7 +689,8 @@
       "endpointGap": 3,
       "area": 549000,
       "aspectRatio": 1.48,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#30": {
       "lang": "seldia",
@@ -679,7 +712,8 @@
       "endpointGap": 3,
       "area": 1286173,
       "aspectRatio": 0.56,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#31": {
       "lang": "seldia",
@@ -701,7 +735,8 @@
       "endpointGap": 0,
       "area": 290880,
       "aspectRatio": 1.26,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#32": {
       "lang": "seldia",
@@ -723,7 +758,8 @@
       "endpointGap": 0,
       "area": 47880,
       "aspectRatio": 2.07,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-basic.md#33": {
       "lang": "seldia",
@@ -745,7 +781,8 @@
       "endpointGap": 0,
       "area": 59904,
       "aspectRatio": 1.38,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-circuits.md#1": {
       "lang": "seldia",
@@ -767,7 +804,8 @@
       "endpointGap": 0,
       "area": 51984,
       "aspectRatio": 2.25,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-circuits.md#2": {
       "lang": "seldia",
@@ -789,7 +827,8 @@
       "endpointGap": 0,
       "area": 47880,
       "aspectRatio": 2.07,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-circuits.md#3": {
       "lang": "seldia",
@@ -811,7 +850,8 @@
       "endpointGap": 1.31,
       "area": 365944,
       "aspectRatio": 0.97,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-circuits.md#4": {
       "lang": "seldia",
@@ -833,7 +873,8 @@
       "endpointGap": 0,
       "area": 225719,
       "aspectRatio": 1.76,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-circuits.md#5": {
       "lang": "seldia",
@@ -855,7 +896,192 @@
       "endpointGap": 0,
       "area": 108584,
       "aspectRatio": 2.83,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#6": {
+      "lang": "spice",
+      "type": "circuit",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 16,
+      "groupViolations": 0,
+      "endpointGap": 0,
+      "area": 259560,
+      "aspectRatio": 2,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#7": {
+      "lang": "circuit",
+      "type": "circuit",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 9,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 182214,
+      "aspectRatio": 1.8,
+      "tokenViolations": 6,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#8": {
+      "lang": "netlist",
+      "type": "circuit",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 2,
+      "groupViolations": 0,
+      "endpointGap": 0,
+      "area": 59605,
+      "aspectRatio": 0.87,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#9": {
+      "lang": "spice",
+      "type": "circuit",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 26,
+      "groupViolations": 0,
+      "endpointGap": 0,
+      "area": 549181,
+      "aspectRatio": 2.53,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#10": {
+      "lang": "kicad",
+      "type": "circuit",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 8,
+      "groupViolations": 0,
+      "endpointGap": 5.14,
+      "area": 118420,
+      "aspectRatio": 1.23,
+      "tokenViolations": 2,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#11": {
+      "lang": "circuit",
+      "type": "circuit",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 14,
+      "groupViolations": 0,
+      "endpointGap": 0,
+      "area": 401812,
+      "aspectRatio": 0.96,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#12": {
+      "lang": "pcb",
+      "type": "pcb",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 0,
+      "groupViolations": 0,
+      "endpointGap": 0,
+      "area": 76800,
+      "aspectRatio": 1.33,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-circuits.md#13": {
+      "lang": "kicad",
+      "type": "pcb",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 0,
+      "groupViolations": 0,
+      "endpointGap": 0,
+      "area": 49152,
+      "aspectRatio": 1.33,
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#1": {
       "lang": "seldia",
@@ -877,7 +1103,8 @@
       "endpointGap": 3,
       "area": 353100,
       "aspectRatio": 3.92,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#2": {
       "lang": "mermaid",
@@ -899,7 +1126,8 @@
       "endpointGap": 0,
       "area": 39000,
       "aspectRatio": 15.6,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#3": {
       "lang": "seldia",
@@ -921,7 +1149,8 @@
       "endpointGap": 3,
       "area": 313320,
       "aspectRatio": 0.56,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#4": {
       "lang": "seldia",
@@ -943,7 +1172,8 @@
       "endpointGap": 3,
       "area": 128400,
       "aspectRatio": 0.31,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#5": {
       "lang": "mermaid",
@@ -965,7 +1195,8 @@
       "endpointGap": 3,
       "area": 159480,
       "aspectRatio": 1.23,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#6": {
       "lang": "seldia",
@@ -987,7 +1218,8 @@
       "endpointGap": 3,
       "area": 169200,
       "aspectRatio": 0.19,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#7": {
       "lang": "seldia",
@@ -1009,7 +1241,8 @@
       "endpointGap": 0,
       "area": 261360,
       "aspectRatio": 2.4,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#8": {
       "lang": "seldia",
@@ -1028,10 +1261,11 @@
       "parallelRunLength": 0,
       "bends": 2,
       "groupViolations": 0,
-      "endpointGap": 2.94,
+      "endpointGap": 3.53,
       "area": 126400,
       "aspectRatio": 0.2,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#9": {
       "lang": "seldia",
@@ -1053,7 +1287,8 @@
       "endpointGap": 0,
       "area": 439433,
       "aspectRatio": 0.85,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-marp.md#10": {
       "lang": "seldia",
@@ -1075,7 +1310,8 @@
       "endpointGap": 3,
       "area": 122000,
       "aspectRatio": 0.08,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#1": {
       "lang": "mermaid",
@@ -1093,11 +1329,12 @@
       "groupTitleHits": 0,
       "parallelRunLength": 0,
       "bends": 8,
-      "groupViolations": 1,
+      "groupViolations": 0,
       "endpointGap": 2.86,
       "area": 282660,
       "aspectRatio": 0.4,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#2": {
       "lang": "mermaid",
@@ -1119,7 +1356,8 @@
       "endpointGap": 0,
       "area": 169760,
       "aspectRatio": 26.53,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#3": {
       "lang": "mermaid",
@@ -1141,7 +1379,8 @@
       "endpointGap": 0,
       "area": 31000,
       "aspectRatio": 12.4,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#4": {
       "lang": "mermaid",
@@ -1163,7 +1402,8 @@
       "endpointGap": 3,
       "area": 326624,
       "aspectRatio": 0.37,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#5": {
       "lang": "mermaid",
@@ -1185,7 +1425,8 @@
       "endpointGap": 3,
       "area": 333840,
       "aspectRatio": 0.81,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#6": {
       "lang": "mermaid",
@@ -1207,7 +1448,8 @@
       "endpointGap": 3,
       "area": 312000,
       "aspectRatio": 0.29,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#7": {
       "lang": "mermaid",
@@ -1229,7 +1471,8 @@
       "endpointGap": 0,
       "area": 312000,
       "aspectRatio": 1.95,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#8": {
       "lang": "mermaid",
@@ -1251,7 +1494,8 @@
       "endpointGap": 0,
       "area": 176800,
       "aspectRatio": 2.62,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#9": {
       "lang": "mermaid",
@@ -1273,7 +1517,8 @@
       "endpointGap": 0,
       "area": 236076,
       "aspectRatio": 5.56,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#10": {
       "lang": "mermaid",
@@ -1295,7 +1540,8 @@
       "endpointGap": 0,
       "area": 460646,
       "aspectRatio": 1.2,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#11": {
       "lang": "seldia",
@@ -1317,7 +1563,8 @@
       "endpointGap": 3,
       "area": 96800,
       "aspectRatio": 9.68,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#12": {
       "lang": "seldia",
@@ -1339,7 +1586,8 @@
       "endpointGap": 3,
       "area": 97200,
       "aspectRatio": 12,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#13": {
       "lang": "seldia",
@@ -1361,7 +1609,8 @@
       "endpointGap": 3,
       "area": 403500,
       "aspectRatio": 4.48,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#14": {
       "lang": "seldia",
@@ -1383,7 +1632,8 @@
       "endpointGap": 3,
       "area": 305600,
       "aspectRatio": 0.52,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#15": {
       "lang": "seldia",
@@ -1405,7 +1655,8 @@
       "endpointGap": 0,
       "area": 172800,
       "aspectRatio": 1.69,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#16": {
       "lang": "seldia",
@@ -1427,13 +1678,14 @@
       "endpointGap": 0,
       "area": 104000,
       "aspectRatio": 1.54,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#17": {
       "lang": "seldia",
       "type": "sankey",
-      "crossings": 2,
-      "edgeOverlaps": 2,
+      "crossings": 0,
+      "edgeOverlaps": 0,
       "borderHugs": 0,
       "nodeLabelHits": 0,
       "nodeTextOverflow": 0,
@@ -1443,13 +1695,14 @@
       "labelOnArrowhead": 0,
       "labelEdgeHits": 0,
       "groupTitleHits": 0,
-      "parallelRunLength": 116,
-      "bends": 12,
+      "parallelRunLength": 0,
+      "bends": 0,
       "groupViolations": 0,
-      "endpointGap": 3,
-      "area": 114000,
-      "aspectRatio": 1.27,
-      "tokenViolations": 0
+      "endpointGap": 0,
+      "area": 124285,
+      "aspectRatio": 1.16,
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#18": {
       "lang": "seldia",
@@ -1471,7 +1724,8 @@
       "endpointGap": 3,
       "area": 396000,
       "aspectRatio": 2.05,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-mermaid.md#19": {
       "lang": "seldia",
@@ -1493,7 +1747,8 @@
       "endpointGap": 0,
       "area": 156800,
       "aspectRatio": 1.02,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#1": {
       "lang": "plantuml",
@@ -1502,7 +1757,7 @@
       "edgeOverlaps": 0,
       "borderHugs": 0,
       "nodeLabelHits": 0,
-      "nodeTextOverflow": 1,
+      "nodeTextOverflow": 0,
       "edgeNodeHits": 0,
       "labelOverlaps": 0,
       "labelDetached": 0,
@@ -1513,9 +1768,10 @@
       "bends": 0,
       "groupViolations": 0,
       "endpointGap": 0,
-      "area": 39000,
-      "aspectRatio": 15.6,
-      "tokenViolations": 0
+      "area": 64400,
+      "aspectRatio": 10.06,
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#2": {
       "lang": "plantuml",
@@ -1537,7 +1793,8 @@
       "endpointGap": 3,
       "area": 624101,
       "aspectRatio": 0.74,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#3": {
       "lang": "plantuml",
@@ -1559,7 +1816,8 @@
       "endpointGap": 3,
       "area": 360880,
       "aspectRatio": 0.75,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#4": {
       "lang": "plantuml",
@@ -1581,7 +1839,8 @@
       "endpointGap": 3,
       "area": 241680,
       "aspectRatio": 1.16,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#5": {
       "lang": "plantuml",
@@ -1603,7 +1862,8 @@
       "endpointGap": 2.93,
       "area": 1184300,
       "aspectRatio": 0.36,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#6": {
       "lang": "plantuml",
@@ -1625,7 +1885,8 @@
       "endpointGap": 3,
       "area": 462364,
       "aspectRatio": 0.51,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#7": {
       "lang": "plantuml",
@@ -1647,7 +1908,8 @@
       "endpointGap": 3,
       "area": 443674,
       "aspectRatio": 0.82,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#8": {
       "lang": "plantuml",
@@ -1669,7 +1931,8 @@
       "endpointGap": 3,
       "area": 307968,
       "aspectRatio": 0.48,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#9": {
       "lang": "plantuml",
@@ -1691,7 +1954,8 @@
       "endpointGap": 0,
       "area": 609886,
       "aspectRatio": 1.2,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#10": {
       "lang": "plantuml",
@@ -1713,14 +1977,15 @@
       "endpointGap": 0,
       "area": 316800,
       "aspectRatio": 1.98,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#11": {
       "lang": "seldia",
       "type": "flowchart",
       "crossings": 0,
       "edgeOverlaps": 0,
-      "borderHugs": 1,
+      "borderHugs": 0,
       "nodeLabelHits": 0,
       "nodeTextOverflow": 0,
       "edgeNodeHits": 0,
@@ -1730,16 +1995,247 @@
       "labelEdgeHits": 0,
       "groupTitleHits": 0,
       "parallelRunLength": 0,
-      "bends": 3,
+      "bends": 4,
       "groupViolations": 0,
       "endpointGap": 2.93,
       "area": 169120,
       "aspectRatio": 0.46,
-      "tokenViolations": 0
+      "tokenViolations": 0,
+      "lowContrastText": 0
     },
     "demo-plantuml.md#12": {
       "lang": "plantuml",
-      "error": "import"
+      "unsupported": "Unsupported PlantUML block: \"@startjson\". Supported: sequence, class, ER, use case, activity, component, deployment, state, mindmap, wbs, gantt."
+    },
+    "demo-readability.md#1": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 1,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 6,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 86400,
+      "aspectRatio": 2.67,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#2": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 6,
+      "groupViolations": 0,
+      "endpointGap": 2.93,
+      "area": 314820,
+      "aspectRatio": 0.32,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#3": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 12,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 189143,
+      "aspectRatio": 0.47,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#4": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 10,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 146320,
+      "aspectRatio": 1.52,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#5": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 1,
+      "groupViolations": 0,
+      "endpointGap": 2.84,
+      "area": 175968,
+      "aspectRatio": 0.8,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#6": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 0,
+      "groupViolations": 0,
+      "endpointGap": 2.97,
+      "area": 116816,
+      "aspectRatio": 0.33,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#7": {
+      "lang": "seldia",
+      "type": "usecase",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 10,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 146664,
+      "aspectRatio": 0.97,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#8": {
+      "lang": "seldia",
+      "type": "c4-context",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 4,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 305280,
+      "aspectRatio": 2.98,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#9": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 0,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 63000,
+      "aspectRatio": 0.16,
+      "tokenViolations": 0,
+      "lowContrastText": 0
+    },
+    "demo-readability.md#10": {
+      "lang": "seldia",
+      "type": "flowchart",
+      "crossings": 0,
+      "edgeOverlaps": 0,
+      "borderHugs": 0,
+      "nodeLabelHits": 0,
+      "nodeTextOverflow": 0,
+      "edgeNodeHits": 0,
+      "labelOverlaps": 0,
+      "labelDetached": 0,
+      "labelOnArrowhead": 0,
+      "labelEdgeHits": 0,
+      "groupTitleHits": 0,
+      "parallelRunLength": 0,
+      "bends": 0,
+      "groupViolations": 0,
+      "endpointGap": 3,
+      "area": 33000,
+      "aspectRatio": 0.3,
+      "tokenViolations": 0,
+      "lowContrastText": 0
     }
   }
 }

@@ -8,6 +8,9 @@
 //   nudgeRoutes  separates collinear runs shared by different edges onto
 //                parallel tracks, keeping every endpoint on its port, and
 //                reverts any edge whose nudge would cut into a node.
+//   unhugRoutes  pushes a run that travels along a node border (within HUG_DIST
+//                for more than HUG_MIN) off it by DS.portStub; a run touching
+//                a port slides the port along its node or grows a stub.
 //   avoidBands   moves a vertical run that strikes through a group title chip
 //                to just outside the title text (end runs slide along the port
 //                side of their node).
@@ -160,6 +163,87 @@ export function nudgeRoutes(routes: Routes, nodes: IRNode[] = [], nets?: Map<str
     // Revert when the nudge folds the route back or newly cuts into a node.
     const ok = sameDirections(pts, moved) && nodeHits(moved, nodes) <= nodeHits(pts, nodes);
     out.set(id, ok ? moved : pts);
+  }
+  return out;
+}
+
+// ── Border hugs ─────────────────────────────────────────────────────────────
+
+/** A run closer than this to a node's side counts as hugging it (matches the metric). */
+export const HUG_DIST = 4;
+/** ...when it runs along the side for more than this many px. */
+export const HUG_MIN = 12;
+
+/** Length of axis-aligned segment a-b running along a side of rect r within HUG_DIST. */
+function hugLen(a: Point, b: Point, r: Rect): number {
+  if (Math.abs(a.y - b.y) < 0.5) {
+    if (![r.y, r.y + r.height].some((y) => Math.abs(a.y - y) <= HUG_DIST)) return 0;
+    return Math.max(0, Math.min(Math.max(a.x, b.x), r.x + r.width) - Math.max(Math.min(a.x, b.x), r.x));
+  }
+  if (Math.abs(a.x - b.x) < 0.5) {
+    if (![r.x, r.x + r.width].some((x) => Math.abs(a.x - x) <= HUG_DIST)) return 0;
+    return Math.max(0, Math.min(Math.max(a.y, b.y), r.y + r.height) - Math.max(Math.min(a.y, b.y), r.y));
+  }
+  return 0;
+}
+
+const nodeBox = (n: IRNode): Rect => ({ x: n.position.x, y: n.position.y, width: n.size.width, height: n.size.height });
+
+function hugTotal(pts: Point[], nodes: IRNode[]): number {
+  let t = 0;
+  for (let i = 0; i < pts.length - 1; i++) for (const n of nodes) if (hugLen(pts[i], pts[i + 1], nodeBox(n)) > HUG_MIN) t++;
+  return t;
+}
+
+/** Fix the first hugging run of a route; returns the new points, or null when none (or no safe fix). */
+function unhugOnce(pts: Point[], nodes: IRNode[]): Point[] | null {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const vert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+    const horiz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5;
+    if (!vert && !horiz) continue;
+    for (const n of nodes) {
+      const r = nodeBox(n);
+      if (hugLen(a, b, r) <= HUG_MIN) continue;
+      // Push away from the node centre, to portStub beyond the nearest side.
+      const lo = vert ? r.x : r.y, hi = vert ? r.x + r.width : r.y + r.height;
+      const c = vert ? a.x : a.y;
+      const side = Math.abs(c - lo) <= Math.abs(c - hi) ? lo : hi;
+      const target = side + (side === lo ? -DS.portStub : DS.portStub);
+      const set = (p: Point, v: number): Point => (vert ? { x: v, y: p.y } : { x: p.x, y: v });
+      const out: Point[] = [];
+      pts.forEach((p, k) => {
+        if (k !== i && k !== i + 1) { out.push(p); return; }
+        const isEnd = k === 0 || k === pts.length - 1;
+        if (!isEnd) { out.push(set(p, target)); return; }
+        // A port: slide along its own node when it stays on that node's side, else grow a stub.
+        const own = nodeAtEnd(p, nodes);
+        const o = own && own !== n ? nodeBox(own) : undefined;
+        const slideOk = o && (vert
+          ? target >= o.x + PORT_INSET && target <= o.x + o.width - PORT_INSET
+          : target >= o.y + PORT_INSET && target <= o.y + o.height - PORT_INSET);
+        if (slideOk) { out.push(set(p, target)); return; }
+        if (k === 0) out.push(p, set(p, target)); else out.push(set(p, target), p);
+      });
+      if (nodeHits(out, nodes) > nodeHits(pts, nodes) || hugTotal(out, nodes) >= hugTotal(pts, nodes)) continue;
+      return out;
+    }
+  }
+  return null;
+}
+
+/** Push runs that travel along a node border off it by DS.portStub. */
+export function unhugRoutes(routes: Routes, nodes: IRNode[] = []): Routes {
+  if (!nodes.length) return routes;
+  const out: Routes = new Map();
+  for (const [id, pts] of routes) {
+    let cur = pts;
+    for (let pass = 0; pass < 4; pass++) {
+      const next = unhugOnce(cur, nodes);
+      if (!next) break;
+      cur = next;
+    }
+    out.set(id, cur);
   }
   return out;
 }
@@ -346,7 +430,7 @@ export function fanPorts(routes: Routes, nodes: IRNode[]): Routes {
 /** Nudge, then jumps — the single entry point the engine and the metrics
  *  harness share. `jumps` is empty when `jumpsEnabled` is false (sketch edges). */
 export function postRoute(ir: Pick<DiagramIR, 'nodes'>, routes: Routes, jumpsEnabled = true, titleBands: Rect[] = []): PostRouted {
-  const nudged = avoidBands(nudgeRoutes(fanPorts(snapApexes(routes, ir.nodes), ir.nodes), ir.nodes), titleBands, ir.nodes);
+  const nudged = avoidBands(unhugRoutes(nudgeRoutes(fanPorts(snapApexes(routes, ir.nodes), ir.nodes), ir.nodes), ir.nodes), titleBands, ir.nodes);
   return { routes: nudged, jumps: jumpsEnabled ? findJumps(nudged) : new Map() };
 }
 

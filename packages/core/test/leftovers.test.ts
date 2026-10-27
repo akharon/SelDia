@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createEngine } from '../src/engine.js';
+import { importMermaid } from '../src/index.js';
 import { readableTextOn, contrastOf } from '../src/render/design-system.js';
 import { balancedWrap, shapeTextBox } from '../src/render/node-label-geometry.js';
 
@@ -57,8 +58,7 @@ describe('T4 readable text', () => {
   it('readableTextOn reaches WCAG 4.5 or picks the best of dark/white', () => {
     for (const fill of ['#6366f1', '#0d9488', '#f59e0b', '#ffffff', '#000000', '#818cf8']) {
       const t = readableTextOn(fill, '#888888');
-      const best = Math.max(contrastOf('#ffffff', fill), contrastOf('#1f2933', fill));
-      expect(contrastOf(t, fill)).toBeGreaterThanOrEqual(Math.min(4.5, best) - 0.01);
+      expect(contrastOf(t, fill)).toBeGreaterThanOrEqual(4.5);
     }
     expect(readableTextOn('#fff', '#111111')).toBe('#111111');
     expect(readableTextOn('not-a-colour', '#123456')).toBe('#123456');
@@ -80,9 +80,15 @@ describe('T4 palette contrast', () => {
   it('readableTextOn falls back to near-black when neither DS dark nor white reach 4.5', () => {
     for (const fill of ['#807aec', '#16a34a', '#e0458a', '#ff6666']) expect(contrastOf(readableTextOn(fill, '#ffffff'), fill)).toBeGreaterThanOrEqual(4.5);
   });
-  it('mermaid style fill without color gets readable text', () => {
-    const svg = svgOf('fl "C" { a [Hello]\n b [World]\n a -> b }');
-    expect(svg).toContain('Hello');
+  it('mermaid classDef and style fills without color get text at >= 4.5:1', async () => {
+    const eng = createEngine({});
+    for (const fill of ['#16a34a', '#ffff00', '#807aec', '#ff6666', '#6366f1', '#0d9488']) {
+      const { ir } = importMermaid(`flowchart TD\n a[Hello] --> b[World]\n classDef dark fill:${fill}\n class a dark\n style b fill:${fill}`);
+      const svg = eng.render((await eng.layoutAsync(ir!)).value as any).value.svg as string;
+      const texts = [...svg.matchAll(/<text text-anchor="middle" fill="(#[0-9a-fA-F]{6})"[^>]*><tspan[^>]*>(?:Hello|World)</g)];
+      expect(texts.length).toBe(2);
+      for (const m of texts) expect(contrastOf(m[1], fill)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
 

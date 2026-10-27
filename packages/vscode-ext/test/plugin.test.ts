@@ -381,3 +381,34 @@ describe('gallery fences through the preview fence rule', () => {
     for (const o of [fl, st]) { expect(o).toContain('<svg'); expect(o).not.toContain('seldia-error'); }
   });
 });
+
+describe('preview dispatches on core fenceToSource (S6)', () => {
+  const rule = () => {
+    const md: any = { renderer: { rules: {} }, core: { ruler: { before: () => {} } } };
+    createSelDiAMarkdownItPlugin(engine)(md);
+    return md.renderer.rules.fence as (t: any[], i: number, o: any, e: any, s: any) => string;
+  };
+  const BODY: Record<string, string> = {
+    seldia: SRC,
+    mermaid: 'flowchart TD\n a-->b',
+    plantuml: '@startuml\nAlice -> Bob: hi\n@enduml',
+    circuit: 'rc\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n',
+  };
+  const SPELLINGS: Array<[string, string, keyof typeof BODY]> = [
+    ['seldia', 'seldia', 'seldia'], ['mermaid', 'mermaid', 'mermaid'],
+    ['plantuml', 'plantuml', 'plantuml'], ['puml', 'plantuml', 'plantuml'], ['uml', 'plantuml', 'plantuml'],
+    ['spice', 'circuit', 'circuit'], ['circuit', 'circuit', 'circuit'], ['netlist', 'circuit', 'circuit'],
+  ];
+  for (const [lang, kind, body] of SPELLINGS) {
+    it(`\`\`\`${lang} is kind ${kind} in core and renders in the preview`, async () => {
+      const { fenceToSource } = await import('@seldia/core');
+      expect(fenceToSource(lang, BODY[body])?.kind).toBe(kind);
+      expect(rule()([{ info: lang, content: BODY[body] }], 0, {}, {}, {})).toContain('<svg');
+    });
+  }
+  it('a language core does not know stays a plain code block', async () => {
+    const { fenceToSource } = await import('@seldia/core');
+    expect(fenceToSource('js', 'x')).toBeNull();
+    expect(rule()([{ info: 'js', content: 'x' }], 0, {}, {}, {})).not.toContain('<svg');
+  });
+});

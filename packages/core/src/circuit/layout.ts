@@ -35,26 +35,41 @@ export const SCHEMATIC_ELK_OPTIONS: Record<string, string> = {
 
 const STUB = 20, DROP = 10;
 
+/** Deterministic candidates for a power symbol: the default first, then stubs
+ *  12/24/36, each tried on the right then the left of the pin (`lateral`, used
+ *  where the symbol jogs sideways). The first collision-free one wins. */
+export const POWER_STUBS: readonly number[] = [STUB, 12, 24, 36];
+export const POWER_CANDIDATES: ReadonlyArray<{ stub: number; lateral: 1 | -1 }> =
+  POWER_STUBS.flatMap((stub) => ([1, -1] as const).map((lateral) => ({ stub, lateral })));
+
 /** Route and symbol placement for one power pin, relative to the part's box origin. */
-function powerPlacement(pp: { x: number; y: number; side: string }, ground: boolean, sp: { x: number; y: number }): { route: Point[]; symPos: Point } {
+function powerPlacement(pp: { x: number; y: number; side: string }, ground: boolean, sp: { x: number; y: number }, cand: { stub: number; lateral: 1 | -1 } = { stub: STUB, lateral: 1 }): { route: Point[]; symPos: Point } {
   const a = { x: pp.x, y: pp.y };
   const dx = pp.side === 'E' ? 1 : pp.side === 'W' ? -1 : 0;
   const dy = pp.side === 'S' ? 1 : pp.side === 'N' ? -1 : 0;
   let route: Point[];
   let tip: Point;
   if (dx !== 0) {
-    const sx = a.x + dx * STUB;
+    const sx = a.x + dx * cand.stub;
     tip = { x: sx, y: ground ? a.y + DROP : a.y - DROP };
     route = [a, { x: sx, y: a.y }, tip];
   } else if ((dy > 0) === ground) {
-    tip = { x: a.x, y: a.y + dy * STUB };
+    tip = { x: a.x, y: a.y + dy * cand.stub };
     route = [a, tip];
   } else {
-    const sy = a.y + dy * (ground ? DROP : 2 * DROP), sx = a.x + STUB;
+    const sy = a.y + dy * (ground ? DROP : 2 * DROP), sx = a.x + cand.lateral * cand.stub;
     tip = { x: sx, y: ground ? sy + 2 * DROP : sy + 6 };   // rail: bar stays just below the body, clear of it
     route = [a, { x: a.x, y: sy }, { x: sx, y: sy }, tip];
   }
   return { route, symPos: { x: tip.x - sp.x, y: tip.y - sp.y } };
+}
+
+const rectHit = (r: { x: number; y: number; width: number; height: number }, n: IRNode) =>
+  r.x < n.position.x + n.size.width && r.x + r.width > n.position.x && r.y < n.position.y + n.size.height && r.y + r.height > n.position.y;
+/** Axis-aligned segment against a node box (touching edges do not count). */
+function segHitsRect(a: Point, b: Point, n: IRNode): boolean {
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  return x1 > n.position.x && x0 < n.position.x + n.size.width && y1 > n.position.y && y0 < n.position.y + n.size.height;
 }
 
 export function layoutCircuit(ir: DiagramIR): CustomLayoutResult {
@@ -195,6 +210,7 @@ export function layoutCircuit(ir: DiagramIR): CustomLayoutResult {
 
   // Power symbols: one per pin, a 20px stub leaving the pin outward, then a
   // single bend; GND always hangs below the stub end, VCC/VDD always sits above.
+  const placed: IRNode[] = [];
   for (const e of edges) {
     const pw = powerIds.has(e.sourceId) ? nodeById.get(e.sourceId)! : powerIds.has(e.targetId) ? nodeById.get(e.targetId)! : undefined;
     if (!pw) continue;
@@ -207,9 +223,24 @@ export function layoutCircuit(ir: DiagramIR): CustomLayoutResult {
     const ground = (pw.data as any).kind === 'GND';
     const sl = (pw.data as any).circuit as PartLayout;
     const pl0 = pp;
-    const { route: rel, symPos } = powerPlacement(pl0, ground, sl.pins[0]);
+    // First collision-free candidate; if none is, the default (first) stands.
+    const others = nodes.filter((n) => !powerIds.has(n.id) && n.id !== part.id && (n.data as any)?.role !== 'junction');
+    const pick = (): { route: Point[]; symPos: Point } => {
+      const first = powerPlacement(pl0, ground, sl.pins[0]);
+      for (const cand of POWER_CANDIDATES) {
+        const pl = powerPlacement(pl0, ground, sl.pins[0], cand);
+        const abs = pl.route.map((q) => ({ x: q.x + part.position.x, y: q.y + part.position.y }));
+        const box = { x: pl.symPos.x + part.position.x, y: pl.symPos.y + part.position.y, width: pw.size.width, height: pw.size.height };
+        const solid = [...others, part, ...placed];
+        const clash = solid.some((n) => rectHit(box, n)) || others.concat(placed).some((n) => abs.some((q, i) => i > 0 && segHitsRect(abs[i - 1], q, n)));
+        if (!clash) return pl;
+      }
+      return first;
+    };
+    const { route: rel, symPos } = pick();
     const route = rel.map((q) => ({ x: q.x + part.position.x, y: q.y + part.position.y }));
     pw.position = { x: symPos.x + part.position.x, y: symPos.y + part.position.y };
+    placed.push(pw);
     e.waypoints = pw.id === e.sourceId ? route.reverse() : route;
   }
 

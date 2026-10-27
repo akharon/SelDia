@@ -23,6 +23,8 @@ import type { Point, Rect } from '../types/common.js';
 import type { FpDimension, FpMeasure, FpBox, FpWallSeg } from '../floorplan/dimensions.js';
 import { wallDimensionStrings, clearGap, formatLength } from '../floorplan/dimensions.js';
 import { chipSize } from './edge-label-placement.js';
+import { sizeForShape } from './node-label-geometry.js';
+import { DS } from './design-system.js';
 
 export interface CustomLayoutResult {
   nodes: IRNode[];
@@ -66,7 +68,12 @@ export function layoutSequence(ir: DiagramIR): CustomLayoutResult {
   const laneWidth = 160;
   const startX = 80;
   const headerY = 20;
-  const headerH = 50;
+  // Header boxes are sized from the shape's balanced-wrap text box (same model as
+  // flowchart nodes), so a cylinder/diamond participant never overflows. All
+  // headers share one height so the lifelines start on a common line.
+  const headerSize = new Map<string, { width: number; height: number }>();
+  for (const n of participants) headerSize.set(n.id, sizeForShape(n.label ?? '', String(n.shape), DS.fontSize.label, 140, 50));
+  const headerH = Math.max(50, ...participants.map((n) => headerSize.get(n.id)!.height));
 
   // A self-message draws a loop right of its lifeline with the label beyond it,
   // so the gap to the next lane must hold loop + label (never crossing it).
@@ -82,8 +89,9 @@ export function layoutSequence(ir: DiagramIR): CustomLayoutResult {
   const positioned: IRNode[] = participants.map((n, i) => {
     const cx = cursor;
     laneX.set(n.id, cx);
-    cursor += Math.max(laneWidth, selfNeed.get(n.id) ?? 0);
-    return { ...n, position: { x: cx - 70, y: headerY }, size: { width: 140, height: headerH } };
+    const w = headerSize.get(n.id)!.width;
+    cursor += Math.max(laneWidth, selfNeed.get(n.id) ?? 0, w + 20);
+    return { ...n, position: { x: cx - w / 2, y: headerY }, size: { width: w, height: headerH } };
   });
   const lastLaneX = participants.length ? laneX.get(participants[participants.length - 1].id)! : startX;
 
@@ -463,11 +471,44 @@ export function layoutSankey(ir: DiagramIR): CustomLayoutResult {
   const ny = new Map<string, number>(), order = new Map<string, number>();
   ir.nodes.forEach((n, i) => order.set(n.id, i));
   const cols = [...byCol.keys()].sort((a, b) => a - b);
+  // Node order within each column: Sugiyama-style barycenter sweeps (ties on input
+  // order), keeping the arrangement with the fewest link crossings between column
+  // pairs. The relaxation below then only slides nodes; it never reorders them.
+  const rank = new Map<string, number>();
+  const setRanks = () => { for (const c of cols) byCol.get(c)!.forEach((n, i) => rank.set(n.id, i)); };
+  const linkCrossings = () => {
+    let x = 0;
+    for (let i = 0; i < ir.edges.length; i++) for (let j = i + 1; j < ir.edges.length; j++) {
+      const a = ir.edges[i], b = ir.edges[j];
+      if (depth.get(a.sourceId) !== depth.get(b.sourceId) || depth.get(a.targetId) !== depth.get(b.targetId)) continue;
+      const d1 = rank.get(a.sourceId)! - rank.get(b.sourceId)!, d2 = rank.get(a.targetId)! - rank.get(b.targetId)!;
+      if (d1 * d2 < 0) x++;
+    }
+    return x;
+  };
+  setRanks();
+  let bestX = linkCrossings(), bestOrder = new Map(cols.map((c) => [c, [...byCol.get(c)!]]));
+  const sweep = (c: number, useIn: boolean) => {
+    const bary = (n: IRNode) => {
+      const es = useIn ? ins.get(n.id)! : outs.get(n.id)!;
+      if (!es.length) return rank.get(n.id)!;
+      return es.reduce((t, e) => t + rank.get(useIn ? e.sourceId : e.targetId)!, 0) / es.length;
+    };
+    byCol.set(c, [...byCol.get(c)!].sort((a, b) => (bary(a) - bary(b)) || (order.get(a.id)! - order.get(b.id)!)));
+    setRanks();
+  };
+  for (let it = 0; it < 8 && bestX > 0; it++) {
+    for (const c of cols.slice(1)) sweep(c, true);
+    for (const c of [...cols].reverse().slice(1)) sweep(c, false);
+    const x = linkCrossings();
+    if (x < bestX) { bestX = x; bestOrder = new Map(cols.map((c) => [c, [...byCol.get(c)!]])); }
+  }
+  for (const c of cols) byCol.set(c, bestOrder.get(c)!);
+  setRanks();
   const stack = (list: IRNode[]) => {
-    const sorted = [...list].sort((a, b) => (ny.get(a.id)! - ny.get(b.id)!) || (order.get(a.id)! - order.get(b.id)!));
+    const sorted = [...list].sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
     let y = topPad;
     for (const n of sorted) { const want = Math.max(ny.get(n.id)!, y); ny.set(n.id, want); y = want + height_.get(n.id)! + NODE_GAP; }
-    byCol.set(depth.get(list[0].id) || 0, sorted);
   };
   for (const c of cols) { let y = topPad; for (const n of byCol.get(c)!) { ny.set(n.id, y); y += height_.get(n.id)! + NODE_GAP; } }
   const centre = (id: string) => ny.get(id)! + height_.get(id)! / 2;
@@ -511,7 +552,9 @@ export function layoutSankey(ir: DiagramIR): CustomLayoutResult {
     if (!src || !tgt) return { ...e, waypoints: [] };
     const x1 = src.position.x + src.size.width, y1 = outY.get(e.id)!;
     const x2 = tgt.position.x, y2 = inY.get(e.id)!;
-    return { ...e, waypoints: [{ x: x1, y: y1 }, { x: (x1 + x2) / 2, y: y1 }, { x: (x1 + x2) / 2, y: y2 }, { x: x2, y: y2 }], data: { ...e.data, sankeyWeight: weightOf(e.label), sankeyThick: thickOf(e) } };
+    // Centreline = the ribbon's end points. The drawn S-curve is monotone, so two
+    // ribbons cross exactly when their straight chords do (no shared vertical runs).
+    return { ...e, waypoints: [{ x: x1, y: y1 }, { x: x2, y: y2 }], data: { ...e.data, sankeyWeight: weightOf(e.label), sankeyThick: thickOf(e) } };
   });
   const maxCol = Math.max(0, ...Array.from(byCol.keys()));
   const width = 60 + (maxCol + 1) * colWidth + 60;

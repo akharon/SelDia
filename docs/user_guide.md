@@ -2113,7 +2113,7 @@ nodeC { layout: { align: left } }
 
 Diagrams are drawn to stay legible without hand-tuning:
 
-- **Clean edges.** The config key `edgeStyle` is `clean` (default) or `sketch`. `clean` draws rounded orthogonal paths; `sketch` keeps the hand-drawn rough lines. Both get a background-colour casing so an edge stays readable over whatever it crosses. A single diagram can override the config with a one-line directive inside the fence, `edges sketch` or `edges clean`, on its own line before or among the statements; it wins over `edgeStyle`. `edges` stays usable as a node id when it is not followed by `sketch` or `clean` on the same line.
+- **Clean edges.** The config key `edgeStyle` is `clean` (default) or `sketch`. `clean` draws rounded orthogonal paths; `sketch` keeps the hand-drawn rough lines. Edges have no casing: crossings are marked by line jumps, and edge labels are plain text with a canvas-coloured halo. A single diagram can override the config with a one-line directive inside the fence, `edges sketch` or `edges clean`, on its own line before or among the statements; it wins over `edgeStyle`. `edges` stays usable as a node id when it is not followed by `sketch` or `clean` on the same line.
 - **Line jumps.** Where a later edge crosses an earlier horizontal one, it hops over with a small arc (clean edges only). Parallel runs that would overlap are nudged apart.
 - **Hover highlight.** In SVG output, hovering an edge or node thickens it and its connections and dims the rest (pure CSS, no script).
 - **Labels on the line.** An edge label sits on a background chip on its own edge, never over an arrowhead, a node or a group title. If it has to move away, a thin dashed leader ties it back to the line.

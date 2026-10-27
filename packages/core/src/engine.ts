@@ -12,7 +12,7 @@ const TRIM_TYPES = new Set<DiagramType>([
 
 /** Per-render edge drawing options (see renderEdge). */
 interface EdgeStyle { clean: boolean; jumps: Map<string, Hop[]>; round: boolean; }
-interface EdgeParts { casing: string; path: string; head: string; label: string; }
+interface EdgeParts { path: string; head: string; label: string; }
 
 
 // =============================================================================
@@ -822,23 +822,21 @@ class SelDiAEngine implements CoreEngine {
       }
       const routedEdges = edges.map((e) => routedWps.has(e.id) ? { ...e, waypoints: routedWps.get(e.id) } : e);
       const labelPos = computeEdgeLabelPositions(routedEdges, nodeById, pad, groups);
-      // Layers, bottom to top: groups (above) → casings → edge paths → nodes →
+      // Layers, bottom to top: groups (above) → edge paths → nodes →
       // arrowheads → label chips and labels. Each edge's parts go to their own
       // layer so a node can never paint over a label or an arrowhead.
       const edgeStyle: EdgeStyle = { clean: cleanEdges, jumps, round: dt !== 'circuit' && dt !== 'pcb' };
-      let casings = '', paths = '', heads = '', labels = '';
+      let paths = '', heads = '', labels = '';
       for (const e of routedEdges) {
         const parts = this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes, edgeStyle);
         const id = this.esc(e.id);
-        if (parts.casing) casings += `    <g class="seldia-edge-casing" data-seldia-edge-ref="${id}">\n${parts.casing}    </g>\n`;
         paths += `  <g class="seldia-edge" data-seldia-edge-id="${id}" data-src="${this.esc(e.sourceId)}" data-tgt="${this.esc(e.targetId)}">\n${parts.path}  </g>\n`;
         if (parts.head) heads += `    <g class="seldia-edge-head" data-seldia-edge-ref="${id}">\n${parts.head}    </g>\n`;
         if (parts.label) labels += `    <g class="seldia-edge-label" data-seldia-edge-ref="${id}">\n${parts.label}    </g>\n`;
       }
       if (routedEdges.length) {
-        svg += `  <style>.seldia-edge:hover path:not([data-casing]){stroke-width:${DS.stroke.emphasis}}svg:has(.seldia-edge:hover) .seldia-edge:not(:hover),svg:has(.seldia-edge:hover) .seldia-edge-head,svg:has(.seldia-edge:hover) .seldia-edge-label{opacity:.35}svg:has(.seldia-edge:hover) .seldia-edge:hover,svg:has(.seldia-edge:hover) .seldia-edge-head:hover,svg:has(.seldia-edge:hover) .seldia-edge-label:hover{opacity:1}</style>\n`;
+        svg += `  <style>.seldia-edge:hover path{stroke-width:${DS.stroke.emphasis}}svg:has(.seldia-edge:hover) .seldia-edge:not(:hover),svg:has(.seldia-edge:hover) .seldia-edge-head,svg:has(.seldia-edge:hover) .seldia-edge-label{opacity:.35}svg:has(.seldia-edge:hover) .seldia-edge:hover,svg:has(.seldia-edge:hover) .seldia-edge-head:hover,svg:has(.seldia-edge:hover) .seldia-edge-label:hover{opacity:1}</style>\n`;
       }
-      if (casings) svg += `  <g class="seldia-edge-casings">\n${casings}  </g>\n`;
       svg += paths;
       svg += groupTitles; groupTitles = '';
       deferred = (heads ? `  <g class="seldia-edge-heads">\n${heads}  </g>\n` : '') + (labels ? `  <g class="seldia-edge-labels">\n${labels}  </g>\n` : '');
@@ -1019,12 +1017,12 @@ class SelDiAEngine implements CoreEngine {
   }
 
   /** Draw one edge as separate parts so the caller can stack them in layers:
-   *  `casing` (background-coloured under-stroke) and `path` sit under the nodes;
+   *  `path` sits under the nodes;
    *  `head` (arrowhead) and `label` (chip, leader, text) sit above them. Types
    *  with their own edge grammar (sequence, ER, Gantt...) return everything in
    *  `path`, as before. */
   private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement, preRouted = false, allNodesIn?: IRNode[], style?: EdgeStyle): EdgeParts {
-    const only = (path: string): EdgeParts => ({ casing: '', path, head: '', label: '' });
+    const only = (path: string): EdgeParts => ({ path, head: '', label: '' });
     if (diagramType === DiagramType.SEQUENCE) return only(renderSequenceMessage(edge, pad, sketchy, typeAccent));
     if (diagramType === DiagramType.ER) {
       const raw = edge.waypoints || [];
@@ -1074,9 +1072,6 @@ class SelDiAEngine implements CoreEngine {
     const clean = style?.clean ?? true;
     const dashAttr = dash ? ` stroke-dasharray="${dash}"` : '';
     const polyPts = wps.map(p => `${p.x + pad},${p.y + pad}`).join(' ');
-    // Casing: the same line underneath in the surface colour, so where edges
-    // cross or run over a group tint each one stays a separate, traceable stroke.
-    const casing = `    <polyline points="${polyPts}" fill="none" stroke="${DS.neutral.surface}" stroke-width="${DS.stroke.edge + DS.stroke.casing}" stroke-linejoin="round"/>\n`;
     let el: string;
     if (!clean && sketchy) {
       const seed = seedFor(`${diagramType}:${edge.id}`);
@@ -1122,13 +1117,18 @@ class SelDiAEngine implements CoreEngine {
       const r = chipRect(lx, ly, edge.label);
       const leader = labelPos?.leader;
       if (leader) label += `    <line x1="${leader.from.x}" y1="${leader.from.y}" x2="${leader.to.x}" y2="${leader.to.y}" stroke="${stroke}" stroke-width="${DS.stroke.hairline}" stroke-dasharray="${DS.dash.leader}"/>\n`;
-      label += `    <rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" rx="${DS.chip.rx}" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${typeAccent.stroke}" stroke-opacity="0.35" stroke-width="${DS.stroke.hairline}"/>\n`;
+      // No box: the label is plain text with a canvas-coloured halo (paint-order stroke), so the
+      // line it sits on is knocked out just behind the glyphs and nothing reads as a white pill.
       const lines = splitLabelLines(edge.label);
       const lh = (r.height - 2 * DS.chip.padY) / lines.length;
       const tspans = lines.map((line, i) => `<tspan x="${lx}" y="${r.y + DS.chip.padY + lh * (i + 0.5)}">${this.esc(line)}</tspan>`).join('');
-      label += `    <text text-anchor="middle" dominant-baseline="central" fill="${DS.neutral.text}" font-size="${EDGE_LABEL_FONT}" font-family="${DS.fontFamily}">${tspans}</text>\n`;
+      const textAttrs = `text-anchor="middle" dominant-baseline="central" font-size="${EDGE_LABEL_FONT}" font-family="${DS.fontFamily}"`;
+      // Two passes rather than paint-order: the halo copy sits underneath the plain one, which renders
+      // the same in every SVG consumer (paint-order is missing from several rasterisers).
+      label += `    <text ${textAttrs} fill="none" stroke="var(--seldia-label-bg, ${DS.neutral.surface})" stroke-width="${DS.stroke.halo}" stroke-linejoin="round" data-halo="1" aria-hidden="true">${tspans}</text>\n`;
+      label += `    <text ${textAttrs} fill="${DS.neutral.text}">${tspans}</text>\n`;
     }
-    return { casing, path: el, head, label };
+    return { path: el, head, label };
   }
 
   /** Draw one of the UML-conventional arrowhead types onto the last segment

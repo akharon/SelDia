@@ -68,8 +68,11 @@ describe('measureLayout units', () => {
   });
   it('counts a segment hugging a node border', () => {
     const nodes = [node('a', 0, 0), node('h', 200, 100), node('b', 500, 0)];
-    const hug = measureLayout(ir(nodes, [edge('e', 'a', 'b', [[100, 102], [500, 102]])]));
-    expect(hug.borderHugs).toBe(1);
+    // exactEnds edges are exempt from postRoute (S4 pushes hugs off), so the raw hug stays visible.
+    const exact = { ...edge('e', 'a', 'b', [[100, 102], [500, 102]]), data: { exactEnds: true } } as IREdge;
+    expect(measureLayout(ir(nodes, [exact])).borderHugs).toBe(1);
+    // ...and the same route on an ordinary edge is pushed off by the pass.
+    expect(measureLayout(ir(nodes, [edge('e', 'a', 'b', [[100, 102], [500, 102]])])).borderHugs).toBe(0);
     const far = measureLayout(ir(nodes, [edge('e', 'a', 'b', [[100, 60], [500, 60]])]));
     expect(far.borderHugs).toBe(0);
   });
@@ -178,3 +181,26 @@ describe('corpus harness: unsupported vs failed (S7)', () => {
   }, 60_000);
 });
 
+
+describe('mermaid#1 subgraph containment (S3)', () => {
+  it('lays every member inside its cluster and keeps sibling clusters apart', async () => {
+    const src = `flowchart LR
+    subgraph CI [Continuous Integration]
+        commit[Push to main] --> lint[Lint & Typecheck]
+        lint --> test{Tests pass?}
+        test -->|No| notify[Notify author]
+        test -->|Yes| build[Build artifact]
+    end
+    subgraph CD [Continuous Deployment]
+        build --> stage[Deploy to staging]
+        stage --> smoke{Smoke tests OK?}
+        smoke -->|No| rollback[Rollback]
+        smoke -->|Yes| prod[(Deploy to prod)]
+    end
+    notify --> commit`;
+    const imp = core.importMermaid(src);
+    const l = await core.createEngine().layoutAsync(imp.ir!);
+    expect(l.ok).toBe(true);
+    if (l.ok) expect(core.measureLayout(l.value.diagram).groupViolations).toBe(0);
+  });
+});

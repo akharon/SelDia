@@ -28,7 +28,7 @@
 // =============================================================================
 
 import type { CoreEngine, DiagramIR } from '@seldia/core';
-import { importMermaid, importPlantUml, importCircuit, importPcb } from '@seldia/core';
+import { importMermaid, importPlantUml, importCircuit, importPcb, fenceToSource } from '@seldia/core';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
 import { blockIdForSource } from '../edit/blocks.js';
 import { nextDiagramNumber, anchorForDiagram, captionFor, titleFromDsl, registerDiagram } from './numbering.js';
@@ -133,7 +133,12 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
         ? `<span id="seldia-toc-config" data-seldia-toc-enabled="${effectiveTocEnabled ? '1' : '0'}" style="display:none"></span>`
         : '';
 
-      if (lang === 'seldia' || lang.startsWith('seldia-')) {
+      // Which compile path a fence takes is core's decision (fenceToSource), so a new
+      // spelling there reaches the preview without a second map. `seldia-<variant>`
+      // fences are preview-only spellings of the DSL.
+      const kind = lang.startsWith('seldia-') ? 'seldia' : fenceToSource(lang, token.content)?.kind;
+
+      if (kind === 'seldia') {
         try {
           const rendered = renderSelDiABlock(engine, token.content, docUriOf(env), includeSprite, env, effectiveCaptionsEnabled);
           commitSprite();
@@ -151,7 +156,7 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
       // unmodified, drawn by us. Anything the importer can't model falls back
       // to the default fence so VS Code's own Mermaid support (or a plain code
       // block) still handles it. Never worse than not being installed.
-      if (lang === 'mermaid') {
+      if (kind === 'mermaid') {
         try {
           const rendered = renderMermaidBlock(engine, token.content, docUriOf(env), includeSprite, env, effectiveCaptionsEnabled);
           if (rendered) { commitSprite(); return tocMarker + rendered; }
@@ -163,7 +168,7 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
       // ```plantuml (and its usual aliases) gets the same treatment for the
       // same reason — PlantUML is a peer input format, not a rival, so an
       // existing .md full of ```puml blocks renders through SelDiA untouched.
-      if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') {
+      if (kind === 'plantuml') {
         try {
           const rendered = renderPlantUmlBlock(engine, token.content, docUriOf(env), includeSprite, env, effectiveCaptionsEnabled);
           if (rendered) { commitSprite(); return tocMarker + rendered; }
@@ -174,7 +179,7 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
 
       // ```pcb / ```kicad_pcb (or a ```kicad fence whose body is a board, not a
       // netlist): render-only KiCad board view.
-      if (lang === 'pcb' || lang === 'kicad_pcb' || (lang === 'kicad' && /^\s*\(\s*kicad_pcb\b/.test(token.content))) {
+      if (kind === 'pcb') {
         try {
           const { ir, diagnostics } = importPcb(token.content);
           const rendered = renderImportedBlock(engine, token.content, docUriOf(env), 'pcb', 'KiCad PCB', ir, diagnostics, includeSprite, env, effectiveCaptionsEnabled);
@@ -186,7 +191,7 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
 
       // ```spice / ```circuit / ```netlist: a raw SPICE or KiCad netlist,
       // imported straight to the circuit IR (same path as the CLI command).
-      if (lang === 'spice' || lang === 'circuit' || lang === 'netlist' || lang === 'kicad') {
+      if (kind === 'circuit') {
         try {
           const { ir, diagnostics } = importCircuit(token.content);
           const rendered = renderImportedBlock(engine, token.content, docUriOf(env), 'circuit', 'SPICE', ir, diagnostics, includeSprite, env, effectiveCaptionsEnabled);

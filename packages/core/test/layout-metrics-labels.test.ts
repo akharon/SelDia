@@ -99,7 +99,7 @@ describe('tokenViolations (SVG)', () => {
     expect(tokenViolations(svg)).toBe(2);
   });
   it('accepts every DS token value', () => {
-    const svg = '<svg><rect stroke-width="1"/><rect stroke-width="1.75"/><rect stroke-width="4.5"/><text font-size="11"/><text font-size="15"/></svg>';
+    const svg = '<svg><rect stroke-width="1"/><rect stroke-width="1.75"/><rect stroke-width="4"/><text font-size="11"/><text font-size="15"/></svg>';
     expect(tokenViolations(svg)).toBe(0);
   });
   it('skips a subtree after a token-exempt comment', () => {

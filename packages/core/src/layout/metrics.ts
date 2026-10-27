@@ -261,9 +261,14 @@ export function measureLayout(ir: DiagramIR): LayoutMetrics {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const edgeGeometry = !SELF_DRAWN_EDGES.has(ir.type as string);
   const routed = edgeGeometry ? routeAllEdges(ir.edges ?? [], nodes) : new Map<string, Point[]>();
+  // Sankey ribbons are drawn from the layout's own centreline (end points of a monotone
+  // S-curve), not from the generic router, so measure that centreline.
+  if ((ir.type as string) === 'sankey') {
+    for (const e of ir.edges ?? []) if (e.waypoints && e.waypoints.length >= 2) routed.set(e.id, e.waypoints);
+  }
   // Mirror engine.ts: nudge parallel runs apart and plan line jumps on every edge type the
   // engine post-routes, leaving exactEnds edges fixed, so the metrics measure what is drawn.
-  if (POST_ROUTE_TYPES.has(ir.type as string)) {
+  if (POST_ROUTE_TYPES.has(ir.type as string) && (ir.type as string) !== 'sankey') {
     const exact = new Set((ir.edges ?? []).filter((e) => (e.data as any)?.exactEnds).map((e) => e.id));
     const fixed = new Map([...routed].filter(([id]) => !exact.has(id)));
     for (const [id, pts] of postRoute({ nodes }, fixed, true, groupTitleBands(ir.groups)).routes) routed.set(id, pts);
@@ -413,7 +418,7 @@ export function measureLayout(ir: DiagramIR): LayoutMetrics {
 }
 
 // ── Token conformance (measured on the rendered SVG, not the IR) ─────────────
-const STROKE_WIDTH_TOKENS = new Set([1, 1.5, 1.75, 2.5, 4.5]);
+const STROKE_WIDTH_TOKENS = new Set<number>(Object.values(DS.stroke));
 const FONT_SIZE_TOKENS = new Set([11, 12, 14, 15]);
 /** Comments (group 1) or tags (groups 2-5: closing slash, name, attributes, self-closing slash). */
 const SVG_TAG_RE = /<!--([\s\S]*?)-->|<(\/?)([A-Za-z][\w:-]*)([^>]*?)(\/?)>/g;

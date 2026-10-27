@@ -1771,7 +1771,7 @@ Auto layout runs as four stages:
 3. **Shape-aware clip.** `clipRouteToNodes` (`src/render/edge-routing.ts`) trims each route to the real shape outline.
 4. **Labels.** `src/render/edge-label-placement.ts` scores candidate label positions, then nudges labels off edges and other obstacles.
 
-**Render z-order.** Layers are emitted in this order: groups, edge casings, edges, nodes, arrowheads, then label chips, labels and group titles. Nodes therefore never paint over a label, and a casing separates each edge from what it crosses.
+**Render z-order.** Layers are emitted in this order: groups, edges, nodes, arrowheads, then labels (halo text, no box) and group titles. Nodes therefore never paint over a label; line jumps, not a casing, separate crossing edges.
 
 **postRoute pass.** Between routing and label placement, `postRoute` (`src/render/edge-layer.ts`) runs for the types in `POST_ROUTE_TYPES`: it nudges overlapping collinear runs apart (ports stay fixed), snaps bend apexes, steers vertical runs out of group title bands and label chips, and adds line jumps at crossings. `layout/metrics.ts` calls the same pass, so it measures what is drawn.
 

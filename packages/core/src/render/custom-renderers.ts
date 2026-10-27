@@ -16,12 +16,20 @@ import type { IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { Point } from '../types/common.js';
 import { roughRect, roughEllipse, roughPolygon, roughLine, seedFor, type RoughStyle } from './rough.js';
 import { arrowheadSvg } from './edge-layer.js';
-import { DS, typeSwatch, roleSwatch, seriesColor, readableTextOn, blendHex, type Swatch } from './design-system.js';
 import { chipRect } from './edge-label-placement.js';
+import { DS, typeSwatch, roleSwatch, seriesColor, readableTextOn, blendHex, type Swatch } from './design-system.js';
 import { ganttDayLabel } from './custom-layout.js';
 import { FontWeight, FontStyle, type GroupStyle } from '../types/style.js';
 import { escapeXml as esc } from './escape.js';
 import { iconLabelLayout, balancedWrap, C4_DB_RY, C4_DB_LABEL_Y, C4_LABEL_PAD, C4_LABEL_LH } from './node-label-geometry.js';
+
+
+/** Edge label as bare text with a canvas-coloured halo underneath (no chip box). Two text
+ *  elements rather than paint-order, which several SVG rasterisers ignore. */
+function haloLabel(attrs: string, text: string): string {
+  return `    <text ${attrs} fill="none" stroke="var(--seldia-label-bg, ${DS.neutral.surface})" stroke-width="${DS.stroke.halo}" stroke-linejoin="round" data-halo="1" aria-hidden="true">${text}</text>\n`
+    + `    <text ${attrs} fill="${DS.neutral.text}">${text}</text>\n`;
+}
 
 function splitLabelLines(label: string): string[] {
   return (label || '').replace(/\\n/g, '\n').split('\n');
@@ -93,14 +101,12 @@ export function renderSequenceMessage(edge: IREdge, pad: number, sketchy: boolea
     const lx = Math.max(...pts.map((p) => p.x)) + 8;
     const ly = (pts[0].y + pts[pts.length - 1].y) / 2;
     const chipW = Math.max(30, edge.label.length * 6.5 + 12);
-    el += `    <rect x="${lx - 4}" y="${ly - 9}" width="${chipW}" height="18" rx="${DS.chip.rx}" fill="${DS.neutral.surface}" fill-opacity="0.95" stroke="${accent.stroke}" stroke-opacity="0.3" stroke-width="${DS.stroke.hairline}"/>\n`;
-    el += `    <text x="${lx + 2}" y="${ly + 4}" text-anchor="start" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
+    el += haloLabel(`x="${lx + 2}" y="${ly + 4}" text-anchor="start" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}"`, esc(edge.label));
   } else if (edge.label) {
     const midx = (pts[0].x + pts[pts.length - 1].x) / 2;
     const midy = pts[0].y - 8;
     const chipW = Math.max(30, edge.label.length * 6.5 + 12);
-    el += `    <rect x="${midx - chipW / 2}" y="${midy - 15}" width="${chipW}" height="18" rx="${DS.chip.rx}" fill="${DS.neutral.surface}" fill-opacity="0.95" stroke="${accent.stroke}" stroke-opacity="0.3" stroke-width="${DS.stroke.hairline}"/>\n`;
-    el += `    <text x="${midx}" y="${midy - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
+    el += haloLabel(`x="${midx}" y="${midy - 2}" text-anchor="middle" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}"`, esc(edge.label));
   }
   return el;
 }
@@ -285,8 +291,7 @@ export function renderErRelationship(
     }
     // Chip behind the label so the relationship line doesn't strike through it.
     const chipW = Math.max(24, edge.label.length * 6.5 + 12);
-    el += `    <rect x="${lx - chipW / 2}" y="${ly - 15}" width="${chipW}" height="18" rx="${DS.chip.rx}" fill="var(--seldia-label-bg, ${DS.neutral.surface})" fill-opacity="0.95" stroke="${stroke}" stroke-opacity="0.35" stroke-width="${DS.stroke.hairline}"/>\n`;
-    el += `    <text x="${lx}" y="${ly - 2}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;
+    el += haloLabel(`x="${lx}" y="${ly - 2}" text-anchor="middle" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}"`, esc(edge.label));
   }
   return el;
 }
@@ -470,6 +475,8 @@ export function renderSankeyChip(edge: IREdge, pad: number, srcNode: IRNode, tgt
   const x1 = srcNode.position.x + srcNode.size.width + pad, x2 = tgtNode.position.x + pad;
   const midx = (x1 + x2) / 2;
   const ly = typeof ed.sankeyLabelY === 'number' ? ed.sankeyLabelY + pad : (wp[0].y + wp[wp.length - 1].y) / 2 + pad - 4;
+  // Sankey keeps its filled chip: the label sits on a coloured flow band, so a halo alone would
+  // not guarantee contrast (and the contrast gate reads this chip).
   const cr = chipRect(midx, ly - 4, String(edge.label));
   return `    <rect x="${cr.x}" y="${cr.y}" width="${cr.width}" height="${cr.height}" rx="${DS.chip.rx}" fill="#ffffff" fill-opacity="0.92"/>\n`
     + `    <text x="${midx}" y="${ly}" text-anchor="middle" fill="${DS.neutral.text}" font-size="${DS.fontSize.small}" font-family="${DS.fontFamily}">${esc(edge.label)}</text>\n`;

@@ -117,9 +117,9 @@ export const DS = {
   fontSize: { title: 15, label: 14, meta: 12, small: 11 },
 
   /** Stroke widths (px). One set for the whole system — the tokens lint
-   *  rejects any emitted stroke-width outside these values. `casing` is the
-   *  extra width of the background under-stroke drawn beneath every edge. */
-  stroke: { hairline: 1, divider: 1, edge: 1.5, node: 1.75, emphasis: 2.5, casing: 3 },
+   *  rejects any emitted stroke-width outside these values. `halo` is the
+   *  canvas-coloured text outline that lifts an edge label off the line under it. */
+  stroke: { hairline: 1, divider: 1, edge: 1.5, node: 1.75, emphasis: 2.5, halo: 4 },
 
   /** Dash patterns (stroke-dasharray). `edge` = dashed edges, `leader` = label leader lines. */
   dash: { edge: '6 4', leader: '3 3' },
@@ -283,7 +283,8 @@ export function readableTextOn(fill: string, preferred?: string, opacity = 1): s
   const effHex = '#' + eff.map((c) => c.toString(16).padStart(2, '0')).join('');
   if (preferred && contrastOf(preferred, effHex) >= 4.5) return preferred;
   const dark = DS.neutral.text, light = '#ffffff', ink = '#0b1220';
-  const cands = [dark, light, ink];
+  // Pure black last: only reached when dark/white/ink all miss 4.5 (e.g. #6366f1: white 4.47, black ~4.7).
+  const cands = [dark, light, ink, '#000000'];
   for (const c of cands) if (contrastOf(c, effHex) >= 4.5) return c;
   return cands.reduce((b, c) => (contrastOf(c, effHex) > contrastOf(b, effHex) ? c : b));
 }

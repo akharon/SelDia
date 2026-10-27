@@ -26,6 +26,12 @@ export interface AutoLayoutOptions {
   nodeSpacing: number;
   rankSpacing: number;
   edgeSpacing: number;
+  /** `auto` variants: dagre ranker. */
+  ranker?: 'network-simplex' | 'tight-tree' | 'longest-path';
+  /** `auto` variants: ELK node-placement strategy. */
+  elkPlacement?: string;
+  /** ELK crossing-minimisation effort (default 10); large `auto` graphs lower it. */
+  elkThoroughness?: number;
 }
 
 export interface AutoLayoutResult {
@@ -147,6 +153,7 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     edgesep: opts.edgeSpacing,
     marginx: 20,
     marginy: 20,
+    ...(opts.ranker ? { ranker: opts.ranker } : {}),
   });
   g.setDefaultEdgeLabel(() => ({}));
 
@@ -335,6 +342,8 @@ export function layoutWithElkSync(ir: DiagramIR, opts: AutoLayoutOptions): AutoL
   // far apart. Tighten it when groups exist (the group padding already keeps
   // content off the border).
   const rootOpts = elkGraphOptions(opts);
+  if (opts.elkThoroughness) rootOpts['elk.layered.thoroughness'] = String(opts.elkThoroughness);
+  if (opts.elkPlacement) rootOpts['elk.layered.nodePlacement.strategy'] = opts.elkPlacement;
   if (tree && tree.ordered.length) rootOpts['elk.layered.spacing.nodeNodeBetweenLayers'] = String(Math.round(opts.rankSpacing * 0.6));
   const root: any = { id: '__root__', layoutOptions: rootOpts, children: [] as any[], edges: [] as any[] };
   const containers = new Map<string, any>();

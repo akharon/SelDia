@@ -379,10 +379,9 @@ const GRID_GAP = EDGE_GAP + 12;
 
 /** True when a horizontal segment at `y` from `x0` to `x1` doesn't intersect
  *  any obstacle. */
-function hClear(x0: number, x1: number, y: number, obstacles: IRNode[], gap: number): boolean {
+function hClear(x0: number, x1: number, y: number, rects: Rect[]): boolean {
   const E = 1e-4;
-  for (const o of obstacles) {
-    const r = routeRect(o, gap);
+  for (const r of rects) {
     // Segment must not cross the obstacle's interior.
     // If the segment's y is strictly above or below the obstacle, it's clear.
     if (y <= r.y + E || y >= r.y + r.height - E) continue;
@@ -395,10 +394,9 @@ function hClear(x0: number, x1: number, y: number, obstacles: IRNode[], gap: num
 
 /** True when a vertical segment at `x` from `y0` to `y1` doesn't intersect
  *  any obstacle. */
-function vClear(x: number, y0: number, y1: number, obstacles: IRNode[], gap: number): boolean {
+function vClear(x: number, y0: number, y1: number, rects: Rect[]): boolean {
   const E = 1e-4;
-  for (const o of obstacles) {
-    const r = routeRect(o, gap);
+  for (const r of rects) {
     if (x <= r.x + E || x >= r.x + r.width - E) continue;
     const top = Math.min(y0, y1), bot = Math.max(y0, y1);
     if (bot > r.y + E && top < r.y + r.height - E) return false;
@@ -459,6 +457,7 @@ function manhattanRoute(
   gap: number,
   bendBias = 0
 ): Point[] | null {
+  const rects = obstacles.map((o) => routeRect(o, gap));
   const xs = gridLines(obstacles, gap, [src.x, tgt.x], 'x');
   const ys = gridLines(obstacles, gap, [src.y, tgt.y], 'y');
 
@@ -525,10 +524,10 @@ function manhattanRoute(
       let clear: boolean;
       if (dx !== 0) {
         // Horizontal move.
-        clear = hClear(cur.v.x, next.x, cur.v.y, obstacles, gap);
+        clear = hClear(cur.v.x, next.x, cur.v.y, rects);
       } else {
         // Vertical move.
-        clear = vClear(cur.v.x, cur.v.y, next.y, obstacles, gap);
+        clear = vClear(cur.v.x, cur.v.y, next.y, rects);
       }
       if (!clear) continue;
 
@@ -723,6 +722,35 @@ export function applyPortStubs(pts: Point[], allNodes?: IRNode[], stub = DS.port
 /** Route every edge that has layout waypoints, exactly as the renderer does
  *  (fans computed across the whole edge set, all nodes as obstacles). */
 export function routeAllEdges(edges: IREdge[], nodes: IRNode[]): Map<string, Point[]> {
+  // Layout scoring (`auto`, metrics) and the final render route the same geometry:
+  // key on everything the router reads and share the result.
+  const key = geometrySig(edges, nodes);
+  const hit = routeCache.get(key);
+  if (hit) { routeCache.delete(key); routeCache.set(key, hit); return cloneRoutes(hit); }
+  const out = routeAllEdgesUncached(edges, nodes);
+  routeCache.set(key, out);
+  if (routeCache.size > 6) routeCache.delete(routeCache.keys().next().value as string);
+  return cloneRoutes(out);
+}
+/** Fresh Point objects, so callers mutating a result never touch the cache. */
+export function cloneRoutes(m: Map<string, Point[]>): Map<string, Point[]> {
+  return new Map([...m].map(([id, pts]) => [id, pts.map((p) => ({ ...p }))]));
+}
+const routeCache = new Map<string, Map<string, Point[]>>();
+/** Cheap structural signature of a laid-out graph (what routing and post-routing read). */
+export function geometrySig(edges: IREdge[], nodes: IRNode[]): string {
+  let s = '';
+  for (const n of nodes) s += `${n.id},${n.shape},${n.position?.x},${n.position?.y},${n.size?.width},${n.size?.height};`;
+  s += '|';
+  for (const e of edges) {
+    s += `${e.id},${e.sourceId},${e.targetId},${e.routing},${e.layoutRouted ? 1 : 0},${e.label ?? ''}`;
+    if (e.data) { try { s += JSON.stringify(e.data); } catch { s += '?'; } }
+    for (const p of e.waypoints ?? []) s += `,${p.x},${p.y}`;
+    s += ';';
+  }
+  return s;
+}
+function routeAllEdgesUncached(edges: IREdge[], nodes: IRNode[]): Map<string, Point[]> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const fans = computeFans(edges, nodeById);
   const out = new Map<string, Point[]>();

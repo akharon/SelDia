@@ -295,3 +295,40 @@ describe('capBends end stubs', () => {
     expect(Math.abs(y.x - z.x) + Math.abs(y.y - z.y)).toBeGreaterThanOrEqual(8);
   });
 });
+
+describe('fanPorts crowded side', () => {
+  it('moves a Z-shaped end to the adjacent side when the top is too crowded', () => {
+    const n = box('n', 100, 100, 100, 60); // 5 ends on a 100px side are 16.7px apart (< 1.5 stubs)
+    const routes = new Map<string, Point[]>();
+    for (const [i, x] of [20, 30, 40].entries()) routes.set(`z${i}`, [P(x, 0), P(x, 70), P(130 + i * 20, 70), P(130 + i * 20, 100)]);
+    routes.set('s0', [P(150, 0), P(150, 100)]);
+    routes.set('s1', [P(180, 0), P(180, 100)]);
+    const out = fanPorts(routes, [n]);
+    const toLeft = [...out.values()].filter((r) => Math.abs(r[r.length - 1].x - 100) < 1);
+    expect(toLeft.length).toBeGreaterThanOrEqual(1);
+    for (const r of toLeft) expect(r.length).toBe(3); // one bend fewer than the Z
+    // No two ends share a pin on the destination side.
+    const ys = toLeft.map((r) => Math.round(r[r.length - 1].y));
+    expect(new Set(ys).size).toBe(ys.length);
+    // Ends left on the top are spaced at least 1.5 stubs apart.
+    const xs = [...out.values()].filter((r) => Math.abs(r[r.length - 1].y - 100) < 1).map((r) => r[r.length - 1].x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(18 - 1e-6);
+  });
+});
+
+describe('route caches do not alias', () => {
+  it('mutating a returned route leaves the next result intact', async () => {
+    const { routeAllEdges } = await import('../src/render/edge-routing.js');
+    const mk = (id: string, x: number, y: number): any => ({ id, position: P(x, y), size: { width: 100, height: 50 }, shape: 'rectangle', type: 'default' });
+    const nodes = [mk('a', 0, 0), mk('b', 200, 200)];
+    const edges: any[] = [{ id: 'e', sourceId: 'a', targetId: 'b', routing: 'orthogonal', waypoints: [P(50, 50), P(250, 200)] }];
+    const r1 = routeAllEdges(edges, nodes);
+    const snap = JSON.stringify(r1.get('e'));
+    r1.get('e')![0].x += 999;
+    expect(JSON.stringify(routeAllEdges(edges, nodes).get('e'))).toBe(snap);
+    const p1 = postRoute({ nodes }, routeAllEdges(edges, nodes));
+    const s2 = JSON.stringify(p1.routes.get('e'));
+    p1.routes.get('e')![0].y += 999;
+    expect(JSON.stringify(postRoute({ nodes }, routeAllEdges(edges, nodes)).routes.get('e'))).toBe(s2);
+  });
+});

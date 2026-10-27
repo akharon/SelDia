@@ -144,12 +144,12 @@ describe('auto layout engine', () => {
     expect(pos(await createEngine({}).layoutAsync(ir))).toEqual(pos(dagre));
   });
 
-  it('autoMaxNodes skips the comparison (dagre output)', async () => {
+  it('autoMaxNodes skips the comparison (single ELK layout)', async () => {
     const ir = IR(null, DENSE);
-    const dagre = await createEngine({ config: { layoutEngineByType: { flowchart: 'dagre' } } }).layoutAsync(ir);
+    const elk = await createEngine({ config: { layoutEngineByType: { flowchart: 'elk' } } }).layoutAsync(ir);
     const skipped = await createEngine({ config: { autoMaxNodes: 2 } }).layoutAsync(ir);
-    expect(pos(skipped)).toEqual(pos(dagre));
-    expect(routed(skipped)).toBe(false);
+    expect(pos(skipped)).toEqual(pos(elk));
+    expect(routed(skipped)).toBe(true);
   });
 
   it('explicit layout choices win over auto', async () => {

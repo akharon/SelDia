@@ -389,10 +389,69 @@ export function avoidBands(routes: Routes, bands: Rect[], nodes: IRNode[] = []):
   return out;
 }
 
+/** Rewrite a route whose last leg enters a T/B side as `Q A B P` (vertical, horizontal,
+ *  vertical) so it enters the node's L/R side instead: `Q C P'`, one bend fewer. */
+function zEndToSide(r: Point[], n: IRNode, slot: (side: 'L' | 'R') => number = () => 0.5): { pts: Point[]; side: 'L' | 'R' } | null {
+  const k = r.length;
+  if (k < 4) return null;
+  const [Q, A, B, P] = [r[k - 4], r[k - 3], r[k - 2], r[k - 1]];
+  if (!(isV(Q, A) && isH(A, B) && isV(B, P))) return null;
+  const left = n.position.x, right = n.position.x + n.size.width;
+  if (A.x > left - 8 && A.x < right + 8) return null;
+  const side = A.x < left ? 'L' : 'R';
+  // Each end moved to a side takes its own slot, so none lands on another's pin.
+  const ym = n.position.y + n.size.height * slot(side);
+  if ((ym - Q.y) * (A.y - Q.y) <= 0 || Math.abs(ym - Q.y) < MIN_STUB) return null;
+  return { pts: [...r.slice(0, k - 3), { x: A.x, y: ym }, { x: side === 'L' ? left : right, y: ym }], side };
+}
+
+function relieveCrowdedSides(routes: Routes, nodes: IRNode[], groups: Map<string, End[]>): Routes | null {
+  const need = DS.portStub * 1.5;
+  const count = new Map<string, number>();
+  for (const [key, list] of groups) count.set(key, list.length);
+  let out: Routes | null = null;
+  for (const [key, list] of [...groups].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const n = list[0].node, side = list[0].side;
+    const span = side === 'T' || side === 'B' ? n.size.width : n.size.height;
+    let k = list.length;
+    if (k < 2 || (k <= MAX_PER_SIDE && span / (k + 1) >= need)) continue;
+    // Outermost turners first (largest |rank|, then the far key).
+    for (const e of [...list].filter((x) => x.rank !== 0).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+      if (k <= MAX_PER_SIDE && span / (k + 1) >= need) break;
+      const cur = (out ?? routes).get(e.id)!;
+      const r = e.end ? cur : [...cur].reverse();
+      let moved: { pts: Point[]; side: 'L' | 'R' | 'T' | 'B' } | null;
+      // Fraction along the destination side for the next end moved there.
+      const slotOf = (sd: string) => { const c = (count.get(`${n.id}:${sd}`) ?? 0) + 1; return c / (c + 1); };
+      if (side === 'T' || side === 'B') moved = zEndToSide(r, n, (sd) => slotOf(sd));
+      else {
+        const sw = (p: Point): Point => ({ x: p.y, y: p.x });
+        const sn = { ...n, position: sw(n.position), size: { width: n.size.height, height: n.size.width } } as IRNode;
+        const m = zEndToSide(r.map(sw), sn, (sd) => slotOf(sd === 'L' ? 'T' : 'B'));
+        moved = m ? { pts: m.pts.map(sw), side: m.side === 'L' ? 'T' : 'B' } : null;
+      }
+      if (!moved) continue;
+      const destKey = `${n.id}:${moved.side}`;
+      const destSpan = moved.side === 'T' || moved.side === 'B' ? n.size.width : n.size.height;
+      const destK = (count.get(destKey) ?? 0) + 1;
+      if (destSpan / (destK + 1) < need) continue;
+      const q = e.end ? moved.pts : [...moved.pts].reverse();
+      if (nodeHits(q, nodes) > nodeHits(cur, nodes) || hugTotal(q, nodes) > hugTotal(cur, nodes)) continue;
+      const rr: Routes = out ?? new Map(routes);
+      if (conflicts(e.id, q, rr) > conflicts(e.id, cur, rr)) continue;
+      rr.set(e.id, q); out = rr;
+      count.set(destKey, destK); k--; count.set(key, k);
+    }
+  }
+  return out;
+}
+
 /** Port-order search limits: beyond these the rule order is used as is. */
 const PERM_MAX_ROUTES = 150, PERM_MAX_WORK = 600;
 /** Above this many routes the O(routes) per-candidate clean-ups (Z-jog removal, bend cap) are skipped. */
 const CLEANUP_MAX_ROUTES = 200;
+/** More ends than this on one node side count as crowded whatever the spacing. */
+const MAX_PER_SIDE = 3;
 
 // ── Port fanning ────────────────────────────────────────────────────────────
 
@@ -408,7 +467,7 @@ interface End { id: string; end: 0 | 1; node: IRNode; side: Side; rank: number; 
  *  The last orthogonal segment is re-bent: its neighbour bend moves with the
  *  end. A route whose change would fold it or cut into a node keeps its old
  *  end. Ends alone on a side stay where they are. */
-export function fanPorts(routes: Routes, nodes: IRNode[]): Routes {
+export function fanPorts(routes: Routes, nodes: IRNode[], relieved = false): Routes {
   const boxes = nodes.filter(nodeShapeIsBox);
   if (!boxes.length) return routes;
   const ends: End[] = [];
@@ -433,6 +492,13 @@ export function fanPorts(routes: Routes, nodes: IRNode[]): Routes {
   }
   const groups = new Map<string, End[]>();
   for (const e of ends) (groups.get(`${e.node.id}:${e.side}`) ?? groups.set(`${e.node.id}:${e.side}`, []).get(`${e.node.id}:${e.side}`)!).push(e);
+
+  // A crowded side (ends closer than 1.5 port stubs even when evenly spread) gives
+  // up its outermost Z-shaped ends to the adjacent side, where that removes a bend.
+  if (!relieved) {
+    const moved = relieveCrowdedSides(routes, nodes, groups);
+    if (moved) return fanPorts(moved, nodes, true);
+  }
 
   const next = new Map<string, Point[]>();
   const baseCost = new Map<string, { hits: number; hug: number }>();
@@ -701,6 +767,25 @@ export function capBends(routes: Routes, nodes: IRNode[] = [], maxBends: number 
 /** Nudge, then jumps — the single entry point the engine and the metrics
  *  harness share. `jumps` is empty when `jumpsEnabled` is false (sketch edges). */
 export function postRoute(ir: Pick<DiagramIR, 'nodes'>, routes: Routes, jumpsEnabled = true, titleBands: Rect[] = []): PostRouted {
+  let key = jumpsEnabled ? 'J' : 'j';
+  for (const n of ir.nodes) key += `${n.id},${n.shape},${n.position?.x},${n.position?.y},${n.size?.width},${n.size?.height};`;
+  key += '|';
+  for (const b of titleBands) key += `${b.x},${b.y},${b.width},${b.height};`;
+  key += '|';
+  for (const [id, pts] of routes) { key += id; for (const p of pts) key += `,${p.x},${p.y}`; key += ';'; }
+  const hit = postRouteCache.get(key);
+  if (hit) return clonePost(hit);
+  const res = postRouteUncached(ir, routes, jumpsEnabled, titleBands);
+  postRouteCache.set(key, res);
+  if (postRouteCache.size > 6) postRouteCache.delete(postRouteCache.keys().next().value as string);
+  return clonePost(res);
+}
+const clonePost = (r: PostRouted): PostRouted => ({
+  routes: new Map([...r.routes].map(([id, pts]) => [id, pts.map((p) => ({ ...p }))])),
+  jumps: new Map([...r.jumps].map(([id, h]) => [id, h.map((x) => ({ ...x }))])),
+});
+const postRouteCache = new Map<string, PostRouted>();
+function postRouteUncached(ir: Pick<DiagramIR, 'nodes'>, routes: Routes, jumpsEnabled: boolean, titleBands: Rect[]): PostRouted {
   const nudged = capBends(simplifyRoutes(
     avoidBands(unhugRoutes(nudgeRoutes(simplifyRoutes(fanPorts(snapApexes(routes, ir.nodes), ir.nodes), ir.nodes), ir.nodes), ir.nodes), titleBands, ir.nodes),
     ir.nodes), ir.nodes);

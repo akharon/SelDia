@@ -44,9 +44,9 @@ import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
-import { layoutScore, totalEdgeLength } from './layout/metrics.js';
+import { fullScore, lexLess, swapNeighbours } from './layout/refine.js';
 import { layoutWithDagre, layoutWithElkSync, type AutoLayoutResult } from './layout/engines.js';
-import { routeEdgePolyline, manualEdgeRoute, centerOf, computeFans, type Fan } from './render/edge-routing.js';
+import { routeEdgePolyline, routeAllEdges, manualEdgeRoute, centerOf, computeFans, type Fan } from './render/edge-routing.js';
 import { iconLabelLayout, balancedWrap, shapeTextBox } from './render/node-label-geometry.js';
 import { chipRect, EDGE_LABEL_FONT, computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
 import { textWidth } from './layout/text-measure.js';
@@ -397,22 +397,37 @@ class SelDiAEngine implements CoreEngine {
     return layoutWithDagre(ir, opts);
   }
 
-  /** `auto`: lay out with dagre and with ELK, keep the one whose measured
-   *  layout scores lower (gated defects, then crossings, then bends, then edge
-   *  length). Ties and ELK failures go to dagre, so existing diagrams stay
-   *  stable. Big diagrams (> `autoMaxNodes` nodes or `autoMaxEdges` edges) skip the comparison. */
+  /** `auto`: lay out with a few dagre and ELK variants, keep the one whose
+   *  measured layout scores lowest (gated defects, crossings, bends, rank-skip
+   *  penalty, routed length). Ties go to the earlier variant (dagre default
+   *  first), so existing diagrams stay stable. Small diagrams try four variants
+   *  and then a neighbour-swap pass; medium ones (<= `autoMaxNodes` nodes and
+   *  `autoMaxEdges` edges) one dagre and one ELK; larger ones use ELK alone
+   *  (dagre's ordering is superlinear on dense graphs). */
   private autoPick(ir: DiagramIR, opts: ReturnType<SelDiAEngine['resolvedLayoutOptions']>): AutoLayoutResult {
-    const dagreRes = layoutWithDagre(ir, opts);
-    if (ir.nodes.length > this.config.autoMaxNodes || ir.edges.length > this.config.autoMaxEdges || ir.edges.length < 2) return dagreRes;
-    let elkRes: AutoLayoutResult;
-    try { elkRes = layoutWithElkSync(ir, opts); } catch { return dagreRes; }
-    const score = (r: AutoLayoutResult) => {
-      const d = { ...ir, nodes: r.nodes, edges: r.edges, groups: [] };
-      return [...layoutScore(d), totalEdgeLength(d)];
-    };
-    const a = score(dagreRes), b = score(elkRes);
-    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return b[i] < a[i] ? elkRes : dagreRes;
-    return dagreRes;
+    const c = this.config;
+    if (ir.edges.length < 2) return layoutWithDagre(ir, opts);
+    const big = ir.nodes.length > c.autoMaxNodes || ir.edges.length > c.autoMaxEdges;
+    if (big) {
+      try { return layoutWithElkSync(ir, { ...opts, elkThoroughness: 3 }); } catch { return layoutWithDagre(ir, opts); }
+    }
+    const small = ir.nodes.length <= c.autoVariantMaxNodes && ir.edges.length <= c.autoVariantMaxEdges;
+    const runs: Array<() => AutoLayoutResult> = [() => layoutWithDagre(ir, opts)];
+    if (small) runs.push(() => layoutWithDagre(ir, { ...opts, ranker: 'longest-path' }));
+    runs.push(() => layoutWithElkSync(ir, opts));
+    if (small) runs.push(() => layoutWithElkSync(ir, { ...opts, elkPlacement: 'NETWORK_SIMPLEX' }));
+    const vertical = opts.direction === Direction.TOP_TO_BOTTOM || opts.direction === Direction.BOTTOM_TO_TOP;
+    const score = (r: AutoLayoutResult) => fullScore({ ...ir, nodes: r.nodes, edges: r.edges, groups: [] }, vertical);
+    let best: AutoLayoutResult | undefined, bestScore: number[] = [];
+    for (const run of runs) {
+      let r: AutoLayoutResult;
+      try { r = run(); } catch { continue; }
+      const sc = score(r);
+      if (!best || lexLess(sc, bestScore)) { best = r; bestScore = sc; }
+    }
+    if (!best) return layoutWithDagre(ir, opts);
+    if (small && !ir.groups?.length) best = swapNeighbours(ir, best, vertical);
+    return best;
   }
 
   async layoutAsync(ir: DiagramIR): Promise<Result<LayoutResult>> {
@@ -808,12 +823,7 @@ class SelDiAEngine implements CoreEngine {
       // detours), so placing labels against the raw layout waypoints strands
       // them far from the visible line. Route once here and reuse.
       const allNodes = [...nodeById.values()];
-      const routedWps = new Map<string, Point[]>();
-      for (const e of edges) {
-        const raw = e.waypoints || [];
-        if (raw.length < 2) continue;
-        routedWps.set(e.id, this.routedWaypoints(e, raw, nodeById.get(e.sourceId), nodeById.get(e.targetId), fans.get(e.id), allNodes));
-      }
+      const routedWps = routeAllEdges(edges, allNodes);
       // Nudge parallel runs apart and plan line jumps on the SAME polylines the
       // labels are placed against and the paths are drawn from. Schematic and
       // layout-owned geometry (sequence lifelines, circuits, PCBs, git lanes)

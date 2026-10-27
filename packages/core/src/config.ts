@@ -42,6 +42,12 @@ export interface SelDiAConfig {
   /** `auto` engine only: diagrams with more edges than this also skip the comparison. */
   autoMaxEdges: number;
 
+  /** `auto` engine only: diagrams up to this many nodes / edges try four layout
+   *  variants (two dagre rankers, two ELK placements) and the neighbour-swap pass;
+   *  larger ones (up to the caps above) try one dagre and one ELK layout. */
+  autoVariantMaxNodes: number;
+  autoVariantMaxEdges: number;
+
   /** Rendering options */
   render: RenderConfig;
 
@@ -199,6 +205,8 @@ export const DEFAULT_CONFIG: SelDiAConfig = {
   elkWhenGrouped: true,
   autoMaxNodes: 60,
   autoMaxEdges: 120,
+  autoVariantMaxNodes: 30,
+  autoVariantMaxEdges: 60,
   layoutEngineByType: {
     flowchart: 'auto', class: 'elk', er: 'dagre', state: 'elk', usecase: 'dagre', activity: 'dagre',
     component: 'elk', deployment: 'dagre', 'c4-context': 'dagre', 'c4-container': 'dagre',

@@ -666,7 +666,7 @@ diagram class "CoreEngine Classes - Plugin management" {
 
 | Diagram Type | Layout Algorithm |
 |-------------|-----------------|
-| Flowchart | `auto`: dagre and ELK both laid out, the lower-scoring one kept; ELK when grouped (`elkWhenGrouped`) |
+| Flowchart | `auto`: several dagre/ELK layouts, the lowest-scoring one kept (gated defects, then `crossings * DS.crossingBendWeight + bends` with weight 8, then rank-skip penalty, then routed length; an edge over `DS.maxBendsPerEdge` is a hard reject); ELK when grouped (`elkWhenGrouped`) |
 | Activity, BPMN, DMN | Dagre (hierarchical); ELK when grouped (`elkWhenGrouped`) |
 | Class, State, Component, Network, Block, Work items | ELK.js (layered) |
 | ER, Use Case, Deployment, Cloud, Form, Wireframe | Dagre; ELK when grouped |

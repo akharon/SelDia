@@ -44,7 +44,7 @@ import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
-import { fullScore, lexLess, swapNeighbours } from './layout/refine.js';
+import { fullScore, lexLess, swapNeighbours, sweepOrder } from './layout/refine.js';
 import { layoutWithDagre, layoutWithElkSync, type AutoLayoutResult } from './layout/engines.js';
 import { routeEdgePolyline, routeAllEdges, manualEdgeRoute, centerOf, computeFans, type Fan } from './render/edge-routing.js';
 import { iconLabelLayout, balancedWrap, shapeTextBox } from './render/node-label-geometry.js';
@@ -415,18 +415,35 @@ class SelDiAEngine implements CoreEngine {
     const runs: Array<() => AutoLayoutResult> = [() => layoutWithDagre(ir, opts)];
     if (small) runs.push(() => layoutWithDagre(ir, { ...opts, ranker: 'longest-path' }));
     runs.push(() => layoutWithElkSync(ir, opts));
+    // Cost grows with edges (each variant is routed and measured, and so is each swap
+    // try): dense small graphs skip the extra variants and get a smaller swap budget.
+    const sparse = ir.edges.length <= 36;
     if (small) runs.push(() => layoutWithElkSync(ir, { ...opts, elkPlacement: 'NETWORK_SIMPLEX' }));
+    if (small && sparse) {
+      runs.push(() => layoutWithDagre(ir, { ...opts, ranker: 'tight-tree' }));
+      runs.push(() => layoutWithElkSync(ir, { ...opts, elkExtra: { 'elk.layered.considerModelOrder.strategy': 'NONE', 'elk.layered.layering.strategy': 'LONGEST_PATH_SOURCE' } }));
+      if (ir.nodes.length <= 16) runs.push(() => layoutWithElkSync(ir, { ...opts, elkThoroughness: 20, elkExtra: { 'elk.layered.considerModelOrder.strategy': 'NONE', 'elk.layered.crossingMinimization.semiInteractive': 'true' } }));
+    }
     const vertical = opts.direction === Direction.TOP_TO_BOTTOM || opts.direction === Direction.BOTTOM_TO_TOP;
     const score = (r: AutoLayoutResult) => fullScore({ ...ir, nodes: r.nodes, edges: r.edges, groups: [] }, vertical);
-    let best: AutoLayoutResult | undefined, bestScore: number[] = [];
+    const cands: Array<{ r: AutoLayoutResult; sc: number[] }> = [];
     for (const run of runs) {
       let r: AutoLayoutResult;
       try { r = run(); } catch { continue; }
-      const sc = score(r);
+      cands.push({ r, sc: score(r) });
+    }
+    if (!cands.length) return layoutWithDagre(ir, opts);
+    const refine = (r: AutoLayoutResult) => (small && !ir.groups?.length ? swapNeighbours(ir, sweepOrder(ir, r, vertical), vertical, Math.min(60, Math.floor(900 / ir.edges.length))) : r);
+    // Stable sort: ties keep the earlier variant.
+    const ranked = cands.map((x, i) => ({ ...x, i }))
+      .sort((a, b) => (lexLess(a.sc, b.sc) ? -1 : lexLess(b.sc, a.sc) ? 1 : a.i - b.i));
+    let best: AutoLayoutResult | undefined, bestScore: number[] = [];
+    for (const x of ranked.slice(0, small && ir.nodes.length <= 16 && ir.edges.length <= 24 ? 3 : 1)) {
+      const r = refine(x.r);
+      const sc = r === x.r ? x.sc : score(r);
       if (!best || lexLess(sc, bestScore)) { best = r; bestScore = sc; }
     }
-    if (!best) return layoutWithDagre(ir, opts);
-    if (small && !ir.groups?.length) best = swapNeighbours(ir, best, vertical);
+    if (!best) best = cands[0].r;
     return best;
   }
 

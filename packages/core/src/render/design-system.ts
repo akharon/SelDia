@@ -137,6 +137,8 @@ export const DS = {
   portStub: 12,
   /** Bends per edge above which postRoute retries a simpler L / Z route; metrics count the excess. */
   maxBendsPerEdge: 4,
+  /** `auto` layout score: one crossing costs this many bends (crossings * weight + bends). */
+  crossingBendWeight: 8,
 
   /** Corner radius for rectangular nodes (px). */
   radius: 7,

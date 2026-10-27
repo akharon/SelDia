@@ -669,12 +669,13 @@ export function lowContrastText(svg: string): number {
 /** Lexicographic score for comparing two layouts of the same diagram (lower is
  *  better): every gated defect count summed first, then crossings, bends and
  *  total edge length. Used by the `auto` layout engine. */
-export function layoutScore(ir: DiagramIR): [number, number, number] {
+export function layoutScore(ir: DiagramIR): [number, number] {
   const m = measureLayout(ir);
+  // An edge over DS.maxBendsPerEdge counts as a gated defect (hard reject).
   const defects = m.edgeOverlaps + m.borderHugs + m.nodeLabelHits + m.edgeNodeHits + m.labelOverlaps + m.labelDetached
     + m.labelOnArrowhead + m.labelEdgeHits + m.groupTitleHits + m.nodeTextOverflow + m.groupViolations
-    + (m.parallelRunLength > 0 ? 1 : 0);
-  return [defects, m.crossings, m.bends];
+    + (m.parallelRunLength > 0 ? 1 : 0) + (m.excessBends > 0 ? 1 : 0);
+  return [defects, m.crossings * DS.crossingBendWeight + m.bends];
 }
 
 /** Total polyline length of the routed edges (final tie-break of the `auto` engine). */

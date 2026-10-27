@@ -32,6 +32,8 @@ export interface AutoLayoutOptions {
   elkPlacement?: string;
   /** ELK crossing-minimisation effort (default 10); large `auto` graphs lower it. */
   elkThoroughness?: number;
+  /** `auto` variants: extra ELK layout options merged over the defaults. */
+  elkExtra?: Record<string, string>;
 }
 
 export interface AutoLayoutResult {
@@ -343,6 +345,7 @@ export function layoutWithElkSync(ir: DiagramIR, opts: AutoLayoutOptions): AutoL
   // content off the border).
   const rootOpts = elkGraphOptions(opts);
   if (opts.elkThoroughness) rootOpts['elk.layered.thoroughness'] = String(opts.elkThoroughness);
+  if (opts.elkExtra) Object.assign(rootOpts, opts.elkExtra);
   if (opts.elkPlacement) rootOpts['elk.layered.nodePlacement.strategy'] = opts.elkPlacement;
   if (tree && tree.ordered.length) rootOpts['elk.layered.spacing.nodeNodeBetweenLayers'] = String(Math.round(opts.rankSpacing * 0.6));
   const root: any = { id: '__root__', layoutOptions: rootOpts, children: [] as any[], edges: [] as any[] };

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createEngine } from '../src/engine.js';
-import { nudgeRoutes, findJumps, edgePathD, postRoute, avoidBands, unhugRoutes, groupTitleBands, POST_ROUTE_TYPES } from '../src/render/edge-layer.js';
+import { nudgeRoutes, findJumps, edgePathD, postRoute, avoidBands, unhugRoutes, groupTitleBands, POST_ROUTE_TYPES, fanPorts, simplifyRoutes, capBends } from '../src/render/edge-layer.js';
 import { applyPortStubs, snapApexEnd } from '../src/render/edge-routing.js';
 import type { Point } from '../src/types/common.js';
 
@@ -181,5 +181,117 @@ describe('unhugRoutes (S4)', () => {
     const hug = [P(20, 0), P(20, 50), P(203, 50), P(203, 200), P(300, 200)];
     const out = postRoute({ nodes: [n] }, new Map([['e', hug]])).routes.get('e')!;
     expect(out.some((q) => q.x === 203)).toBe(false);
+  });
+});
+
+const box = (id: string, x: number, y: number, w = 100, h = 50): any => ({ id, position: P(x, y), size: { width: w, height: h }, shape: 'rectangle', type: 'default' });
+
+describe('fanPorts order (router-induced crossings)', () => {
+  it('puts the edge that turns left on the left port and the one that turns right on the right', () => {
+    const n = box('n', 100, 0);
+    // Both leave the bottom at x=150 (id order would put 'a' first, which here is the right-turner).
+    const a = [P(150, 50), P(150, 80), P(300, 80), P(300, 200)];
+    const b = [P(150, 50), P(150, 100), P(20, 100), P(20, 200)];
+    const out = fanPorts(new Map([['a', a], ['b', b]]), [n]);
+    expect(out.get('b')![0].x).toBeLessThan(out.get('a')![0].x);
+  });
+  it('among left turners the earlier turn takes the left port, so the later horizontal clears it', () => {
+    const n = box('n', 100, 0);
+    const near = [P(150, 50), P(150, 90), P(40, 90), P(40, 200)];
+    const far = [P(150, 50), P(150, 160), P(10, 160), P(10, 260)];
+    const out = fanPorts(new Map([['a-far', far], ['b-near', near]]), [n]);
+    expect(out.get('b-near')![0].x).toBeLessThan(out.get('a-far')![0].x);
+  });
+  it('is deterministic whatever the insertion order', () => {
+    const n = box('n', 100, 0);
+    const r1 = [P(150, 50), P(150, 80), P(300, 80), P(300, 200)], r2 = [P(150, 50), P(150, 100), P(20, 100), P(20, 200)], r3 = [P(150, 50), P(150, 200)];
+    const x = fanPorts(new Map([['a', r1], ['b', r2], ['c', r3]]), [n]);
+    const y = fanPorts(new Map([['c', r3], ['b', r2], ['a', r1]]), [n]);
+    for (const id of ['a', 'b', 'c']) expect(x.get(id)).toEqual(y.get(id));
+  });
+});
+
+describe('nudge channel order', () => {
+  // Both runs share x=100, y 0..100. 'a' bends right at both ends, 'b' bends left.
+  const a = [P(200, 0), P(100, 0), P(100, 100), P(200, 100)];
+  const b = [P(0, 0), P(100, 0), P(100, 100), P(0, 100)];
+  it('puts the left-bending run on the left track whatever the ids sort to', () => {
+    const out = nudgeRoutes(new Map([['a', a], ['b', b]]));
+    expect(out.get('b')![1].x).toBeLessThan(out.get('a')![1].x);
+    expect(findJumps(out).size).toBe(0);
+  });
+  it('gives the same tracks when the ids swap', () => {
+    const out = nudgeRoutes(new Map([['z', b], ['y', a]]));
+    expect(out.get('z')![1].x).toBeLessThan(out.get('y')![1].x);
+  });
+});
+
+describe('simplifyRoutes', () => {
+  it('drops collinear and duplicate points', () => {
+    const r = [P(0, 0), P(0, 20), P(0, 50), P(0, 50), P(80, 50), P(80, 90)];
+    expect(simplifyRoutes(new Map([['e', r]])).get('e')).toEqual([P(0, 0), P(0, 50), P(80, 50), P(80, 90)]);
+  });
+  it('straightens a small Z-jog, leaving both ports where they were', () => {
+    const r = [P(0, 0), P(0, 50), P(100, 50), P(100, 56), P(200, 56), P(200, 100)];
+    const out = simplifyRoutes(new Map([['e', r]])).get('e')!;
+    expect(out).toHaveLength(4);
+    expect(out[0]).toEqual(r[0]);
+    expect(out.at(-1)).toEqual(r.at(-1));
+  });
+  it('keeps a long detour jog', () => {
+    const r = [P(0, 0), P(0, 50), P(100, 50), P(100, 150), P(200, 150), P(200, 200)];
+    expect(simplifyRoutes(new Map([['e', r]])).get('e')).toEqual(r);
+  });
+  it('keeps the jog when removing it would cut into a node', () => {
+    const r = [P(0, 0), P(0, 50), P(100, 50), P(100, 56), P(200, 56), P(200, 100)];
+    const nodes = [box('n1', 120, 40, 60, 12), box('n2', 20, 54, 60, 8)];
+    expect(simplifyRoutes(new Map([['e', r]]), nodes).get('e')).toEqual(r);
+  });
+  it('keeps the jog when removing it would add a crossing', () => {
+    const r = [P(0, 0), P(0, 50), P(100, 50), P(100, 56), P(200, 56), P(200, 100)];
+    const wall = [P(20, 53), P(20, 60)]; // vertical wall crossed only by the y=56 line
+    const out = simplifyRoutes(new Map([['e', r], ['w', wall]])).get('e')!;
+    expect(out.length === 6 || out.every((p) => p.y !== 56 || p.x > 20)).toBe(true);
+  });
+});
+
+describe('capBends', () => {
+  const sixBends = [P(100, 0), P(100, 20), P(40, 20), P(40, 40), P(160, 40), P(160, 60), P(100, 60), P(100, 100)];
+  it('retries a route over the cap as a simpler one with the same ports', () => {
+    const out = capBends(new Map([['e', sixBends]]), [], 4).get('e')!;
+    expect(out.length - 2).toBeLessThan(sixBends.length - 2);
+    expect(out[0]).toEqual(sixBends[0]);
+    expect(out.at(-1)).toEqual(sixBends.at(-1));
+  });
+  it('leaves routes within the cap alone', () => {
+    const r = [P(0, 0), P(0, 50), P(80, 50), P(80, 90)];
+    expect(capBends(new Map([['e', r]]), [], 4).get('e')).toBe(r);
+  });
+  it('refuses a retry that would hit a node', () => {
+    const nodes = [box('n', 90, 25, 20, 10)]; // misses the six-bend route, sits on the direct line
+    expect(capBends(new Map([['e', sixBends]]), nodes, 4).get('e')).toBe(sixBends);
+  });
+});
+
+describe('postRoute determinism', () => {
+  it('returns identical routes on repeated runs', () => {
+    const n1 = box('n1', 100, 0), n2 = box('n2', 100, 300);
+    const routes = () => new Map<string, Point[]>([
+      ['a', [P(150, 50), P(150, 80), P(300, 80), P(300, 330), P(200, 330)]],
+      ['b', [P(150, 50), P(150, 100), P(20, 100), P(20, 330), P(100, 330)]],
+    ]);
+    const r1 = postRoute({ nodes: [n1, n2] }, routes()), r2 = postRoute({ nodes: [n1, n2] }, routes());
+    expect([...r1.routes]).toEqual([...r2.routes]);
+  });
+});
+
+describe('capBends end stubs', () => {
+  it('never leaves a first or last leg shorter than the minimum stub', () => {
+    // Direct Z between the ports would leave a 4px final leg: rejected.
+    const r = [P(100, 0), P(100, 20), P(40, 20), P(40, 40), P(160, 40), P(160, 60), P(100, 60), P(100, 64)];
+    const out = capBends(new Map([['e', r]]), [], 4).get('e')!;
+    const a = out[0], b = out[1], y = out[out.length - 2], z = out[out.length - 1];
+    expect(Math.abs(a.x - b.x) + Math.abs(a.y - b.y)).toBeGreaterThanOrEqual(8);
+    expect(Math.abs(y.x - z.x) + Math.abs(y.y - z.y)).toBeGreaterThanOrEqual(8);
   });
 });

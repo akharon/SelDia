@@ -57,7 +57,12 @@ const isV = (a: Point, b: Point) => Math.abs(a.x - b.x) < TOL && Math.abs(a.y - 
 
 // ── Nudge ───────────────────────────────────────────────────────────────────
 
-interface Run { id: string; seg: number; coord: number; lo: number; hi: number; }
+interface Run {
+  id: string; seg: number; coord: number; lo: number; hi: number;
+  /** Side (-1 toward smaller perpendicular coordinate, +1 larger, 0 none) the route
+   *  leaves this run on at its lo end and at its hi end. */
+  loDir: number; hiDir: number;
+}
 
 function collectRuns(routes: Routes, horizontal: boolean): Run[] {
   const runs: Run[] = [];
@@ -66,9 +71,13 @@ function collectRuns(routes: Routes, horizontal: boolean): Run[] {
     for (let i = 1; i < pts.length - 2; i++) {
       const a = pts[i], b = pts[i + 1];
       if (horizontal ? !isH(a, b) : !isV(a, b)) continue;
+      const prev = pts[i - 1], next = pts[i + 2];
+      const perp = (p: Point) => { const d = horizontal ? p.y - a.y : p.x - a.x; return Math.abs(d) < TOL ? 0 : Math.sign(d); };
+      const aIsLo = horizontal ? a.x < b.x : a.y < b.y;
+      const loDir = perp(aIsLo ? prev : next), hiDir = perp(aIsLo ? next : prev);
       runs.push(horizontal
-        ? { id, seg: i, coord: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) }
-        : { id, seg: i, coord: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) });
+        ? { id, seg: i, coord: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x), loDir, hiDir }
+        : { id, seg: i, coord: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y), loDir, hiDir });
     }
   }
   return runs;
@@ -97,6 +106,32 @@ function sameDirections(before: Point[], after: Point[]): boolean {
     if (Math.abs(dy0) >= TOL && dy0 * dy1 < 1) return false;
   }
   return true;
+}
+
+/** Crossings forced when edge X's runs take the lower track and Y's the higher
+ *  one: a connector of X leaving toward higher tracks (or of Y toward lower)
+ *  strictly inside the other's span must cut across it. */
+function channelCost(xs: Run[], ys: Run[]): number {
+  let c = 0;
+  const hit = (r: Run, other: Run, dir: number, at: number, want: number) =>
+    dir === want && at >= other.lo - 0.5 && at <= other.hi + 0.5 ? 1 : 0;
+  for (const x of xs) for (const y of ys) {
+    c += hit(x, y, x.loDir, x.lo, 1) + hit(x, y, x.hiDir, x.hi, 1);
+    c += hit(y, x, y.loDir, y.lo, -1) + hit(y, x, y.hiDir, y.hi, -1);
+  }
+  return c;
+}
+
+/** Track order for the edges sharing one channel (lowest track first): the
+ *  classic rule for parallel orthogonal segments, comparing each pair by the
+ *  crossings their next / previous bend directions would force. Ties fall back
+ *  to the sorted id order, so the result is deterministic. */
+function orderChannel(ids: string[], comp: Run[], keyOf: (id: string) => string): string[] {
+  const runsOf = new Map(ids.map((k) => [k, comp.filter((r) => keyOf(r.id) === k)]));
+  return [...ids].sort((a, b) => {
+    const d = channelCost(runsOf.get(a)!, runsOf.get(b)!) - channelCost(runsOf.get(b)!, runsOf.get(a)!);
+    return d || (a < b ? -1 : a > b ? 1 : 0);
+  });
 }
 
 /** Separate collinear overlapping runs of different edges onto parallel
@@ -144,7 +179,7 @@ export function nudgeRoutes(routes: Routes, nodes: IRNode[] = [], nets?: Map<str
           fixedKeys.forEach((k) => offs.set(k, 0));
           const free = tracks.filter((t) => t !== 0 || fixedKeys.length === 0);
           ids.filter((k) => !offs.has(k)).forEach((k, n) => offs.set(k, free[n] ?? 0));
-        } else ids.forEach((k, n) => offs.set(k, (n - (ids.length - 1) / 2) * step));
+        } else orderChannel(ids, comp, keyOf).forEach((k, n) => offs.set(k, (n - (ids.length - 1) / 2) * step));
         for (const r of comp) {
           if (pinned(r)) continue;
           const off = offs.get(keyOf(r.id))!;
@@ -354,10 +389,18 @@ export function avoidBands(routes: Routes, bands: Rect[], nodes: IRNode[] = []):
   return out;
 }
 
+/** Port-order search limits: beyond these the rule order is used as is. */
+const PERM_MAX_ROUTES = 150, PERM_MAX_WORK = 600;
+/** Above this many routes the O(routes) per-candidate clean-ups (Z-jog removal, bend cap) are skipped. */
+const CLEANUP_MAX_ROUTES = 200;
+
 // ── Port fanning ────────────────────────────────────────────────────────────
 
 type Side = 'T' | 'B' | 'L' | 'R';
-interface End { id: string; end: 0 | 1; node: IRNode; side: Side; key: number; key2: number; }
+/** `rank`: which way the route turns after the port stub (-1 toward the lower side
+ *  coordinate, 0 straight on, +1 higher); `len` the stub length; `key` the far
+ *  coordinate used to break ties. */
+interface End { id: string; end: 0 | 1; node: IRNode; side: Side; rank: number; len: number; key: number; }
 
 /** Spread route ends that share one side of a box-shaped node: k ends sit at
  *  (i+1)/(k+1) of the side, ordered by the coordinate they approach from, so
@@ -374,47 +417,30 @@ export function fanPorts(routes: Routes, nodes: IRNode[]): Routes {
     for (const end of [0, 1] as const) {
       const p = end ? pts[pts.length - 1] : pts[0], q = end ? pts[pts.length - 2] : pts[1];
       const far = end ? (pts[pts.length - 3] ?? pts[0]) : (pts[2] ?? pts[pts.length - 1]);
-      let node: IRNode | undefined, side: Side | undefined, key = 0, key2 = 0;
+      let node: IRNode | undefined, side: Side | undefined, key = 0, rank = 0, len = 0;
+      const other = end ? pts[0] : pts[pts.length - 1];
       if (isV(p, q)) {
         node = boxes.find((n) => p.x > n.position.x + 1 && p.x < n.position.x + n.size.width - 1
           && (Math.abs(p.y - n.position.y) < 5 || Math.abs(p.y - (n.position.y + n.size.height)) < 5));
-        if (node) { side = Math.abs(p.y - node.position.y) < 5 ? 'T' : 'B'; key = far.x; key2 = (far.x < p.x ? 1 : -1) * Math.abs(p.y - q.y); }
+        if (node) { side = Math.abs(p.y - node.position.y) < 5 ? 'T' : 'B'; len = Math.abs(p.y - q.y); const d = pts.length > 2 ? far.x - p.x : 0; rank = Math.abs(d) < TOL ? 0 : Math.sign(d); key = rank ? far.x : other.x; }
       } else if (isH(p, q)) {
         node = boxes.find((n) => p.y > n.position.y + 1 && p.y < n.position.y + n.size.height - 1
           && (Math.abs(p.x - n.position.x) < 5 || Math.abs(p.x - (n.position.x + n.size.width)) < 5));
-        if (node) { side = Math.abs(p.x - node.position.x) < 5 ? 'L' : 'R'; key = far.y; key2 = (far.y < p.y ? 1 : -1) * Math.abs(p.x - q.x); }
+        if (node) { side = Math.abs(p.x - node.position.x) < 5 ? 'L' : 'R'; len = Math.abs(p.x - q.x); const d = pts.length > 2 ? far.y - p.y : 0; rank = Math.abs(d) < TOL ? 0 : Math.sign(d); key = rank ? far.y : other.y; }
       }
-      if (node && side) ends.push({ id, end, node, side, key, key2 });
+      if (node && side) ends.push({ id, end, node, side, rank, len, key });
     }
   }
   const groups = new Map<string, End[]>();
   for (const e of ends) (groups.get(`${e.node.id}:${e.side}`) ?? groups.set(`${e.node.id}:${e.side}`, []).get(`${e.node.id}:${e.side}`)!).push(e);
 
   const next = new Map<string, Point[]>();
-  const get = (id: string) => next.get(id) ?? routes.get(id)!.map((p) => ({ ...p }));
-  for (const list of [...groups.values()].sort((a, b) => (a[0].node.id + a[0].side < b[0].node.id + b[0].side ? -1 : 1))) {
-    if (list.length < 2) continue;
-    list.sort((a, b) => (Math.abs(a.key - b.key) < 1 ? 0 : a.key - b.key) || a.key2 - b.key2 || (a.id < b.id ? -1 : a.id > b.id ? 1 : a.end - b.end));
-    const n = list[0].node, side = list[0].side, k = list.length;
-    list.forEach((e, i) => {
-      const t = (i + 1) / (k + 1);
-      const pts = get(e.id);
-      const last = e.end ? pts.length - 1 : 0, adj = e.end ? pts.length - 2 : 1;
-      if (side === 'T' || side === 'B') {
-        const x = n.position.x + t * n.size.width;
-        pts[last].x = x; pts[adj].x = x;
-      } else {
-        const y = n.position.y + t * n.size.height;
-        pts[last].y = y; pts[adj].y = y;
-      }
-      next.set(e.id, pts);
-    });
-  }
-  const out: Routes = new Map();
-  for (const [id, pts] of routes) {
-    let q = next.get(id);
-    if (!q) { out.set(id, pts); continue; }
-    // A straight two-point route whose ends no longer line up becomes a Z.
+  const baseCost = new Map<string, { hits: number; hug: number }>();
+  const get = (id: string) => (next.get(id) ?? routes.get(id)!).map((p) => ({ ...p }));
+  /** What a route becomes with moved ends `q`: a straight two-point route whose
+   *  ends no longer line up becomes a Z; a fold or a new node hit reverts it. */
+  const accept = (id: string, q: Point[]): Point[] => {
+    const pts = routes.get(id)!;
     if (q.length === 2 && (isV(pts[0], pts[1]) ? Math.abs(q[0].x - q[1].x) >= TOL : Math.abs(q[0].y - q[1].y) >= TOL)) {
       const vert = isV(pts[0], pts[1]);
       const m = vert ? (q[0].y + q[1].y) / 2 : (q[0].x + q[1].x) / 2;
@@ -422,7 +448,252 @@ export function fanPorts(routes: Routes, nodes: IRNode[]): Routes {
     }
     // Only the end segments move, so only they may differ from the original.
     const ok = q.length === pts.length ? sameDirections(pts, q) : true;
-    out.set(id, ok && nodeHits(q, nodes) <= nodeHits(pts, nodes) ? q : pts);
+    if (!ok) return pts;
+    let b = baseCost.get(id);
+    if (!b) baseCost.set(id, b = { hits: nodeHits(pts, nodes), hug: hugTotal(pts, nodes) });
+    return nodeHits(q, nodes) <= b.hits && hugTotal(q, nodes) <= b.hug ? q : pts;
+  };
+  const acceptCache = new Map<string, Point[]>();
+  const acceptC = (id: string, q: Point[]): Point[] => {
+    const key = id + '|' + q.map((p) => `${p.x},${p.y}`).join(';');
+    let r = acceptCache.get(key);
+    if (!r) acceptCache.set(key, r = accept(id, q));
+    return r;
+  };
+  const place = (list: End[]): Map<string, Point[]> => {
+    const n = list[0].node, side = list[0].side, k = list.length;
+    const m = new Map<string, Point[]>();
+    list.forEach((e, i) => {
+      const t = (i + 1) / (k + 1);
+      const pts = m.get(e.id) ?? get(e.id);
+      const last = e.end ? pts.length - 1 : 0, adj = e.end ? pts.length - 2 : 1;
+      if (side === 'T' || side === 'B') { const x = n.position.x + t * n.size.width; pts[last].x = x; pts[adj].x = x; }
+      else { const y = n.position.y + t * n.size.height; pts[last].y = y; pts[adj].y = y; }
+      m.set(e.id, pts);
+    });
+    return m;
+  };
+  const permutations = <T,>(xs: T[]): T[][] => (xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((r) => [x, ...r])));
+  for (const list of [...groups.values()].sort((a, b) => (a[0].node.id + a[0].side < b[0].node.id + b[0].side ? -1 : 1))) {
+    if (list.length < 2) continue;
+    // Turners toward the low side first (the earlier the turn, the lower the port),
+    // straight-on ends in the middle (by destination), high-side turners last
+    // (the later the turn, the lower the port): no two stubs then cross.
+    list.sort((a, b) => a.rank - b.rank
+      || (a.rank < 0 ? a.len - b.len : a.rank > 0 ? b.len - a.len : 0)
+      || (Math.abs(a.key - b.key) < 1 ? 0 : a.key - b.key)
+      || (a.id < b.id ? -1 : a.id > b.id ? 1 : a.end - b.end));
+    // The rule above is the first candidate; small groups also try every other
+    // order and keep the one with the fewest crossings / overlaps (first wins ties).
+    let best = place(list);
+    // Work cap: on big diagrams keep the rule order (the search is quadratic in routes).
+    if (list.length <= 5 && routes.size <= PERM_MAX_ROUTES && list.length * routes.size <= PERM_MAX_WORK) {
+      // Score only this group's own routes against the fixed others; the group's
+      // entries are swapped into `merged` and restored per candidate.
+      const merged: Routes = new Map(routes);
+      for (const [id, q] of next) merged.set(id, acceptC(id, q));
+      const saved = new Map([...new Set(list.map((e) => e.id))].map((id) => [id, merged.get(id)!]));
+      const cost = (m: Map<string, Point[]>) => {
+        for (const [id, q] of m) merged.set(id, acceptC(id, q));
+        let c = 0;
+        for (const id of m.keys()) c += conflicts(id, merged.get(id)!, merged) + (merged.get(id) === routes.get(id) ? 0.5 : 0);
+        for (const [id, pts] of saved) merged.set(id, pts);
+        return c;
+      };
+      let bestCost = cost(best);
+      for (const order of permutations(list)) {
+        if (bestCost === 0) break;
+        const m = place(order), c = cost(m);
+        if (c < bestCost) { best = m; bestCost = c; }
+      }
+    }
+    for (const [id, q] of best) next.set(id, q);
+  }
+  const out: Routes = new Map();
+  for (const [id, pts] of routes) {
+    const q = next.get(id);
+    out.set(id, q ? accept(id, q) : pts);
+  }
+  return out;
+}
+
+// ── Bend clean-up ───────────────────────────────────────────────────────────
+
+/** Proper right-angle crossings of `pts` with every other route, plus collinear
+ *  overlaps (> NUDGE_MIN_OVERLAP) with them. A candidate rewrite is accepted
+ *  only when this does not grow. */
+const bboxCache = new WeakMap<Point[], [number, number, number, number]>();
+function bboxOf(pts: Point[]): [number, number, number, number] {
+  let b = bboxCache.get(pts);
+  if (!b) {
+    b = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const p of pts) { if (p.x < b[0]) b[0] = p.x; if (p.y < b[1]) b[1] = p.y; if (p.x > b[2]) b[2] = p.x; if (p.y > b[3]) b[3] = p.y; }
+    bboxCache.set(pts, b);
+  }
+  return b;
+}
+function conflicts(id: string, pts: Point[], routes: Routes): number {
+  let n = 0;
+  const bb = bboxOf(pts);
+  for (const [oid, q] of routes) {
+    if (oid === id) continue;
+    // Boxes more than 1px apart cannot cross or overlap.
+    const ob = bboxOf(q);
+    if (ob[0] > bb[2] + 1 || ob[2] < bb[0] - 1 || ob[1] > bb[3] + 1 || ob[3] < bb[1] - 1) continue;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      for (let j = 0; j < q.length - 1; j++) {
+        const c = q[j], d = q[j + 1];
+        if (isH(a, b) && isV(c, d)) {
+          if (c.x > Math.min(a.x, b.x) + TOL && c.x < Math.max(a.x, b.x) - TOL && a.y > Math.min(c.y, d.y) + TOL && a.y < Math.max(c.y, d.y) - TOL) n++;
+        } else if (isV(a, b) && isH(c, d)) {
+          if (a.x > Math.min(c.x, d.x) + TOL && a.x < Math.max(c.x, d.x) - TOL && c.y > Math.min(a.y, b.y) + TOL && c.y < Math.max(a.y, b.y) - TOL) n++;
+        } else if (isH(a, b) && isH(c, d) && Math.abs(a.y - c.y) < 1) {
+          if (Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x)) - Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x)) > NUDGE_MIN_OVERLAP) n++;
+        } else if (isV(a, b) && isV(c, d) && Math.abs(a.x - c.x) < 1) {
+          if (Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y)) - Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y)) > NUDGE_MIN_OVERLAP) n++;
+        }
+      }
+    }
+  }
+  return n;
+}
+
+/** Cost tuple of a route for accept / reject comparisons. */
+function routeCost(id: string, pts: Point[], routes: Routes, nodes: IRNode[]) {
+  return { hits: nodeHits(pts, nodes), conf: conflicts(id, pts, routes), hug: hugTotal(pts, nodes) };
+}
+/** `routeCost(c)` no worse than `base`, with the cheap tests first and the O(routes)
+ *  conflict count last, so most rejected candidates never pay for it. Returns the cost or null. */
+function costIfNoWorse(id: string, c: Point[], base: ReturnType<typeof routeCost>, routes: Routes, nodes: IRNode[]) {
+  const hits = nodeHits(c, nodes); if (hits > base.hits) return null;
+  const hug = hugTotal(c, nodes); if (hug > base.hug) return null;
+  const conf = conflicts(id, c, routes); if (conf > base.conf) return null;
+  return { hits, conf, hug };
+}
+
+/** Drop duplicate and collinear same-direction points. */
+function dropCollinear(pts: Point[]): Point[] {
+  const out: Point[] = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = out[out.length - 1], b = pts[i], c = pts[i + 1];
+    if (Math.abs(a.x - b.x) < TOL && Math.abs(a.y - b.y) < TOL) continue;
+    const h = isH(a, b) && isH(b, c) && (b.x - a.x) * (c.x - b.x) > 0;
+    const v = isV(a, b) && isV(b, c) && (b.y - a.y) * (c.y - b.y) > 0;
+    if (h || v) continue;
+    out.push(b);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+/** Shortest segment a Z-jog removal may leave next to a port (px). */
+const MIN_STUB = 8;
+/** Longest Z-jog (px) simplifyRoutes will straighten. */
+const MAX_JOG = 2 * DS.portStub;
+
+/** Candidate rewrites of the first removable Z-jog: points p0 p1 p2 p3 with p0p1
+ *  and p2p3 parallel and p1p2 the jog. Either p0 slides onto p3's line or p3 onto
+ *  p0's; the end segments (ports) never move. */
+function zJogCandidates(pts: Point[]): Point[][] {
+  const out: Point[][] = [];
+  for (let i = 0; i + 3 < pts.length; i++) {
+    const [p0, p1, p2, p3] = [pts[i], pts[i + 1], pts[i + 2], pts[i + 3]];
+    const hz = isH(p0, p1) && isV(p1, p2) && isH(p2, p3);
+    const vz = isV(p0, p1) && isH(p1, p2) && isV(p2, p3);
+    if (!hz && !vz) continue;
+    // A long jog is a deliberate detour (round a group, a node): only small ones go.
+    if (Math.hypot(p2.x - p1.x, p2.y - p1.y) > MAX_JOG) continue;
+    // A: p0 (interior) moves onto p3's line; B: p3 (interior) moves onto p0's line.
+    if (i >= 1) {
+      const pp = pts[i - 1];
+      const np0 = hz ? { x: p0.x, y: p2.y } : { x: p2.x, y: p0.y };
+      const len = hz ? Math.abs(np0.y - pp.y) : Math.abs(np0.x - pp.x);
+      const same = hz ? (np0.y - pp.y) * (p0.y - pp.y) > 0 : (np0.x - pp.x) * (p0.x - pp.x) > 0;
+      if (same && len >= MIN_STUB) out.push([...pts.slice(0, i), np0, ...pts.slice(i + 3)]);
+    }
+    if (i + 4 < pts.length) {
+      const nn = pts[i + 4];
+      const np3 = hz ? { x: p3.x, y: p0.y } : { x: p0.x, y: p3.y };
+      const len = hz ? Math.abs(np3.y - nn.y) : Math.abs(np3.x - nn.x);
+      const same = hz ? (np3.y - nn.y) * (p3.y - nn.y) > 0 : (np3.x - nn.x) * (p3.x - nn.x) > 0;
+      if (same && len >= MIN_STUB) out.push([...pts.slice(0, i + 1), np3, ...pts.slice(i + 4)]);
+    }
+  }
+  return out;
+}
+
+/** Remove redundant bends: collinear points, and Z-jogs whose removal adds no
+ *  node hit, crossing, overlap or border hug. Never touches a port. */
+export function simplifyRoutes(routes: Routes, nodes: IRNode[] = []): Routes {
+  const out: Routes = new Map(routes);
+  for (const id of [...routes.keys()].sort()) {
+    let cur = dropCollinear(out.get(id)!);
+    for (let pass = 0; pass < 8 && routes.size <= CLEANUP_MAX_ROUTES; pass++) {
+      const cands = zJogCandidates(cur);
+      if (!cands.length) break;
+      const base = routeCost(id, cur, out, nodes);
+      let best: Point[] | null = null;
+      for (const cand of cands) {
+        const c = dropCollinear(cand);
+        if (c.length >= cur.length || !costIfNoWorse(id, c, base, out, nodes)) continue;
+        if (!best || c.length < best.length) best = c;
+      }
+      if (!best) break;
+      cur = best;
+    }
+    out.set(id, cur);
+  }
+  return out;
+}
+
+/** Simple L / Z reroutes between a route's own two ports, first leg and last leg
+ *  keeping their orientation and direction. */
+function simplerCandidates(pts: Point[]): Point[][] {
+  const p0 = pts[0], p1 = pts[1], pn = pts[pts.length - 1], pm = pts[pts.length - 2];
+  const v0 = isV(p0, p1), vn = isV(pm, pn);
+  if (!v0 && !isH(p0, p1)) return [];
+  if (!vn && !isH(pm, pn)) return [];
+  const out: Point[][] = [];
+  if (v0 !== vn) out.push(v0 ? [p0, { x: p0.x, y: pn.y }, pn] : [p0, { x: pn.x, y: p0.y }, pn]);
+  else {
+    const coords = new Set<number>([v0 ? (p0.y + pn.y) / 2 : (p0.x + pn.x) / 2]);
+    for (const q of pts.slice(1, -1)) coords.add(v0 ? q.y : q.x);
+    for (const m of [...coords].sort((a, b) => a - b)) {
+      out.push(v0 ? [p0, { x: p0.x, y: m }, { x: pn.x, y: m }, pn] : [p0, { x: m, y: p0.y }, { x: m, y: pn.y }, pn]);
+    }
+  }
+  const firstDir = v0 ? Math.sign(p1.y - p0.y) : Math.sign(p1.x - p0.x);
+  const lastDir = vn ? Math.sign(pn.y - pm.y) : Math.sign(pn.x - pm.x);
+  return dropCollinearAll(out).filter((c) => {
+    if (c.length < 2 || segLen(c[0], c[1]) < MIN_STUB || segLen(c[c.length - 2], c[c.length - 1]) < MIN_STUB) return false;
+    const f = v0 ? Math.sign(c[1].y - c[0].y) : Math.sign(c[1].x - c[0].x);
+    const a = c[c.length - 2], b = c[c.length - 1];
+    const l = vn ? Math.sign(b.y - a.y) : Math.sign(b.x - a.x);
+    return f === firstDir && l === lastDir && c.length >= 2;
+  });
+}
+const segLen = (a: Point, b: Point) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+const dropCollinearAll = (cs: Point[][]) => cs.map(dropCollinear);
+
+/** A route with more than `maxBends` bends is retried as the simplest L or Z
+ *  between its ports, when that adds no node hit, crossing, overlap or hug. */
+export function capBends(routes: Routes, nodes: IRNode[] = [], maxBends: number = DS.maxBendsPerEdge): Routes {
+  const out: Routes = new Map(routes);
+  if (routes.size > CLEANUP_MAX_ROUTES) return out;
+  for (const id of [...routes.keys()].sort()) {
+    const cur = out.get(id)!;
+    if (cur.length - 2 <= maxBends) continue;
+    const base = routeCost(id, cur, out, nodes);
+    let best: Point[] | null = null, bestKey: number[] = [];
+    for (const c of simplerCandidates(cur)) {
+      if (c.length >= cur.length) continue;
+      const k = costIfNoWorse(id, c, base, out, nodes);
+      if (!k) continue;
+      const key = [c.length, k.hits + k.conf, c.reduce((t, p, i) => (i ? t + Math.abs(p.x - c[i - 1].x) + Math.abs(p.y - c[i - 1].y) : 0), 0)];
+      if (!best || key[0] < bestKey[0] || (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))) { best = c; bestKey = key; }
+    }
+    if (best) out.set(id, best);
   }
   return out;
 }
@@ -430,7 +701,9 @@ export function fanPorts(routes: Routes, nodes: IRNode[]): Routes {
 /** Nudge, then jumps — the single entry point the engine and the metrics
  *  harness share. `jumps` is empty when `jumpsEnabled` is false (sketch edges). */
 export function postRoute(ir: Pick<DiagramIR, 'nodes'>, routes: Routes, jumpsEnabled = true, titleBands: Rect[] = []): PostRouted {
-  const nudged = avoidBands(unhugRoutes(nudgeRoutes(fanPorts(snapApexes(routes, ir.nodes), ir.nodes), ir.nodes), ir.nodes), titleBands, ir.nodes);
+  const nudged = capBends(simplifyRoutes(
+    avoidBands(unhugRoutes(nudgeRoutes(simplifyRoutes(fanPorts(snapApexes(routes, ir.nodes), ir.nodes), ir.nodes), ir.nodes), ir.nodes), titleBands, ir.nodes),
+    ir.nodes), ir.nodes);
   return { routes: nudged, jumps: jumpsEnabled ? findJumps(nudged) : new Map() };
 }
 

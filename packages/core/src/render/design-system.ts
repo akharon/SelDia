@@ -135,6 +135,8 @@ export const DS = {
 
   /** Minimum straight stub before the first / after the last bend (px). */
   portStub: 12,
+  /** Bends per edge above which postRoute retries a simpler L / Z route; metrics count the excess. */
+  maxBendsPerEdge: 4,
 
   /** Corner radius for rectangular nodes (px). */
   radius: 7,

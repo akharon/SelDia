@@ -106,8 +106,10 @@ Set in `packages/core/src/config.ts` (`DEFAULT_CONFIG`), and overridable per eng
 
 | Key | Default | Purpose | Where |
 |-----|---------|---------|-------|
-| `layoutEngineByType` | `elk` for `class`, `state`, `component`, `network`, `block`, `workitem`; `dagre` for the rest | Per-type auto-layout engine. Consulted after a diagram's own `layout` line and before `defaultLayoutEngine`. Custom-layout types ignore it | `packages/core/src/config.ts` |
-| `elkWhenGrouped` | `true` | A diagram that would default to `dagre` and has a group with members uses `elk` instead. An explicit `layout` line still wins | `packages/core/src/config.ts` |
+| `layoutEngineByType` | `auto` for `flowchart`; `elk` for `class`, `state`, `component`, `network`, `block`, `workitem`; `dagre` for the rest | Per-type auto-layout engine. Consulted after a diagram's own `layout` line and before `defaultLayoutEngine`. Custom-layout types ignore it. Values: `dagre`, `elk`, `auto` (see `autoMaxNodes`) | `packages/core/src/config.ts` |
+| `elkWhenGrouped` | `true` | A diagram that would default to `dagre` and has a group with members uses `elk` instead. An explicit `layout` line still wins. Also governs `auto`: a grouped diagram is not compared, it goes to `elk` (or `dagre` when this is `false`) | `packages/core/src/config.ts` |
+| `autoMaxNodes` | `60` | `auto` engine only: a diagram with more nodes than this, or fewer than 2 edges, skips the dagre-vs-ELK comparison and uses dagre. Corpus cost of `auto` on flowcharts is about +1.2-1.4x total compile time (largest corpus flowchart is far below 60 nodes) | `packages/core/src/config.ts` |
+| `autoMaxEdges` | `120` | `auto` engine only: a diagram with more edges than this also skips the dagre-vs-ELK comparison and uses dagre (the comparison measures both layouts, which is superlinear in edge count) | `packages/core/src/config.ts` |
 | `edgeStyle` | `clean` | `clean` = rounded orthogonal edges with line jumps and hover highlight; `sketch` = hand-drawn rough edges | `packages/core/src/config.ts` |
 
 ## Build Profiles

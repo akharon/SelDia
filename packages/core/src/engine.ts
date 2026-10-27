@@ -44,6 +44,7 @@ import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
 import { BUILTIN_THEMES } from './themes.js';
+import { layoutScore, totalEdgeLength } from './layout/metrics.js';
 import { layoutWithDagre, layoutWithElkSync, type AutoLayoutResult } from './layout/engines.js';
 import { routeEdgePolyline, manualEdgeRoute, centerOf, computeFans, type Fan } from './render/edge-routing.js';
 import { iconLabelLayout, balancedWrap, shapeTextBox } from './render/node-label-geometry.js';
@@ -367,13 +368,17 @@ class SelDiAEngine implements CoreEngine {
 
   /** The engine an auto-laid-out diagram asks for: its own `layout …` line,
    *  then the per-type config map, then the global default. */
-  private requestedEngine(ir: DiagramIR): 'dagre' | 'elk' {
+  private requestedEngine(ir: DiagramIR): 'dagre' | 'elk' | 'auto' {
     const explicit = ir.metadata?.layoutEngine as string | undefined;
     const r = explicit
       || (this.config.defaultLayoutEngine === 'elk' ? 'elk' : undefined) // explicit global opt-in wins over the per-type map
       || this.config.layoutEngineByType?.[ir.type]
       || this.config.defaultLayoutEngine;
     if (r === 'elk') return 'elk';
+    // Grouped diagrams go to ELK under `auto` too (same rule as dagre below).
+    // Dagre's group clusters are never compared: grouped = elk, or dagre when elkWhenGrouped is off.
+    if (r === 'auto' && ir.groups?.some((g) => g.childNodeIds.length > 0)) return this.config.elkWhenGrouped && !explicit ? 'elk' : 'dagre';
+    if (r === 'auto') return 'auto';
     // Dagre here came only from the per-type default: grouped diagrams go to ELK
     // (dagre's compound clusters overlap; ELK keeps them apart).
     if (!explicit && this.config.elkWhenGrouped && ir.groups?.some((g) => g.childNodeIds.length > 0)) return 'elk';
@@ -383,11 +388,31 @@ class SelDiAEngine implements CoreEngine {
   /** Auto layout with the requested engine; ELK failure degrades to dagre. */
   private autoLayout(ir: DiagramIR): AutoLayoutResult {
     const opts = this.resolvedLayoutOptions(ir);
-    if (this.requestedEngine(ir) === 'elk') {
+    const requested = this.requestedEngine(ir);
+    if (requested === 'auto') return this.autoPick(ir, opts);
+    if (requested === 'elk') {
       try { return layoutWithElkSync(ir, opts); }
       catch { /* fall through to dagre */ }
     }
     return layoutWithDagre(ir, opts);
+  }
+
+  /** `auto`: lay out with dagre and with ELK, keep the one whose measured
+   *  layout scores lower (gated defects, then crossings, then bends, then edge
+   *  length). Ties and ELK failures go to dagre, so existing diagrams stay
+   *  stable. Big diagrams (> `autoMaxNodes` nodes or `autoMaxEdges` edges) skip the comparison. */
+  private autoPick(ir: DiagramIR, opts: ReturnType<SelDiAEngine['resolvedLayoutOptions']>): AutoLayoutResult {
+    const dagreRes = layoutWithDagre(ir, opts);
+    if (ir.nodes.length > this.config.autoMaxNodes || ir.edges.length > this.config.autoMaxEdges || ir.edges.length < 2) return dagreRes;
+    let elkRes: AutoLayoutResult;
+    try { elkRes = layoutWithElkSync(ir, opts); } catch { return dagreRes; }
+    const score = (r: AutoLayoutResult) => {
+      const d = { ...ir, nodes: r.nodes, edges: r.edges, groups: [] };
+      return [...layoutScore(d), totalEdgeLength(d)];
+    };
+    const a = score(dagreRes), b = score(elkRes);
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return b[i] < a[i] ? elkRes : dagreRes;
+    return dagreRes;
   }
 
   async layoutAsync(ir: DiagramIR): Promise<Result<LayoutResult>> {

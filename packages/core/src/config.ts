@@ -21,19 +21,26 @@ export interface SelDiAConfig {
    *  async-only, so it's honored by compile()/layoutAsync() but silently
    *  falls back to "dagre" in the synchronous compileSync()/layout() path.
    *  A diagram can override this per-file with `layout elk` / `layout dagre`. */
-  defaultLayoutEngine: 'dagre' | 'elk';
+  defaultLayoutEngine: 'dagre' | 'elk' | 'auto';
 
   /** Per-diagram-type auto-layout engine, consulted after a diagram's own
    *  `layout …` line and before `defaultLayoutEngine`. Every entry is "dagre"
    *  until a type is shown (layout metrics) to be no worse under "elk";
    *  override single types via `new SelDiAEngine({ config: { layoutEngineByType:
    *  { flowchart: 'elk' } } })`. Custom-layout types ignore it. */
-  layoutEngineByType: Record<string, 'dagre' | 'elk'>;
+  layoutEngineByType: Record<string, 'dagre' | 'elk' | 'auto'>;
 
   /** When a diagram would get dagre only from the per-type default (no `layout`
    *  line, no global elk) and its IR has a group with members, use ELK instead:
    *  dagre's compound clusters overlap, ELK keeps them apart. Set false to disable. */
   elkWhenGrouped: boolean;
+
+  /** `auto` engine only: diagrams with more nodes than this skip the dagre-vs-ELK
+   *  comparison and use dagre (the comparison costs one extra layout + measure). */
+  autoMaxNodes: number;
+
+  /** `auto` engine only: diagrams with more edges than this also skip the comparison. */
+  autoMaxEdges: number;
 
   /** Rendering options */
   render: RenderConfig;
@@ -190,8 +197,10 @@ export const DEFAULT_CONFIG: SelDiAConfig = {
   defaultTheme: 'sketchy-light',
   defaultLayoutEngine: 'dagre',
   elkWhenGrouped: true,
+  autoMaxNodes: 60,
+  autoMaxEdges: 120,
   layoutEngineByType: {
-    flowchart: 'dagre', class: 'elk', er: 'dagre', state: 'elk', usecase: 'dagre', activity: 'dagre',
+    flowchart: 'auto', class: 'elk', er: 'dagre', state: 'elk', usecase: 'dagre', activity: 'dagre',
     component: 'elk', deployment: 'dagre', 'c4-context': 'dagre', 'c4-container': 'dagre',
     'c4-component': 'dagre', 'c4-code': 'dagre', bpmn: 'dagre', dmn: 'dagre', network: 'elk',
     block: 'elk', cloud: 'dagre', workitem: 'elk', form: 'dagre', wireframe: 'dagre',

@@ -25,7 +25,7 @@ export function extractFences(examplesDir, isDiagramLang) {
   return out;
 }
 
-const KEYS = ['crossings', 'edgeOverlaps', 'borderHugs', 'nodeLabelHits', 'edgeNodeHits', 'labelOverlaps', 'labelDetached', 'labelOnArrowhead', 'labelEdgeHits', 'parallelRunLength', 'bends', 'groupViolations', 'groupTitleHits', 'nodeTextOverflow', 'tokenViolations', 'lowContrastText'];
+const KEYS = ['crossings', 'edgeOverlaps', 'borderHugs', 'nodeLabelHits', 'edgeNodeHits', 'labelOverlaps', 'labelDetached', 'labelOnArrowhead', 'labelEdgeHits', 'parallelRunLength', 'bends', 'maxBendsPerEdge', 'excessBends', 'groupViolations', 'groupTitleHits', 'nodeTextOverflow', 'tokenViolations', 'lowContrastText'];
 
 // engineName: 'dagre' | 'elk' forces that engine for every type (per-type map is
 // overridden too); 'defaults' uses the shipped config (per-type map as-is).
@@ -77,7 +77,7 @@ export async function measureCorpus(core, examplesDir, engineName = 'defaults') 
     if (d.unsupported) { unsupported++; continue; }
     if (d.error) { failed++; continue; }
     measured++;
-    for (const k of KEYS) totals[k] += d[k];
+    for (const k of KEYS) totals[k] = k === 'maxBendsPerEdge' ? Math.max(totals[k], d[k] ?? 0) : totals[k] + (d[k] ?? 0);
   }
   const tokenHistogram = Object.fromEntries([...hist].sort((a, b) => b[1] - a[1]));
   return { engine: engineName, measured, failed, unsupported, totals, tokenHistogram, diagrams };

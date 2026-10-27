@@ -43,6 +43,10 @@ export interface LayoutMetrics {
   parallelRunLength: number;
   /** Total interior waypoints across all drawn edges. */
   bends: number;
+  /** Most bends on any one drawn edge (record-only, not gated). */
+  maxBendsPerEdge: number;
+  /** Bends above DS.maxBendsPerEdge, summed over edges (record-only, not gated). */
+  excessBends: number;
   /** Intruder nodes + member nodes outside + overlapping sibling group rects. */
   groupViolations: number;
   /** A node's own label box touching an edge segment, its own glyph art, or a
@@ -256,9 +260,9 @@ function groupViolations(ir: DiagramIR): number {
   return count;
 }
 
-export function measureLayout(ir: DiagramIR): LayoutMetrics {
+/** The edge paths as drawn: generic routing plus the engine's post-route passes. */
+export function routedPaths(ir: DiagramIR): Map<string, Point[]> {
   const nodes = ir.nodes ?? [];
-  const byId = new Map(nodes.map((n) => [n.id, n]));
   const edgeGeometry = !SELF_DRAWN_EDGES.has(ir.type as string);
   const routed = edgeGeometry ? routeAllEdges(ir.edges ?? [], nodes) : new Map<string, Point[]>();
   // Sankey ribbons are drawn from the layout's own centreline (end points of a monotone
@@ -279,13 +283,24 @@ export function measureLayout(ir: DiagramIR): LayoutMetrics {
     for (const e of ir.edges ?? []) netOf.set(e.id, String((e.data as any)?.net ?? e.id));
     for (const [id, pts] of postRouteCircuit({ nodes }, routed, netOf).routes) routed.set(id, pts);
   }
+  return routed;
+}
 
-  let bends = 0;
+export function measureLayout(ir: DiagramIR): LayoutMetrics {
+  const nodes = ir.nodes ?? [];
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const routed = routedPaths(ir);
+  const netOf = new Map<string, string>();
+  if ((ir.type as string) === 'circuit') for (const e of ir.edges ?? []) netOf.set(e.id, String((e.data as any)?.net ?? e.id));
+
+  let bends = 0, maxBendsPerEdge = 0, excessBends = 0;
   let gapSum = 0, gapN = 0;
   for (const e of ir.edges ?? []) {
     const pts = routed.get(e.id);
     if (!pts || pts.length < 2) continue;
     bends += pts.length - 2;
+    maxBendsPerEdge = Math.max(maxBendsPerEdge, pts.length - 2);
+    excessBends += Math.max(0, pts.length - 2 - DS.maxBendsPerEdge);
     const s = byId.get(e.sourceId), t = byId.get(e.targetId);
     if (s) { gapSum += endGap(pts[0], s); gapN++; }
     if (t) { gapSum += endGap(pts[pts.length - 1], t); gapN++; }
@@ -347,7 +362,7 @@ export function measureLayout(ir: DiagramIR): LayoutMetrics {
 
   // Label chips exactly as the renderer places them (pad 0: a uniform shift).
   let labelOverlaps = 0, labelDetached = 0, labelOnArrowhead = 0, labelEdgeHits = 0, groupTitleHits = 0;
-  if (edgeGeometry) {
+  if (!SELF_DRAWN_EDGES.has(ir.type as string)) {
     const routedEdges = (ir.edges ?? []).map((e) => (routed.has(e.id) ? { ...e, waypoints: routed.get(e.id) } : e));
     const placements = computeEdgeLabelPositions(routedEdges, byId, 0, ir.groups);
     const chips: Array<{ edge: string; rect: Rect }> = [];
@@ -410,6 +425,8 @@ export function measureLayout(ir: DiagramIR): LayoutMetrics {
     groupTitleHits,
     parallelRunLength: Math.round(parallelRun),
     bends,
+    maxBendsPerEdge,
+    excessBends,
     groupViolations: groupViolations(ir),
     endpointGap: gapN ? gapSum / gapN : 0,
     area: Math.round(w * h),
@@ -647,4 +664,26 @@ export function lowContrastTextHits(svg: string): LowContrastHit[] {
 /** Count of <text> elements below 4.5:1 contrast against their composited backdrop. */
 export function lowContrastText(svg: string): number {
   return lowContrastTextHits(svg).length;
+}
+
+/** Lexicographic score for comparing two layouts of the same diagram (lower is
+ *  better): every gated defect count summed first, then crossings, bends and
+ *  total edge length. Used by the `auto` layout engine. */
+export function layoutScore(ir: DiagramIR): [number, number, number] {
+  const m = measureLayout(ir);
+  const defects = m.edgeOverlaps + m.borderHugs + m.nodeLabelHits + m.edgeNodeHits + m.labelOverlaps + m.labelDetached
+    + m.labelOnArrowhead + m.labelEdgeHits + m.groupTitleHits + m.nodeTextOverflow + m.groupViolations
+    + (m.parallelRunLength > 0 ? 1 : 0);
+  return [defects, m.crossings, m.bends];
+}
+
+/** Total polyline length of the routed edges (final tie-break of the `auto` engine). */
+export function totalEdgeLength(ir: DiagramIR): number {
+  const routed = routedPaths(ir);
+  let len = 0;
+  for (const e of ir.edges ?? []) {
+    const w = routed.get(e.id) ?? e.waypoints ?? [];
+    for (let i = 1; i < w.length; i++) len += Math.abs(w[i].x - w[i - 1].x) + Math.abs(w[i].y - w[i - 1].y);
+  }
+  return len;
 }

@@ -666,7 +666,8 @@ diagram class "CoreEngine Classes - Plugin management" {
 
 | Diagram Type | Layout Algorithm |
 |-------------|-----------------|
-| Flowchart, Activity, BPMN, DMN | Dagre (hierarchical); ELK when grouped (`elkWhenGrouped`) |
+| Flowchart | `auto`: dagre and ELK both laid out, the lower-scoring one kept; ELK when grouped (`elkWhenGrouped`) |
+| Activity, BPMN, DMN | Dagre (hierarchical); ELK when grouped (`elkWhenGrouped`) |
 | Class, State, Component, Network, Block, Work items | ELK.js (layered) |
 | ER, Use Case, Deployment, Cloud, Form, Wireframe | Dagre; ELK when grouped |
 | C4 (all levels) | Dagre (top-down); ELK when grouped |
@@ -1766,7 +1767,7 @@ Plugins are discovered via:
 
 Auto layout runs as four stages:
 
-1. **Place.** The engine is chosen in this order: the diagram's own `layout` line, then `layoutEngineByType`, then `elkWhenGrouped` for grouped diagrams, then `defaultLayoutEngine`. `elk` runs elkjs's layered algorithm. The synchronous path drives it through a `FakeWorker` dispatcher (`src/layout/elk-sync.ts`). `dagre` runs dagre with cluster compounds. An ELK failure falls back to dagre.
+1. **Place.** The engine is chosen in this order: the diagram's own `layout` line, then `layoutEngineByType`, then `elkWhenGrouped` for grouped diagrams, then `defaultLayoutEngine`. `auto` (the flowchart default) lays the diagram out with dagre and with ELK, scores each with `measureLayout` (`layoutScore` in `src/layout/metrics.ts`) and keeps the lower one. The comparison is lexicographic: summed gated defects, then crossings, then bends, then total edge length. Ties, ELK failure, more than `autoMaxNodes` nodes and grouped diagrams all resolve without a comparison or to dagre, so existing diagrams stay stable. `elk` runs elkjs's layered algorithm. The synchronous path drives it through a `FakeWorker` dispatcher (`src/layout/elk-sync.ts`). `dagre` runs dagre with cluster compounds. An ELK failure falls back to dagre.
 2. **Route ownership.** Engines that route edges set `layoutRouted: true` and supply waypoints (`src/layout/engines.ts`). The renderer uses those waypoints and does not reroute.
 3. **Shape-aware clip.** `clipRouteToNodes` (`src/render/edge-routing.ts`) trims each route to the real shape outline.
 4. **Labels.** `src/render/edge-label-placement.ts` scores candidate label positions, then nudges labels off edges and other obstacles.

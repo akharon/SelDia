@@ -100,3 +100,71 @@ describe('grouped flowcharts default to elk', () => {
     expect(posOf(def)).toEqual(posOf(dagre));
   });
 });
+
+describe('auto layout engine', () => {
+  const DENSE = `flowchart TD
+  A --> B
+  A --> C
+  A --> D
+  A --> E
+  B --> F
+  C --> F
+  D --> G
+  E --> G
+  A --> G
+  B --> H
+  C --> H
+  F --> I
+  G --> I
+  H --> I
+  A --> I
+`;
+  const pos = (r: any) => JSON.stringify(r.value.diagram.nodes.map((n: any) => [n.id, n.position]));
+  const routed = (r: any) => r.value.diagram.edges.some((x: any) => x.layoutRouted);
+
+  it('flowchart defaults to auto and is deterministic', async () => {
+    expect(createEngine({}).config.layoutEngineByType.flowchart).toBe('auto');
+    const ir = IR(null, DENSE);
+    expect(pos(await createEngine({}).layoutAsync(ir))).toEqual(pos(await createEngine({}).layoutAsync(ir)));
+  });
+
+  it('picks whichever engine scores lower, never worse than dagre', async () => {
+    const ir = IR(null, DENSE);
+    const mk = (f: string) => createEngine({ config: { layoutEngineByType: { flowchart: f as any } } });
+    const { measureLayout } = await import('../src/layout/metrics.js');
+    const m = async (f: string) => measureLayout(((await mk(f).layoutAsync(ir)) as any).value.diagram);
+    const [d, a] = [await m('dagre'), await m('auto')];
+    expect(a.edgeNodeHits + a.edgeOverlaps).toBeLessThanOrEqual(d.edgeNodeHits + d.edgeOverlaps);
+    if (a.edgeNodeHits + a.edgeOverlaps === d.edgeNodeHits + d.edgeOverlaps) expect(a.crossings).toBeLessThanOrEqual(d.crossings);
+  });
+
+  it('ties go to dagre', async () => {
+    const ir = IR(null, 'flowchart TD\n  a[A] --> b[B]\n  b --> c[C]\n');
+    const dagre = await createEngine({ config: { layoutEngineByType: { flowchart: 'dagre' } } }).layoutAsync(ir);
+    expect(pos(await createEngine({}).layoutAsync(ir))).toEqual(pos(dagre));
+  });
+
+  it('autoMaxNodes skips the comparison (dagre output)', async () => {
+    const ir = IR(null, DENSE);
+    const dagre = await createEngine({ config: { layoutEngineByType: { flowchart: 'dagre' } } }).layoutAsync(ir);
+    const skipped = await createEngine({ config: { autoMaxNodes: 2 } }).layoutAsync(ir);
+    expect(pos(skipped)).toEqual(pos(dagre));
+    expect(routed(skipped)).toBe(false);
+  });
+
+  it('explicit layout choices win over auto', async () => {
+    const ir = IR(null, DENSE);
+    expect(routed(await createEngine({}).layoutAsync(withElk(ir)))).toBe(true);
+    const dagreIr = { ...ir, metadata: { ...ir.metadata, layoutEngine: 'dagre' } };
+    expect(routed(await createEngine({}).layoutAsync(dagreIr))).toBe(false);
+  });
+
+  it('`layout auto` line is accepted; grouped diagrams follow elkWhenGrouped', async () => {
+    const auto = { ...IR(null, DENSE) }; auto.metadata = { ...auto.metadata, layoutEngine: 'auto' };
+    expect((await createEngine({}).layoutAsync(auto)).ok).toBe(true);
+    const grouped = await createEngine({}).layoutAsync(IR(null));
+    expect(routed(grouped)).toBe(true);
+    const ungroupedPref = await createEngine({ config: { elkWhenGrouped: false } }).layoutAsync(IR(null));
+    expect(routed(ungroupedPref)).toBe(false);
+  });
+});

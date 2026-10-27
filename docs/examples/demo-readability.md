@@ -202,3 +202,116 @@ fl "Sketch edges in this fence only" {
     c -> b: "fail"
 }
 ```
+
+## Dense flowcharts
+
+Four denser graphs for measuring layout. The first has long edges that skip layers and four edges converging on one node. The second is a service mesh with fan-in and skip-layer edges. The third is a DAG of diamonds with cross edges between the middle layers. The fourth has a decision node and two back-edges.
+
+```seldia
+diagram flowchart "Crossings" {
+  a: [Client]
+  b: [Gateway]
+  c: [Auth]
+  d: [Orders]
+  e: [Billing]
+  f: [DB]
+  a --> b
+  a --> e
+  b --> c
+  b --> d
+  c --> f
+  d --> f
+  d --> e : invoice
+  e --> f
+  c --> e : token
+  a --> f : direct
+}
+```
+
+```seldia
+fl "Service mesh" {
+    web [Web app]
+    mobile [Mobile API]
+    edge [Edge proxy]
+    gw [API gateway]
+    auth [Auth service]
+    users [User service]
+    orders [Order service]
+    catalog [Catalog service]
+    pay [Payment service]
+    queue (Event bus)
+    notify [Notification service]
+    store database "Primary store"
+
+    web -> edge
+    mobile -> edge
+    edge -> gw
+    gw -> auth
+    gw -> users
+    gw -> orders
+    gw -> catalog
+    orders -> pay
+    orders -> queue
+    queue -> notify
+    web -> auth: "static token"
+    edge -> notify: "fallback"
+    users -> store
+    orders -> store
+    catalog -> store
+    pay -> store
+}
+```
+
+```seldia
+fl "Diamond DAG" {
+    s1 [Source 1]
+    s2 [Source 2]
+    s3 [Source 3]
+    d1: {Valid?}
+    d2: {Cached?}
+    d3: {Priority?}
+    m1: {Merge A?}
+    m2: {Merge B?}
+    x (Sink X)
+    y (Sink Y)
+
+    s1 -> d1
+    s2 -> d1
+    s2 -> d2
+    s3 -> d2
+    s3 -> d3
+    d1 -> m1: "yes"
+    d1 -> m2: "no"
+    d2 -> m1: "hit"
+    d2 -> m2: "miss"
+    d3 -> m1
+    d3 -> m2
+    m1 -> x
+    m2 -> y
+    m1 -> y
+    d3 -> x: "high"
+}
+```
+
+```seldia
+fl "Retry workflow" {
+    start (Start)
+    fetch [Fetch record]
+    check: {Record valid?}
+    fix [Repair record]
+    save [Save record]
+    verify: {Saved OK?}
+    done (Done)
+    fail (Give up)
+
+    start -> fetch
+    fetch -> check
+    check -> save: "yes"
+    check -> fix: "no"
+    fix -> check: "retry"
+    save -> verify
+    verify -> done: "yes"
+    verify -> fetch: "reload"
+    verify -> fail: "no"
+}
+```

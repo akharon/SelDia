@@ -80,6 +80,14 @@ describe('measureLayout units', () => {
     const nodes = [node('a', 0, 0), node('b', 300, 300)];
     expect(measureLayout(ir(nodes, [edge('e', 'a', 'b', [[50, 30], [50, 330], [350, 330]])])).bends).toBe(1);
   });
+  it('records maxBendsPerEdge and the bends above the cap', () => {
+    const nodes = [node('a', 0, 0), node('b', 300, 300)];
+    // exactEnds edges are exempt from postRoute, so the 6-bend route is measured as given.
+    const e = { ...edge('e', 'a', 'b', [[50, 30], [50, 60], [20, 60], [20, 90], [90, 90], [90, 120], [50, 120], [50, 330]]), data: { exactEnds: true } } as IREdge;
+    const m = measureLayout(ir(nodes, [e]));
+    expect(m.maxBendsPerEdge).toBe(6);
+    expect(m.excessBends).toBe(6 - 4);
+  });
   it('flags a non-member inside a group and a member outside it', () => {
     const nodes = [node('a', 0, 0), node('b', 20, 20, 40, 20), node('far', 900, 900)];
     const clean = measureLayout(ir([nodes[0], nodes[2]], [], [group('g', -10, -10, 200, 200, ['a', 'far'])]));

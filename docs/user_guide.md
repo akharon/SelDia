@@ -41,6 +41,7 @@
     - [11.1 Installation](#111-installation)
     - [11.2 Features](#112-features)
     - [11.3 Using SelDiA in Markdown](#113-using-seldia-in-markdown)
+    - [11.3.3 Markdown tables](#1133-markdown-tables)
     - [11.4 Visual Editing](#114-visual-editing)
     - [11.5 Markdown → PDF Export](#115-markdown--pdf-export)
     - [11.6 Marp Slide Decks](#116-marp-slide-decks)
@@ -2540,6 +2541,51 @@ The Markdown → PDF export (§11.5) uses the same `Diagram N` caption wording
 and `#diagram-N` anchors, so a document reads the same whether viewed in the
 editor or exported.
 
+### 11.3.3 Markdown tables
+
+Plain GFM pipe tables in the Markdown preview get a readable default style:
+a header band that sticks while you scroll long tables, zebra rows, hover
+highlight, column alignment from the `:--` / `:-:` / `--:` delimiter row,
+tabular figures, and horizontal scrolling for wide tables. Colours follow the
+VS Code theme (including high contrast).
+
+Hovering a table shows a small toolbar in the right gutter:
+
+- **Edit table**: opens the table editor beside the document.
+- **Copy as CSV**: copies the rendered cells to the clipboard (RFC 4180).
+
+The same editor is available from the **Edit Table** CodeLens above each table
+and from the command palette (**SelDiA: Edit Markdown Table**, which uses the
+table under the cursor).
+
+**Table editor.** It is a grid of editable cells that writes back to the
+Markdown source as a normalized GFM table, with padded columns, escaped `\|`
+and `<br>` for line breaks.
+
+| Key / action | Effect |
+|--------------|--------|
+| `Tab` / `Shift+Tab` | Next / previous cell (Tab past the last cell adds a row) |
+| `Enter` / `Shift+Enter` | Cell below / above |
+| `Escape` | Discard the edit in the current cell |
+| `Alt+↑/↓/←/→` | Move the row / column |
+| `Ctrl+Z` / `Ctrl+Y` (`Ctrl+Shift+Z`) | Undo / redo table edits |
+| Toolbar or right-click | Insert or delete rows and columns, set column alignment |
+
+Hand edits in the text editor show up in the grid live (and clear the grid's
+undo history, so undo never overwrites your typing). Merging cells is not
+possible in GFM, so it appears disabled ("coming soon").
+
+Tables nested inside blockquotes or lists are styled but not editable.
+
+Turn styling off with `"seldia.markdown.tables.enabled": false`, or per
+document with front-matter:
+
+```yaml
+---
+seldia_tables: false
+---
+```
+
 ### 11.4 Visual Editing
 
 Visual editing is available in the **interactive editor for `.sld` files**
@@ -2714,6 +2760,7 @@ comments are preserved as real PPTX notes.
 | `seldia.markdown.maxDiagramsPerFile` | number | `20` | Max diagrams to auto-render per file |
 | `seldia.markdown.toc.enabled` | boolean | `true` | Inject the auto-generated Table of Contents into the Markdown preview |
 | `seldia.markdown.captions.enabled` | boolean | `true` | Render numbered "Diagram N" captions under diagrams in the Markdown preview |
+| `seldia.markdown.tables.enabled` | boolean | `true` | Style GFM tables in the Markdown preview and show the Edit table / Copy as CSV toolbar and the Edit Table CodeLens (front-matter `seldia_tables` overrides it) |
 | `seldia.interactive.enabled` | boolean | `true` | Enable visual editing (drag, double-click) |
 | `seldia.interactive.undoStackSize` | number | `50` | Undo history size for visual edits |
 | `seldia.md2pdf.defaultFormat` | string | `A4` | Default PDF page format |

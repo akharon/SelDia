@@ -14,7 +14,8 @@ import { registerLanguageServer } from './language-server/index.js';
 import { SelDiAInteractiveProvider, SelDiAEditorRegistration } from './webview/provider.js';
 import { createSelDiAMarkdownItPlugin } from './markdown-preview/plugin.js';
 import { registerEditCommands, findDocWithBlock } from './edit/commands.js';
-import { findSelDiABlocks } from './edit/blocks.js';
+import { findSelDiABlocks, findGfmTables, locateGfmTable } from './edit/blocks.js';
+import { SelDiATableEditorPanel } from './webview/table-provider.js';
 import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
 import { isMarpDocument } from './marp/detect.js';
 import { openMarpPreview, MarpPreviewProvider, MARP_VIEW_TYPE } from './marp/preview-panel.js';
@@ -552,6 +553,45 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // ── Edit a GFM table (CodeLens / preview toolbar deep link / palette) ─────
+  // Same document contract as revealSource/editBlockVisually: `args.doc` is
+  // authoritative (stamped from env.currentDocument by the preview plugin, or
+  // from the CodeLens' own document); only the palette path falls back to the
+  // active editor. The table is found by id (hash of its source lines), then
+  // by its start line — the preview's id goes stale as soon as the source is
+  // edited, and the line is what still points at the right table.
+  const editTable = vscode.commands.registerCommand(
+    'seldia.editTable',
+    async (args?: { doc?: string; tableId?: string; line?: string | number }) => {
+      let docUri: vscode.Uri;
+      let line = args?.line !== undefined && args.line !== '' ? Number(args.line) : NaN;
+      if (args?.doc) {
+        docUri = vscode.Uri.parse(args.doc);
+      } else {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || !/\.(md|mdx)$/.test(editor.document.fileName)) {
+          vscode.window.showWarningMessage('Open a Markdown file with a table first.');
+          return;
+        }
+        docUri = editor.document.uri;
+        if (Number.isNaN(line)) line = editor.selection.active.line;
+      }
+      const doc = await vscode.workspace.openTextDocument(docUri);
+      const text = doc.getText();
+      let table = locateGfmTable(text, args?.tableId, Number.isNaN(line) ? -1 : line, args?.tableId ? 3 : 0);
+      if (!table && !args?.tableId && !Number.isNaN(line)) {
+        // Palette: the table containing the cursor, else the next one below it.
+        const tables = findGfmTables(text);
+        table = tables.find((t) => line >= t.startLine && line < t.endLine) ?? tables.find((t) => t.startLine >= line);
+      }
+      if (!table) {
+        vscode.window.showWarningMessage('SelDiA: could not locate this table in its Markdown source (it may have changed).');
+        return;
+      }
+      SelDiATableEditorPanel.createOrShow(context.extensionUri, docUri, table);
+    }
+  );
+
   // ── Interactive Editor Command ────────────────────────────────────────────
   const openInteractive = vscode.commands.registerCommand('seldia.openInteractive', () => {
     const editor = vscode.window.activeTextEditor;
@@ -589,7 +629,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
-    toggleView, openPreview, openInteractive, editBlockVisually, insertDiagram, exportDiagram,
+    toggleView, openPreview, openInteractive, editBlockVisually, editTable, insertDiagram, exportDiagram,
     exportToMermaid, exportToPlantUml, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
     revealSource, marpProviderSub, openMarpPreviewCmd, exportMarpDeck, marpAutoPreviewSub
   );

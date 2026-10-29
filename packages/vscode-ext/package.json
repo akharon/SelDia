@@ -137,6 +137,10 @@
         "title": "SelDiA: Edit Diagram Block Visually"
       },
       {
+        "command": "seldia.editTable",
+        "title": "SelDiA: Edit Markdown Table"
+      },
+      {
         "command": "seldia.insertDiagram",
         "title": "SelDiA: Insert Diagram Block"
       },

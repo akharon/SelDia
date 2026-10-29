@@ -56,6 +56,13 @@ const editorClientConfig = {
   logLevel: 'info',
 };
 
+/** @type {esbuild.BuildOptions} */
+const tableEditorClientConfig = {
+  ...editorClientConfig,
+  entryPoints: ['src/webview/client/table-editor.ts'],
+  outfile: 'media/table-editor.js',
+};
+
 async function main() {
   if (isWatch) {
     const extCtx = await esbuild.context(extensionConfig);
@@ -64,6 +71,8 @@ async function main() {
     await prevCtx.watch();
     const editorCtx = await esbuild.context(editorClientConfig);
     await editorCtx.watch();
+    const tableCtx = await esbuild.context(tableEditorClientConfig);
+    await tableCtx.watch();
     console.log('[esbuild] Watching for changes...');
   } else {
     // Clean old dist files (keep only esbuild output)
@@ -101,6 +110,14 @@ async function main() {
       process.exit(1);
     }
     console.log('[esbuild] Editor client build complete — media/editor.js');
+
+    // Build the GFM table editor client (browser target, loaded via asWebviewUri)
+    const tableResult = await esbuild.build(tableEditorClientConfig);
+    if (tableResult.errors.length > 0) {
+      console.error('[esbuild] Table editor client build failed:', tableResult.errors);
+      process.exit(1);
+    }
+    console.log('[esbuild] Table editor client build complete — media/table-editor.js');
   }
 }
 

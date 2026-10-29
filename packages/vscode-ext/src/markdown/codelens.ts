@@ -1,11 +1,12 @@
 // =============================================================================
 // SelDiA — Markdown CodeLens Provider
 // =============================================================================
-// Adds "View Diagram" / "Edit Code" CodeLens actions above SelDiA blocks.
+// Adds "View Diagram" / "Edit Code" CodeLens actions above SelDiA blocks, and
+// "Edit Table" above GFM tables (seldia.markdown.tables.enabled).
 
 import * as vscode from 'vscode';
 import type { SelDiABlock } from './detector.js';
-import { blockIdForSource } from '../edit/blocks.js';
+import { blockIdForSource, findGfmTables } from '../edit/blocks.js';
 import { isMarpDocument } from '../marp/detect.js';
 import { isMermaidExportable, isPlantUmlExportable } from '@seldia/core';
 import type { CoreEngine } from '@seldia/core';
@@ -118,6 +119,21 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
           command: 'seldia.exportToPlantUml',
           arguments: [block.source],
           tooltip: 'Export this diagram to PlantUML (.puml) syntax',
+        }));
+      }
+    }
+
+    // "Edit Table" above every top-level GFM table (not ones inside fences).
+    // Computed from the live text on every call rather than via the block
+    // detector, which only tracks diagram fences.
+    if (vscode.workspace.getConfiguration('seldia').get<boolean>('markdown.tables.enabled', true)) {
+      for (const table of findGfmTables(document.getText())) {
+        const pos = new vscode.Position(table.startLine, 0);
+        lenses.push(new vscode.CodeLens(new vscode.Range(pos, pos), {
+          title: '$(table) Edit Table',
+          command: 'seldia.editTable',
+          arguments: [{ doc: document.uri.toString(), tableId: table.tableId, line: table.startLine }],
+          tooltip: 'Open a grid editor for this table — edits are written back as formatted GFM',
         }));
       }
     }

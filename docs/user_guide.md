@@ -33,6 +33,7 @@
     - [5.20 Block Diagram](#520-block-diagram)
     - [5.21 Timeline](#521-timeline)
     - [5.24 Tables (merged cells)](#524-tables-merged-cells)
+    - [5.25 Charts from a table](#525-charts-from-a-table)
 6. [Styling & Themes](#6-styling--themes)
 7. [Layout & Positioning](#7-layout--positioning)
 8. [Groups & Containers](#8-groups--containers)
@@ -2005,6 +2006,36 @@ The rendering matches the Markdown preview's tables: a faint header band, zebra 
 **Editing.** In Markdown, the fence gets an **Edit Table** CodeLens. In a `.seldia`/`.sld` file, use *SelDiA: Edit Table*. Both open the grid editor. To merge, select a range with Shift+click or Shift+arrows, then press **Merge**. **Unmerge** splits a merged cell back into single cells. Edits are written back as `^`/`<` markers. A plain GFM table opened in the same editor has Merge disabled; **Convert to SelDiA table** rewrites it as a ```` ```seldia ```` `table` fence first.
 
 **Export.** *Export to Markdown table* (CodeLens, or *SelDiA: Export Table to Markdown (GFM)*) writes a plain GFM table. This is **lossy**: GFM has no spans, so a merged cell keeps its text in its top-left cell and leaves the cells it covered empty. Mermaid and PlantUML have no table type, so those export lenses are hidden for `table`.
+
+### 5.25 Charts from a table
+
+Add one `chart` line inside a `table` fence to draw the table's data as a chart (§5.16), directly below the table:
+
+```seldia
+table "Revenue by region" {
+| Region | 2024 | 2025 | Note |
+|:--|--:|--:|:--|
+| North | 1,200 | 1,450 | new store |
+| South | 980 | 1,100 | |
+| West | 640 | 910 | |
+chart bar x=Region y=2024,2025
+}
+```
+
+`chart <kind> [x=<column>] [y=<column>,<column>…] [only]`
+
+- **kind**: `bar`, `line`, `pie`, `radar` or `scatter`.
+- **x**: the column that names the categories. Defaults to the first column.
+- **y**: the value columns, one series each. Defaults to every numeric column other than `x`. A pie uses only the first value column.
+- **only**: draw the chart without the table. The table stays in the source as the chart's data.
+
+Columns are matched by header text, ignoring case. Quote names that contain spaces: `x="Sales region"`. A column with an empty or repeated header can be named by its number instead, as `#2`. Numbers may use thousands separators, currency signs or `%`. A named column that doesn't exist or isn't numeric is skipped with a warning, and a blank or non-numeric cell counts as 0. For a merged label cell (`^`), every row it spans uses its text.
+
+There is one source of truth. The chart is rebuilt from the table on every render, so editing a number updates both.
+
+**In the table editor**, **Create chart…** asks for a chart kind, a label column, the numeric value columns and whether to keep the table visible. Non-numeric columns are listed as excluded. It then writes the `chart` line. On a plain GFM table, it converts the table to a SelDiA `table` fence first.
+
+**Export.** *Export to Markdown table* drops the `chart` line, because GFM has no charts.
 
 ---
 

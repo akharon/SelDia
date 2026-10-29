@@ -1293,10 +1293,20 @@ function parseChartCategory(label: string): { category: string; series: Array<{ 
   return { category, series };
 }
 
+/** A chart node's category and series. A chart built from a table carries
+ *  them structured on `data.chart` (series named "2024" or "Q1 (est.)" would
+ *  not survive the label vocabulary's name regex); everything else is read
+ *  from the label. */
+export function chartCategoryOf(node: IRNode): { category: string; series: Array<{ name: string; value: number }> } {
+  const c = (node.data as any)?.chart;
+  if (c && typeof c.category === 'string' && Array.isArray(c.series)) return c;
+  return parseChartCategory(node.label);
+}
+
 // token-exempt: chart data strokes, gridlines and plot geometry (renderChartBar .. renderChartPie) are data marks, not chrome
 export function renderChartBar(node: IRNode, pad: number, sketchy: boolean, chartMax: number, seriesNames: string[]): string {
   const x = node.position.x + pad, y = node.position.y + pad, w = node.size.width, h = node.size.height;
-  const { category, series } = parseChartCategory(node.label);
+  const { category, series } = chartCategoryOf(node);
   const baselineY = y + h - 30;
   const usableH = h - 50;
   const barGap = 6;
@@ -1319,7 +1329,7 @@ export function renderChartBar(node: IRNode, pad: number, sketchy: boolean, char
 }
 
 export function renderChartLinePoint(node: IRNode, pad: number, chartMax: number, seriesIndex = 0): { x: number; y: number; value: number; category: string } {
-  const { category, series } = parseChartCategory(node.label);
+  const { category, series } = chartCategoryOf(node);
   const value = series[seriesIndex]?.value ?? series[0]?.value ?? 0;
   const x = node.position.x + pad + node.size.width / 2;
   const baselineY = node.position.y + pad + node.size.height - 30;
@@ -1331,7 +1341,7 @@ export function renderChartLinePoint(node: IRNode, pad: number, chartMax: number
 export function extractChartSeriesNames(nodes: IRNode[]): string[] {
   const names: string[] = [];
   for (const n of nodes) {
-    const { series } = parseChartCategory(n.label);
+    const { series } = chartCategoryOf(n);
     for (const s of series) if (!names.includes(s.name)) names.push(s.name);
   }
   return names;
@@ -1357,7 +1367,7 @@ function niceStep(raw: number): number {
 export function chartScale(nodes: IRNode[], tickCount = 5): ChartScale {
   let dataMax = 0;
   for (const n of nodes) {
-    const { series } = parseChartCategory(n.label);
+    const { series } = chartCategoryOf(n);
     for (const s of series) dataMax = Math.max(dataMax, s.value);
   }
   if (dataMax <= 0) return { max: 1, ticks: [0, 1] };
@@ -1524,7 +1534,7 @@ export function renderChartLegend(seriesNames: string[], svgWidth: number, top: 
  *  per category) — called once by the engine instead of per-node when the
  *  diagram type is chart-pie. */
 export function renderChartPie(nodes: IRNode[], pad: number, sketchy: boolean, bounds: { width: number; height: number }): string {
-  const values = nodes.map((n) => parseChartCategory(n.label));
+  const values = nodes.map((n) => chartCategoryOf(n));
   const total = values.reduce((sum, v) => sum + (v.series[0]?.value ?? 0), 0) || 1;
   // Use the actual rendering area (bounds with padding) to compute the pie
   // radius, not the raw layout bounds which may be tiny for label-only nodes.

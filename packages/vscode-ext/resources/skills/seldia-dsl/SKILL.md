@@ -590,6 +590,18 @@ table "Quarterly sales" {
 }
 ```
 
+Add one `chart <bar|line|pie|radar|scatter> [x=<col>] [y=<col>,<col>] [only]` line inside the fence to draw the table as a chart below it. `x` defaults to the first column and `y` to every numeric column. A pie uses one value column. `only` hides the table. Quote column names that contain spaces; use `#N` (1-based) for an unnamed or repeated header.
+
+```seldia
+table "Revenue by region" {
+| Region | 2024 | 2025 |
+|:--|--:|--:|
+| North | 1,200 | 1,450 |
+| South | 980 | 1,100 |
+chart bar x=Region y=2024,2025
+}
+```
+
 ## Verify
 
 Run `seldia check <file.sld|file.md> [--json] [--max n]` after writing a diagram. It prints `ok` or counts of readability problems (crossings, label overlaps, edges through nodes) per diagram; with `--max 0` it exits 1 if any remain. Fix by reordering declarations or splitting the diagram.

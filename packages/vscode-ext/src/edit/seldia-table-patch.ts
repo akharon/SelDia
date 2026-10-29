@@ -358,6 +358,32 @@ export function applySelDiATableOp(t: SelDiATable, op: SelDiATableOp): SelDiATab
   }
 }
 
+// ── Chart directive ───────────────────────────────────────────────────────
+
+// Same test as core's parseTableBody, so the line we replace is the one it reads.
+const CHART_LINE = /^\s*chart\b/i;
+
+/** Set (or with null, remove) the fence's `chart …` directive. An existing
+ *  directive is replaced where it stands; a new one goes right after the rows.
+ *  Only that one line changes — rows, comments and the header are untouched. */
+export function setChartDirective(source: string, directive: string | null): string | undefined {
+  const doc = parseSelDiATableSource(source);
+  if (!doc) return undefined;
+  const lines = source.replace(/\r\n/g, '\n').split('\n');
+  const at = lines.findIndex((l, i) => i > 0 && CHART_LINE.test(l));
+  const line = directive === null ? null : doc.indent + directive;
+  if (at >= 0) {
+    if (line === null) lines.splice(at, 1); else lines[at] = line;
+    return lines.join('\n');
+  }
+  if (line === null) return source;
+  let lastRow = -1;
+  lines.forEach((l, i) => { if (l.trim().startsWith('|')) lastRow = i; });
+  const insertAt = lastRow >= 0 ? lastRow + 1 : Math.max(1, lines.map((l) => l.trim()).lastIndexOf('}'));
+  lines.splice(insertAt, 0, line);
+  return lines.join('\n');
+}
+
 // ── GFM → SelDiA ──────────────────────────────────────────────────────────
 
 /** A plain GFM table as a SelDiA `table` fence (with the fence lines). Cell

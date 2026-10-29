@@ -20,6 +20,7 @@ import { DS, blendHex, getPaletteOverride } from '../render/design-system.js';
 import { textWidth } from '../layout/text-measure.js';
 import { escapeXml } from '../render/escape.js';
 import { parseTableBody, type TableAlign, type TableModel } from '../table/model.js';
+import { tableToChartIR } from '../table/to-chart.js';
 
 const FS = DS.fontSize.label;
 const LINE_H = Math.round(FS * 1.35);
@@ -65,6 +66,13 @@ export function transformTable(ast: DiagramAST): DiagramIR {
   const metadata: Record<string, unknown> = {
     table: { rows: model.rows, cols: model.cols, align: model.align },
   };
+  // A `chart …` directive: the chart is built HERE, from the resolved table
+  // model, as an ordinary chart IR (G1) — the engine lays it out and renders
+  // it with the existing chart pipeline, below the table (or alone: `only`).
+  if (model.chart) {
+    metadata.tableChart = tableToChartIR(model, model.chart, ast.title);
+    if (model.chart.only) metadata.tableChartOnly = true;
+  }
   return {
     id: 'table-1', type: 'table' as DiagramType, title: ast.title ?? 'Table',
     nodes, edges: [], groups: [], layers: [], metadata,

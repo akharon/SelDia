@@ -29,6 +29,22 @@ export interface TableDiagnostic {
   message: string;
 }
 
+export type TableChartKind = 'bar' | 'line' | 'pie' | 'radar' | 'scatter';
+export const TABLE_CHART_KINDS: readonly TableChartKind[] = ['bar', 'line', 'pie', 'radar', 'scatter'];
+
+/** `chart <kind> [x=<col>] [y=<col>,<col>] [only]` inside a table fence. */
+export interface TableChartSpec {
+  kind: TableChartKind;
+  /** Label (category) column, resolved to an index. */
+  x: number;
+  /** Value columns, resolved to indices. */
+  y: number[];
+  /** Render the chart without the table. */
+  only: boolean;
+  /** 0-based line of the directive within the body. */
+  line: number;
+}
+
 export interface TableModel {
   /** Total grid rows including the header row. */
   rows: number;
@@ -40,8 +56,11 @@ export interface TableModel {
   owner: number[][];
   /** Body line (0-based) each grid row came from. */
   rowLines: number[];
-  /** The `chart …` directive line, verbatim (interpreted by to-chart.ts). */
+  /** The `chart …` directive line, verbatim. */
   chartDirective?: { text: string; line: number };
+  /** The directive resolved against the columns (absent when there is none,
+   *  or it leaves nothing to chart — a diagnostic says why). */
+  chart?: TableChartSpec;
   diagnostics: TableDiagnostic[];
 }
 
@@ -203,7 +222,11 @@ export function parseTableBody(raw: string): TableModel {
   }
 
   const model: TableModel = { rows, cols, align: colAlign, cells, owner, rowLines: rawRows.map((r) => r.line), diagnostics };
-  if (chartLine) model.chartDirective = chartLine;
+  if (chartLine) {
+    model.chartDirective = chartLine;
+    const spec = parseChartDirective(chartLine.text, chartLine.line, model, diagnostics);
+    if (spec) model.chart = spec;
+  }
   return model;
 }
 
@@ -234,4 +257,105 @@ export function isNumericColumn(m: TableModel, c: number): boolean {
     any = true;
   }
   return any;
+}
+
+// ── Chart directive ─────────────────────────────────────────────────────
+
+/** Split `x="Unit price" y=Q1,"Q 2" only` into tokens, honouring quotes. */
+function directiveTokens(s: string): string[] {
+  const out: string[] = [];
+  const re = /\s*((?:[^\s"]+|"[^"]*"?)+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s))) out.push(m[1]);
+  return out;
+}
+
+function splitList(v: string): string[] {
+  const out: string[] = [];
+  let cur = '', q = false;
+  for (const ch of v) {
+    if (ch === '"') { q = !q; continue; }
+    if (ch === ',' && !q) { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur.trim());
+  return out.filter(Boolean);
+}
+
+const colKey = (s: string) => s.replace(/"/g, '').trim().toLowerCase();
+
+/** A column by header text (ignoring case and quotes), else by 1-based
+ *  number as `#N` — the form for unnamed or duplicate headers. */
+function resolveColumn(m: TableModel, name: string): number {
+  const want = colKey(name);
+  for (let c = 0; c < m.cols; c++) if (colKey(columnName(m, c)) === want) return c;
+  const n = /^#(\d+)$/.exec(want);
+  return n && Number(n[1]) >= 1 && Number(n[1]) <= m.cols ? Number(n[1]) - 1 : -1;
+}
+
+/** How a directive should name column `c` so it resolves back to exactly
+ *  `c`: its header text when that is unique and non-empty, else `#N`. */
+export function chartColumnRef(m: TableModel, c: number): string {
+  const key = colKey(columnName(m, c));
+  if (!key || /^#\d+$/.test(key)) return `#${c + 1}`;
+  for (let o = 0; o < m.cols; o++) if (o !== c && colKey(columnName(m, o)) === key) return `#${c + 1}`;
+  return columnName(m, c).replace(/"/g, '').trim();
+}
+
+/** Resolve `chart <kind> [x=<col>] [y=<col>,<col>] [only]` against the
+ *  table's columns. Defaults: x = first column, y = every numeric column. */
+export function parseChartDirective(text: string, line: number, m: TableModel, diags: TableDiagnostic[]): TableChartSpec | undefined {
+  const toks = directiveTokens(text).slice(1);
+  let kind: TableChartKind = 'bar';
+  let xName: string | undefined;
+  let yNames: string[] | undefined;
+  let only = false;
+  for (const tok of toks) {
+    const kv = /^([a-z]+)=(.*)$/i.exec(tok);
+    if (kv) {
+      const k = kv[1].toLowerCase();
+      if (k === 'x') xName = splitList(kv[2])[0];
+      else if (k === 'y') yNames = splitList(kv[2]);
+      else diags.push({ line, severity: 'warning', message: `table chart: unknown option \`${kv[1]}\` ignored` });
+    } else if ((TABLE_CHART_KINDS as readonly string[]).includes(tok.toLowerCase())) kind = tok.toLowerCase() as TableChartKind;
+    else if (tok.toLowerCase() === 'only') only = true;
+    else diags.push({ line, severity: 'warning', message: `table chart: unknown word \`${tok}\` ignored (kinds: ${TABLE_CHART_KINDS.join(', ')})` });
+  }
+  if (m.rows < 2) {
+    diags.push({ line, severity: 'warning', message: 'table chart: the table has no data rows to chart' });
+    return undefined;
+  }
+  let x = 0;
+  if (xName !== undefined) {
+    x = resolveColumn(m, xName);
+    if (x < 0) { diags.push({ line, severity: 'warning', message: `table chart: no column named "${xName}" — using the first column` }); x = 0; }
+  }
+  let y: number[] = [];
+  if (yNames) {
+    for (const n of yNames) {
+      const c = resolveColumn(m, n);
+      if (c < 0) diags.push({ line, severity: 'warning', message: `table chart: no column named "${n}" — skipped` });
+      else if (!isNumericColumn(m, c)) diags.push({ line, severity: 'warning', message: `table chart: column "${n}" is not numeric — skipped` });
+      else if (c !== x && !y.includes(c)) y.push(c);
+    }
+  } else {
+    for (let c = 0; c < m.cols; c++) if (c !== x && isNumericColumn(m, c)) y.push(c);
+  }
+  if (kind === 'pie' && y.length > 1) {
+    diags.push({ line, severity: 'info', message: 'table chart: a pie shows one value column — using the first' });
+    y = y.slice(0, 1);
+  }
+  if (y.length === 0) {
+    diags.push({ line, severity: 'warning', message: 'table chart: no numeric value columns to chart' });
+    return undefined;
+  }
+  return { kind, x, y, only, line };
+}
+
+/** Write a directive the parser reads back to the same columns. Names are
+ *  quoted when they hold spaces, commas or `=`; a `"` inside a name cannot be
+ *  written and is dropped (columns are matched ignoring quotes). */
+export function formatChartDirective(spec: { kind: TableChartKind; x: string; y: string[]; only?: boolean }): string {
+  const q = (n: string) => { const t = n.replace(/"/g, '').trim(); return /[\s,=]/.test(t) || !t ? `"${t}"` : t; };
+  return `chart ${spec.kind} x=${q(spec.x)} y=${spec.y.map(q).join(',')}${spec.only ? ' only' : ''}`;
 }

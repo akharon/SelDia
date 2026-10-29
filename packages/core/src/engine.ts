@@ -181,6 +181,23 @@ export interface EngineOptions {
 // Implementation
 // -----------------------------------------------------------------------------
 
+/** Smallest y any mark in a rendered SVG reaches: y/y1/y2 attributes,
+ *  circle tops, and the y of each M/L/C point pair in path data (arc
+ *  parameters are skipped). An estimate for cropping, never for layout. */
+function svgContentTop(svg: string): number {
+  let min = Infinity;
+  const body = svg.replace(/^<svg[^>]*>\s*<rect [^>]*\/>/, '');
+  for (const m of body.matchAll(/\sy[12]?="(-?[\d.]+)"/g)) min = Math.min(min, Number(m[1]));
+  for (const m of body.matchAll(/cy="(-?[\d.]+)"[^>]*?\sr="([\d.]+)"/g)) min = Math.min(min, Number(m[1]) - Number(m[2]));
+  for (const m of body.matchAll(/\sd="([^"]+)"/g)) {
+    for (const seg of m[1].matchAll(/([MLC])([^MLCAZmlcaz]*)/g)) {
+      const nums = seg[2].match(/-?[\d.]+(?:e-?\d+)?/g) ?? [];
+      for (let i = 1; i < nums.length; i += 2) min = Math.min(min, Number(nums[i]));
+    }
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
 class SelDiAEngine implements CoreEngine {
   readonly config: SelDiAConfig;
   readonly plugins: PluginManager;
@@ -559,6 +576,8 @@ class SelDiAEngine implements CoreEngine {
   }
 
   render(layoutResult: LayoutResult): Result<RenderResult> {
+    const chartIR = layoutResult.diagram.metadata?.tableChart as DiagramIR | undefined;
+    if (chartIR && (layoutResult.diagram.type as string) === 'table') return this.renderTableWithChart(layoutResult, chartIR);
     const nodes = layoutResult.diagram.nodes;
     const edges = layoutResult.diagram.edges;
     const groups = layoutResult.diagram.groups;
@@ -619,6 +638,52 @@ class SelDiAEngine implements CoreEngine {
     } finally {
       clearPaletteOverride();
     }
+  }
+
+  /** A table carrying a chart (table IR → chart IR, built in transform):
+   *  the chart goes through the normal chart layout + render, then the two
+   *  SVGs are stacked as nested <svg>s — table on top, chart below — or the
+   *  chart stands alone for `only`. Each part renders under its own palette
+   *  scope, so nothing here runs inside an override. */
+  private renderTableWithChart(layoutResult: LayoutResult, chartIR: DiagramIR): Result<RenderResult> {
+    const chart = this.compileIRSync(chartIR);
+    if (!chart.ok) return chart;
+    const meta = { ...layoutResult.diagram.metadata };
+    delete meta.tableChart;
+    if (meta.tableChartOnly) return { ok: true, value: { ...chart.value, diagramType: layoutResult.diagram.type } };
+    const table = this.render({ ...layoutResult, diagram: { ...layoutResult.diagram, metadata: meta } });
+    if (!table.ok) return table;
+    const size = (svg: string) => {
+      const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
+      return m ? { w: Number(m[1]), h: Number(m[2]) } : { w: 0, h: 0 };
+    };
+    const t = size(table.value.svg), c = size(chart.value.svg);
+    // The chart's own layout pads its top for a title it doesn't draw here;
+    // crop its viewBox to just above the topmost mark so the table→chart gap
+    // is the table's bottom padding plus GAP, not a third of the table.
+    const GAP = 10;
+    const top = Math.max(0, Math.min(c.h, svgContentTop(chart.value.svg)) - 12);
+    const ch = c.h - top;
+    const w = Math.max(t.w, c.w), h = t.h + GAP + ch;
+    const bg = /<rect [^>]*fill="([^"]+)"/.exec(table.value.svg)?.[1] ?? '#ffffff';
+    // Nested parts keep their markup but not the root class (host CSS sizes
+    // `.seldia-diagram-svg-el`; only the outer root should get that) nor
+    // their full-size rounded background — the outer one alone paints it.
+    const part = (svg: string, x: number, y: number, vb: string, ph: number) => svg
+      .replace(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" class="seldia-diagram-svg-el[^>]*>/,
+        `<svg x="${x}" y="${y}" width="${vb.split(' ')[2]}" height="${ph}" viewBox="${vb}" class="seldia-diagram-part">`)
+      .replace(/\n\s*<rect width="[\d.]+" height="[\d.]+" fill="[^"]*" rx="[\d.]+"\/>/, '');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" class="seldia-diagram-svg-el" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">\n`
+      + `  <rect width="${w}" height="${h}" fill="${bg}" rx="${DS.radius}"/>\n`
+      + part(table.value.svg, (w - t.w) / 2, 0, `0 0 ${t.w} ${t.h}`, t.h) + '\n'
+      + part(chart.value.svg, (w - c.w) / 2, t.h + GAP, `0 ${top} ${c.w} ${ch}`, ch) + '\n</svg>';
+    return {
+      ok: true,
+      value: {
+        ...table.value, svg, width: w, height: h,
+        stats: { ...table.value.stats, nodeCount: table.value.stats.nodeCount + chart.value.stats.nodeCount },
+      },
+    };
   }
 
   private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = [], fragmentBoxes: any[] = [], metadata?: Record<string, unknown>): string {

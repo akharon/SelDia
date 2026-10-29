@@ -32,8 +32,9 @@ import { locateGfmTable, locateSelDiATable, isSelDiAFilePath, type GfmTableLoc }
 import { parseGfmTable, serializeGfm, applyTableOp, type GfmTable } from '../edit/table-patch.js';
 import {
   parseSelDiATableSource, serializeSelDiATableDoc, applySelDiATableOp, toView, gfmToSelDiATableFence,
-  type SelDiATableOp,
+  setChartDirective, type SelDiATableOp,
 } from '../edit/seldia-table-patch.js';
+import { parseTableBody, columnName, chartColumnRef, isNumericColumn, formatChartDirective, TABLE_CHART_KINDS, type TableChartKind } from '@seldia/core';
 import { EditSession } from '../edit/session.js';
 import { SerialQueue } from '../edit/serial-queue.js';
 
@@ -48,9 +49,15 @@ type TableWebviewMessage =
   | { type: 'ready' }
   | { type: 'op'; op: SelDiATableOp }
   | { type: 'convert' }
+  | { type: 'createChart' }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'revealSource' };
+
+const CHART_KIND_HINT: Record<TableChartKind, string> = {
+  bar: 'compare values per category', line: 'trend across ordered categories', pie: 'share of one value column',
+  radar: 'profile across several value columns', scatter: 'points per category, no connecting line',
+};
 
 export class SelDiATableEditorPanel {
   /** One panel per table — see createOrShow for how a panel is matched. */
@@ -183,6 +190,9 @@ export class SelDiATableEditorPanel {
       case 'convert':
         void this._queue.run(() => this.convertToSelDiA());
         break;
+      case 'createChart':
+        void this._queue.run(() => this.createChart());
+        break;
     }
   }
 
@@ -274,12 +284,12 @@ export class SelDiATableEditorPanel {
   /** Rewrite this GFM table as a ```seldia `table` fence and follow it: the
    *  panel switches to seldia mode in place. Undo history restarts — the
    *  snapshots are GFM text and would not fit the fence. */
-  private async convertToSelDiA(): Promise<void> {
+  private async convertToSelDiA(extra: string[] = []): Promise<void> {
     if (this._mode !== 'gfm') return;
     const gt = await this.groundTruth();
     const table = gt && parseGfmTable(gt.loc.source);
     if (!gt || !table) { this.post(); return; }
-    const fence = gfmToSelDiATableFence(table);
+    const fence = gfmToSelDiATableFence(table, undefined, extra);
     const inner = fence.split('\n').slice(1, -1).join('\n');
     const edit = new vscode.WorkspaceEdit();
     edit.replace(this._docUri, this.rangeOf(gt.document, gt.loc), fence);
@@ -298,6 +308,63 @@ export class SelDiATableEditorPanel {
     const loc = this.locate((await vscode.workspace.openTextDocument(this._docUri)).getText());
     if (loc) { this._lost = false; this.adopt(loc); }
     this._panel.title = `Table: ${this._docUri.path.split('/').pop()} @ line ${this._startLine + 1}`;
+    this.post();
+  }
+
+  /** "Create chart…": kind → label column → numeric value columns → with or
+   *  without the table. The result is a `chart …` directive in the table's
+   *  own fence (a GFM table is converted to a SelDiA table first), so the
+   *  chart is always drawn from the table's live data. */
+  private async createChart(): Promise<void> {
+    const gt = await this.groundTruth();
+    if (!gt) { this.post(); return; }
+    const rows = gt.loc.source.split(/\r?\n/).filter((l) => l.trim().startsWith('|')).join('\n');
+    const model = parseTableBody(rows);
+    if (!model.cols || model.rows < 2) {
+      void vscode.window.showInformationMessage('SelDiA: a chart needs a header row and at least one data row.');
+      return;
+    }
+    const names = Array.from({ length: model.cols }, (_, c) => columnName(model, c));
+    const kind = await vscode.window.showQuickPick(
+      TABLE_CHART_KINDS.map((k) => ({ label: k, description: CHART_KIND_HINT[k] })),
+      { title: 'Create chart (1/4): chart kind', placeHolder: 'Pick a chart kind' }
+    );
+    if (!kind) return;
+    const xPick = await vscode.window.showQuickPick(
+      names.map((n, c) => ({ label: n || `Column ${c + 1}`, c, description: isNumericColumn(model, c) ? 'numeric' : undefined })),
+      { title: 'Create chart (2/4): label column', placeHolder: 'Which column names the categories (x axis / slices)?' }
+    );
+    if (!xPick) return;
+    const numeric = names.map((_, c) => c).filter((c) => c !== xPick.c && isNumericColumn(model, c));
+    const excluded = names.filter((_, c) => c !== xPick.c && !isNumericColumn(model, c));
+    if (!numeric.length) {
+      void vscode.window.showWarningMessage(`SelDiA: no numeric value columns to chart${excluded.length ? ` (${excluded.join(', ')} hold text)` : ''}.`);
+      return;
+    }
+    const hint = excluded.length ? ` — not numeric, excluded: ${excluded.join(', ')}` : '';
+    const items = numeric.map((c) => ({ label: names[c] || `Column ${c + 1}`, c, picked: true }));
+    let ys: number[];
+    if (kind.label === 'pie') {
+      const one = await vscode.window.showQuickPick(items, { title: 'Create chart (3/4): value column', placeHolder: `A pie shows one value column${hint}` });
+      if (!one) return;
+      ys = [one.c];
+    } else {
+      const many = await vscode.window.showQuickPick(items, { title: 'Create chart (3/4): value columns', placeHolder: `Series to plot${hint}`, canPickMany: true });
+      if (!many?.length) return;
+      ys = many.map((p) => p.c);
+    }
+    const show = await vscode.window.showQuickPick(
+      [{ label: 'Table and chart', only: false, description: 'chart drawn below the table' }, { label: 'Chart only', only: true, description: 'the table is kept as the data source but not drawn' }],
+      { title: 'Create chart (4/4): what to show' }
+    );
+    if (!show) return;
+    const directive = formatChartDirective({ kind: kind.label as TableChartKind, x: chartColumnRef(model, xPick.c), y: ys.map((c) => chartColumnRef(model, c)), only: show.only });
+    if (this._mode === 'gfm') { await this.convertToSelDiA([directive]); return; }
+    const fresh = await this.groundTruth();
+    const text = fresh && setChartDirective(fresh.loc.source, directive);
+    if (!fresh || text === undefined) { this.post(); return; }
+    if (this._session.source !== fresh.loc.source) this._session.onForeignEdit(fresh.loc.source);
+    if (await this.replaceTable(text, fresh.loc.source)) this._session.recordEdit(this._source);
     this.post();
   }
 
@@ -370,6 +437,7 @@ export class SelDiATableEditorPanel {
     <button data-act="merge" title="Merge the selected cells (Shift+click or Shift+arrows to select)">Merge</button>
     <button data-act="unmerge" title="Split the merged cell back into single cells">Unmerge</button>
     <button data-act="convert" title="Rewrite this table as a SelDiA table fence (enables merged cells and charts)">Convert to SelDiA table</button>
+    <button data-act="chart" title="Draw a bar/line/pie/radar/scatter chart from this table's columns">Create chart…</button>
   </span>
   <span class="spacer"></span>
   <span class="group">

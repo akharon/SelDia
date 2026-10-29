@@ -779,3 +779,18 @@ table "Quarterly sales" {
 | Total | < | 4,735 |
 }
 ```
+
+## Chart from a table
+
+One `chart` line inside the table fence draws its columns as a chart below it.
+
+```seldia
+table "Revenue by region" {
+| Region | 2024 | 2025 |
+|:--|--:|--:|
+| North | 1,200 | 1,450 |
+| South | 980 | 1,100 |
+| West | 640 | 910 |
+chart bar x=Region y=2024,2025
+}
+```

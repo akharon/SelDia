@@ -73,6 +73,8 @@ export { pcbPlugin, renderBoard, importPcb } from './diagrams/pcb.js';
 
 // Tables with merged cells (`table` fences) + lossy GFM export.
 export { tablePlugin, importTable, layoutTable, transformTable } from './diagrams/table.js';
-export { parseTableBody, splitPipeRow, isDelimiterLine, unescapeTableCell, escapeTableCell, parseTableNumber, columnName, valueAt, isNumericColumn } from './table/model.js';
-export type { TableModel, TableCell, TableAlign, TableDiagnostic } from './table/model.js';
+export { parseTableBody, splitPipeRow, isDelimiterLine, unescapeTableCell, escapeTableCell, parseTableNumber, columnName, valueAt, isNumericColumn, parseChartDirective, formatChartDirective, chartColumnRef, TABLE_CHART_KINDS } from './table/model.js';
+export type { TableModel, TableCell, TableAlign, TableDiagnostic, TableChartKind, TableChartSpec } from './table/model.js';
+export { tableToChartIR } from './table/to-chart.js';
+export { chartCategoryOf } from './render/custom-renderers.js';
 export { exportTableGfm } from './export/gfm.js';

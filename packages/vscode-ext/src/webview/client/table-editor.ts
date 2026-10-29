@@ -237,6 +237,7 @@ declare function acquireVsCodeApi(): { postMessage(msg: unknown): void };
       merge: !table || mode !== 'seldia' || !multi(),
       unmerge: !table || mode !== 'seldia' || !mergeAt(sel.r, sel.c),
       convert: !table || mode !== 'gfm',
+      chart: !table || !table.rows.length,
       undo: !canUndo, redo: !canRedo, reveal: false,
     };
     document.querySelectorAll<HTMLButtonElement>('.toolbar button[data-act]').forEach((b) => {
@@ -288,6 +289,7 @@ declare function acquireVsCodeApi(): { postMessage(msg: unknown): void };
     if (name === 'redo') { post({ type: 'redo' }); return; }
     if (name === 'reveal') { post({ type: 'revealSource' }); return; }
     if (name === 'convert') { post({ type: 'convert' }); return; }
+    if (name === 'chart') { post({ type: 'createChart' }); return; }
     if (!table) return;
     const { r, c } = sel;
     switch (name) {

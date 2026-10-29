@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { createEngine, parseTableBody, exportTableGfm, parseTableNumber, escapeTableCell, unescapeTableCell, exportMermaid, exportPlantUml } from '../src/index.js';
+import { createEngine, parseTableBody, exportTableGfm, parseTableNumber, escapeTableCell, unescapeTableCell, exportMermaid, exportPlantUml, formatChartDirective, chartCategoryOf, chartColumnRef } from '../src/index.js';
 
 const span = (raw: string) => parseTableBody(raw).cells.map((c) => `${c.row},${c.col}:${c.text}:${c.rowspan}x${c.colspan}`);
 
@@ -202,5 +202,71 @@ describe('table diagram through the engine', () => {
     ].join('\n') + '\n');
     expect(exportMermaid(ir.value)).toBeNull();
     expect(exportPlantUml(ir.value)).toBeNull();
+  });
+});
+
+describe('table → chart', () => {
+  const engine = createEngine();
+  const CH = (d: string) => `table "Sales" {\n| Region | 2024 | 2025 | Note |\n|---|--:|--:|---|\n| North | 10 | 12 | ok |\n| South | 7 | 9 | ok |\n${d}\n}`;
+
+  it('defaults x to the first column and y to every numeric column', () => {
+    const m = parseTableBody(CH('chart bar').split('\n').slice(1, -1).join('\n'));
+    expect(m.chart).toMatchObject({ kind: 'bar', x: 0, y: [1, 2], only: false });
+    expect(m.diagnostics).toEqual([]);
+  });
+
+  it('resolves named and quoted columns, warns on unknown or non-numeric ones', () => {
+    const m = parseTableBody(CH('chart line x="Region" y=2025,Note,Nope').split('\n').slice(1, -1).join('\n'));
+    expect(m.chart).toMatchObject({ kind: 'line', x: 0, y: [2] });
+    expect(m.diagnostics.map((d) => d.message).join(' ')).toMatch(/Note[\s\S]*Nope|Nope[\s\S]*Note/);
+  });
+
+  it('pie uses one value column; formatChartDirective round-trips', () => {
+    const m = parseTableBody(CH('chart pie').split('\n').slice(1, -1).join('\n'));
+    expect(m.chart!.y).toHaveLength(1);
+    const line = formatChartDirective({ kind: 'bar', x: 'Region name', y: ['2024', '2025'], only: true });
+    expect(line).toBe('chart bar x="Region name" y=2024,2025 only');
+  });
+
+  it('builds a chart IR whose series keep numeric-looking names', () => {
+    const ast = engine.parse(CH('chart bar'));
+    if (!ast.ok) throw new Error('parse');
+    const ir = engine.transform(ast.value);
+    if (!ir.ok) throw new Error('transform');
+    const chart = ir.value.metadata.tableChart as any;
+    expect(chart.type).toBe('chart-bar');
+    expect(chartCategoryOf(chart.nodes[0])).toMatchObject({ category: 'North', series: [{ name: '2024', value: 10 }, { name: '2025', value: 12 }] });
+  });
+
+  it('renders the table with the chart below it, or the chart alone with `only`', () => {
+    const both = engine.compileSync(CH('chart bar'));
+    expect(both.ok).toBe(true);
+    if (!both.ok) return;
+    expect(both.value.svg.match(/class="seldia-diagram-part"/g)).toHaveLength(2);
+    expect(both.value.svg.match(/class="seldia-diagram-svg-el/g)).toHaveLength(1);
+    expect(both.value.svg).toContain('tabular-nums');
+    const only = engine.compileSync(CH('chart bar only'));
+    expect(only.ok).toBe(true);
+    if (!only.ok) return;
+    expect(only.value.svg).not.toContain('tabular-nums');
+    expect(only.value.svg).not.toContain('seldia-diagram-part');
+  });
+
+  it('drops the directive from the GFM export', () => {
+    const ast = engine.parse(CH('chart bar'));
+    if (!ast.ok) throw new Error('parse');
+    const ir = engine.transform(ast.value);
+    if (!ir.ok) throw new Error('transform');
+    expect(exportTableGfm(ir.value)).not.toContain('chart');
+  });
+
+  it('refers to unnamed or duplicate columns by #N, and reads a trailing backslash literally', () => {
+    const m = parseTableBody('| | B | b | a b\\ |\n| x | 1 | 2 | 3 |');
+    expect([0, 1, 2, 3].map((c) => chartColumnRef(m, c))).toEqual(['#1', '#2', '#3', 'a b\\']);
+    const line = formatChartDirective({ kind: 'bar', x: chartColumnRef(m, 0), y: [chartColumnRef(m, 2), chartColumnRef(m, 3)] });
+    const diags: any[] = [];
+    const m2 = parseTableBody('| | B | b | a b\\ |\n| x | 1 | 2 | 3 |\n' + line);
+    expect(m2.chart).toMatchObject({ x: 0, y: [2, 3] });
+    expect(m2.diagnostics).toEqual(diags);
   });
 });

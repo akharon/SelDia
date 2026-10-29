@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseSelDiATableSource, serializeSelDiATableDoc, applySelDiATableOp, isSelDiATableSource,
-  markerGrid, toView, gfmToSelDiATableFence, closeRange, type SelDiATable,
+  markerGrid, toView, gfmToSelDiATableFence, closeRange, setChartDirective, type SelDiATable,
 } from '../src/edit/seldia-table-patch.js';
 import { parseGfmTable } from '../src/edit/table-patch.js';
 import { parseTableBody } from '@seldia/core';
@@ -154,5 +154,22 @@ describe('SelDiA table fence patching', () => {
     const t = resolved(src);
     expect(t.cells.find((c) => c.r === 1 && c.c === 0)?.text).toBe('^');
     expect(t.align).toEqual([null, 'right']);
+  });
+
+  it('adds, replaces and removes the chart directive without touching rows', () => {
+    const added = setChartDirective(SRC, 'chart bar x=Region y=Units')!;
+    expect(added.split('\n').slice(-2)).toEqual(['chart bar x=Region y=Units', '}']);
+    expect(parseTableBody(added.split('\n').slice(1, -1).join('\n')).chart).toMatchObject({ kind: 'bar', x: 0, y: [2] });
+    const src2 = 'table {\n  | A | 2024 |\n  chart line\n  | x | 1 |\n}';
+    const replaced = setChartDirective(src2, 'chart pie only')!;
+    expect(replaced).toBe('table {\n  | A | 2024 |\n  chart pie only\n  | x | 1 |\n}');
+    expect(setChartDirective(replaced, null)).toBe('table {\n  | A | 2024 |\n  | x | 1 |\n}');
+    expect(setChartDirective('flowchart {\n}', 'chart bar')).toBeUndefined();
+  });
+
+  it('replaces a directive whatever its case, as core reads it', () => {
+    const src = 'table {\n| A | n |\n| x | 1 |\nChart line\n}';
+    expect(setChartDirective(src, 'chart pie')).toBe('table {\n| A | n |\n| x | 1 |\nchart pie\n}');
+    expect(setChartDirective(src, null)).toBe('table {\n| A | n |\n| x | 1 |\n}');
   });
 });

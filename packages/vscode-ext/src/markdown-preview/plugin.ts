@@ -30,20 +30,25 @@
 import type { CoreEngine, DiagramIR } from '@seldia/core';
 import { importMermaid, importPlantUml, importCircuit, importPcb, fenceToSource } from '@seldia/core';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
-import { blockIdForSource } from '../edit/blocks.js';
+import { blockIdForSource, tableIdForSource } from '../edit/blocks.js';
 import { nextDiagramNumber, anchorForDiagram, captionFor, titleFromDsl, registerDiagram } from './numbering.js';
 import { readFrontMatterOverrides } from './frontmatter.js';
 
 // Minimal MarkdownIt interface — matches what VS Code passes to extendMarkdownIt
+type RenderRule = (tokens: any[], idx: number, options: any, env: any, slf: any) => string;
+
 export interface MarkdownIt {
   renderer: {
     rules: {
-      fence?: (tokens: any[], idx: number, options: any, env: any, slf: any) => string;
+      fence?: RenderRule;
+      table_open?: RenderRule;
+      table_close?: RenderRule;
     };
   };
   core?: {
     ruler: {
-      before: (anchor: string, name: string, fn: (state: { src: string; env: any }) => void) => void;
+      before: (anchor: string, name: string, fn: (state: { src: string; env: any; tokens: any[] }) => void) => void;
+      after?: (anchor: string, name: string, fn: (state: { src: string; env: any; tokens: any[] }) => void) => void;
     };
   };
 }
@@ -59,6 +64,10 @@ export interface SelDiAMarkdownItPluginOptions {
   captionsEnabled?: boolean;
   /** Let the preview script inject the auto-TOC. Default true. */
   tocEnabled?: boolean;
+  /** Style GFM tables and give them an Edit/Copy-as-CSV toolbar. Default true.
+   *  A function is re-read on every render, so a settings change takes effect
+   *  on the next preview refresh without re-creating the plugin. */
+  tablesEnabled?: boolean | (() => boolean);
 }
 
 export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiAMarkdownItPluginOptions = {}) {
@@ -70,12 +79,19 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
     // the raw source, only individual token content) can read them per
     // render. `before('normalize', ...)` runs first in core's ruler chain,
     // ahead of anything that could mutate `state.src`.
+    //
+    // The overrides are ALSO stashed on the token array itself. VS Code's
+    // Markdown engine tokenizes with one env object and renders with a fresh
+    // one, and caches the tokens per document version — so on a real preview
+    // render `env.__seldiaOverrides` is never there. The token array is the
+    // only thing that survives from parse to render (and across cached
+    // renders); `state.tokens` is already the array the block rules fill.
     try {
       md.core?.ruler.before('normalize', 'seldia_frontmatter_overrides', (state) => {
         try {
-          if (state.env && typeof state.env === 'object') {
-            state.env.__seldiaOverrides = readFrontMatterOverrides(state.src);
-          }
+          const overrides = readFrontMatterOverrides(state.src);
+          if (state.env && typeof state.env === 'object') state.env.__seldiaOverrides = overrides;
+          if (Array.isArray(state.tokens)) (state.tokens as any).__seldiaOverrides = overrides;
         } catch {
           /* ignore — falls back to the workspace-wide setting */
         }
@@ -83,6 +99,31 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
     } catch {
       /* older/alternate MarkdownIt shape without `core` — no per-document override */
     }
+
+    // Stamp every top-level table_open token with the id of its source lines
+    // (same hash as edit/blocks.ts findGfmTables), at parse time where the
+    // source is still at hand. The renderer only sees tokens, and — see above —
+    // the tokens are what VS Code caches, so this is the one place the id can
+    // be derived reliably.
+    try {
+      md.core?.ruler.after?.('block', 'seldia_table_ids', (state) => {
+        try {
+          let lines: string[] | undefined;
+          for (const tok of state.tokens) {
+            if (tok.type !== 'table_open' || !tok.map) continue;
+            lines ??= state.src.split('\n');
+            const source = lines.slice(tok.map[0], tok.map[1]).join('\n');
+            tok.meta = { ...(tok.meta || {}), seldiaTableId: tableIdForSource(source), seldiaTableLine: tok.map[0] };
+          }
+        } catch {
+          /* tables render unstamped (styled, no edit link) */
+        }
+      });
+    } catch {
+      /* no core ruler — tables still get styled, just without edit links */
+    }
+
+    installTableRules(md, options.tablesEnabled ?? true);
 
     const defaultFence =
       md.renderer.rules.fence ||
@@ -112,14 +153,29 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
       } catch {
         includeSprite = true;
       }
-      const commitSprite = () => { try { if (env && includeSprite) env[spriteKey] = true; } catch { /* ignore */ } };
+      // The TOC marker has its own once-per-document flag: a GFM table can
+      // spend the sprite slot before the first diagram, and the marker must
+      // still be emitted by whichever diagram renders first.
+      const tocKey = '__seldiaTocMarkerEmitted';
+      let includeTocMarker = true;
+      try {
+        includeTocMarker = !env?.[tocKey];
+      } catch {
+        includeTocMarker = true;
+      }
+      const commitSprite = () => {
+        try {
+          if (env && includeSprite) env[spriteKey] = true;
+          if (env) env[tocKey] = true;
+        } catch { /* ignore */ }
+      };
 
       // Per-document front-matter (seldia_toc / seldia_captions) overrides
       // the workspace-wide setting when present, e.g. a document that already
       // has its own hand-written TOC and doesn't want a second one.
       let docOverrides: { toc?: boolean; captions?: boolean } = {};
       try {
-        docOverrides = env?.__seldiaOverrides || {};
+        docOverrides = docOverridesOf(tokens, env);
       } catch {
         docOverrides = {};
       }
@@ -129,7 +185,7 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
       // A hidden marker carrying the toc setting to the preview script, which
       // has no access to `vscode.workspace.getConfiguration` from inside the
       // webview. Emitted once per document, alongside the sprite.
-      const tocMarker = includeSprite
+      const tocMarker = includeTocMarker
         ? `<span id="seldia-toc-config" data-seldia-toc-enabled="${effectiveTocEnabled ? '1' : '0'}" style="display:none"></span>`
         : '';
 
@@ -206,6 +262,71 @@ export function createSelDiAMarkdownItPlugin(engine: CoreEngine, options: SelDiA
 
     return md;
   };
+}
+
+/** Per-document front-matter overrides: from the token array (survives VS
+ *  Code's parse/render env split and token cache), else from env (plain
+ *  `md.render`, as in tests). */
+function docOverridesOf(tokens: any, env: any): { toc?: boolean; captions?: boolean; tables?: boolean } {
+  return tokens?.__seldiaOverrides || env?.__seldiaOverrides || {};
+}
+
+// ── GFM tables ───────────────────────────────────────────────────────────
+
+/** Wrap every GFM table in a styled container with a hover toolbar
+ *  ("Edit table" deep link + "Copy as CSV"). The `<table>` tag itself is
+ *  still rendered by the previous rule — VS Code's line-number wrapper or
+ *  markdown-it's own `renderToken` — so its `data-line`/`code-line`
+ *  attributes, which drive scroll-sync, are untouched. */
+function installTableRules(md: MarkdownIt, tablesEnabled: boolean | (() => boolean)): void {
+  const prevOpen = md.renderer.rules.table_open;
+  const prevClose = md.renderer.rules.table_close;
+  const renderOpen: RenderRule = (tokens, idx, options, env, slf) =>
+    prevOpen ? prevOpen(tokens, idx, options, env, slf) : slf.renderToken(tokens, idx, options);
+  const renderClose: RenderRule = (tokens, idx, options, env, slf) =>
+    prevClose ? prevClose(tokens, idx, options, env, slf) : slf.renderToken(tokens, idx, options);
+
+  const enabledFor = (tokens: any[], env: any): boolean => {
+    try {
+      const doc = docOverridesOf(tokens, env).tables;
+      if (doc !== undefined) return doc;
+      return typeof tablesEnabled === 'function' ? tablesEnabled() : tablesEnabled;
+    } catch {
+      return false;
+    }
+  };
+
+  md.renderer.rules.table_open = (tokens, idx, options, env, slf) => {
+    const inner = renderOpen(tokens, idx, options, env, slf);
+    if (!enabledFor(tokens, env)) return inner;
+    let sprite = '';
+    try {
+      if (env && !env.__seldiaSpriteEmitted) { sprite = ICON_SPRITE; env.__seldiaSpriteEmitted = true; }
+    } catch { /* ignore */ }
+    return sprite + renderTableWrapperOpen(tokens[idx], docUriOf(env)) + inner;
+  };
+  md.renderer.rules.table_close = (tokens, idx, options, env, slf) => {
+    const inner = renderClose(tokens, idx, options, env, slf);
+    if (!enabledFor(tokens, env)) return inner;
+    return inner + '</div></div>\n';
+  };
+}
+
+/** The opening half of a table's wrapper. Exported for tests. Only a
+ *  top-level table (`level === 0`) that carries a stamped id gets the edit
+ *  link: tables nested in lists/blockquotes are styled but not editable, since
+ *  the host's table finder (edit/blocks.ts) only addresses top-level tables. */
+export function renderTableWrapperOpen(token: any, docUri: string): string {
+  const id: string | undefined = token?.meta?.seldiaTableId;
+  const line: number | undefined = token?.meta?.seldiaTableLine;
+  const editable = !!id && (token?.level ?? 0) === 0;
+  const attrs = id
+    ? ` data-seldia-table="${escapeAttr(id)}" data-seldia-doc="${escapeAttr(docUri)}"${line !== undefined ? ` data-seldia-table-line="${line}"` : ''}`
+    : '';
+  const edit = editable
+    ? `<a class="seldia-btn seldia-btn-icon" title="Edit table" aria-label="Edit table" href="${deepLink('editTable', { tableId: id!, line: line !== undefined ? String(line) : '', doc: docUri })}">${icon('edit')}</a>`
+    : '';
+  return `<div class="seldia-table"${attrs}><div class="seldia-table-toolbar">${edit}<button class="seldia-btn seldia-btn-icon seldia-btn-copy-csv" title="Copy as CSV" aria-label="Copy as CSV">${icon('copy')}${icon('check', 'seldia-icon-copied')}</button></div><div class="seldia-table-scroll">`;
 }
 
 /** The Uri of the Markdown document currently being rendered, as a string.

@@ -616,13 +616,17 @@ export function activate(context: vscode.ExtensionContext) {
   // takes effect on the next preview refresh, triggered below.
   const captionsEnabled = vscode.workspace.getConfiguration('seldia').get<boolean>('markdown.captions.enabled', true);
   const tocEnabled = vscode.workspace.getConfiguration('seldia').get<boolean>('markdown.toc.enabled', true);
-  const seldiaMarkdownItPlugin = createSelDiAMarkdownItPlugin(engine, { captionsEnabled, tocEnabled });
+  // Tables are read lazily (once per rendered table, not per token) so the
+  // setting applies on the next refresh without re-creating the plugin.
+  const tablesEnabled = () => vscode.workspace.getConfiguration('seldia').get<boolean>('markdown.tables.enabled', true);
+  const seldiaMarkdownItPlugin = createSelDiAMarkdownItPlugin(engine, { captionsEnabled, tocEnabled, tablesEnabled });
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (
         e.affectsConfiguration('seldia.markdown.captions.enabled') ||
-        e.affectsConfiguration('seldia.markdown.toc.enabled')
+        e.affectsConfiguration('seldia.markdown.toc.enabled') ||
+        e.affectsConfiguration('seldia.markdown.tables.enabled')
       ) {
         vscode.commands.executeCommand('markdown.preview.refresh');
       }

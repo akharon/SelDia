@@ -402,3 +402,134 @@
   }
 }
 
+
+/* ── GFM tables ───────────────────────────────────────────────────────── */
+/* Every Markdown table is wrapped by the markdown-it plugin in
+   .seldia-table > .seldia-table-scroll > table (setting
+   seldia.markdown.tables.enabled / front-matter `seldia_tables: false` turn it
+   off). The look is deliberately quiet: hairline row rules, a faint header
+   band, zebra striping, no outer box — a table should read as typeset
+   content, not a widget. Every colour comes from the VS Code theme so light,
+   dark and high-contrast all work; colour-mix() keeps tints relative to the
+   theme's own foreground instead of hard-coding greys. */
+.seldia-table {
+  --seldia-table-rule: var(--vscode-contrastBorder, color-mix(in srgb, var(--vscode-foreground, #ccc) 16%, transparent));
+  --seldia-table-head-rule: var(--vscode-contrastBorder, color-mix(in srgb, var(--vscode-foreground, #ccc) 45%, transparent));
+  --seldia-table-head-bg: color-mix(in srgb, var(--vscode-foreground, #ccc) 6%, var(--vscode-editor-background, #1e1e1e));
+  --seldia-table-zebra: color-mix(in srgb, var(--vscode-foreground, #ccc) 3.5%, transparent);
+  /* Not list-hoverBackground: in dark themes it is indistinguishable from a
+     zebra row, and in high contrast it is transparent. */
+  --seldia-table-hover: color-mix(in srgb, var(--vscode-foreground, #ccc) 9%, transparent);
+  position: relative;
+  margin: 0 0 1em;
+  /* Shrink-wrap the table so the hover toolbar lands on the table's own
+     top-right corner, not the far edge of the preview column. */
+  width: fit-content;
+  /* A permanent 30px gutter on the right holds the hover toolbar, so revealing
+     it never covers a cell or reflows anything. */
+  max-width: calc(100% - 30px);
+}
+.seldia-table-scroll {
+  /* Wide tables scroll sideways inside the column instead of overflowing the
+     page. A tall table (beyond ~80% of the viewport) scrolls inside the
+     wrapper too, which is what lets the header stay sticky: a horizontal
+     scroll container is also the vertical sticky-positioning context, so
+     `position: sticky` on th can only pin within it. Short tables never hit
+     the max-height and render exactly as normal flow content. */
+  overflow: auto;
+  max-height: 80vh;
+  max-width: 100%;
+}
+.seldia-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.seldia-table th,
+.seldia-table td {
+  padding: 6px 12px;
+  /* Alignment comes from markdown-it's inline `style="text-align:…"` (the
+     delimiter-row colons), which wins over this default. */
+  text-align: start;
+  vertical-align: top;
+  border: none;
+  border-bottom: 1px solid var(--seldia-table-rule);
+}
+.seldia-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 600;
+  background: var(--seldia-table-head-bg);
+  border-bottom: 1px solid var(--seldia-table-head-rule);
+}
+.seldia-table table > tbody > tr + tr > td {
+  border-top: none; /* VS Code's own markdown.css rule; we draw bottoms instead */
+}
+.seldia-table tbody tr:nth-child(even) td {
+  background: var(--seldia-table-zebra);
+}
+.seldia-table tbody tr:hover td {
+  background: var(--seldia-table-hover);
+}
+.seldia-table tbody tr:last-child td {
+  border-bottom-color: var(--seldia-table-head-rule);
+}
+.seldia-table code {
+  white-space: nowrap;
+}
+
+/* High contrast: VS Code's own list hover is a dashed active-border outline. */
+.vscode-high-contrast .seldia-table tbody tr:hover td { background: transparent; }
+.vscode-high-contrast .seldia-table tbody tr:hover {
+  outline: 1px dashed var(--vscode-contrastActiveBorder, #f38518);
+  outline-offset: -1px;
+}
+
+/* Toolbar: same hover-revealed affordance as the diagram toolbar, but parked
+   as a narrow vertical strip in the gutter right of the table, level with
+   the header. An overlay at the top-right covered the last header cell, and
+   above the table it would cover the preceding paragraph. It sits outside
+   the scroll container, so it is never clipped. */
+.seldia-table-toolbar {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 4px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 5px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background, #252526));
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #454545));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+}
+/* Hover bridge across the 4px gap so moving onto the toolbar keeps it shown. */
+.seldia-table-toolbar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  width: 6px;
+}
+.seldia-table:hover .seldia-table-toolbar,
+.seldia-table:focus-within .seldia-table-toolbar {
+  opacity: 1;
+  visibility: visible;
+}
+.seldia-btn-copy-csv .seldia-icon-copied { display: none; }
+.seldia-btn-copy-csv.seldia-copied .seldia-icon { display: none; }
+.seldia-btn-copy-csv.seldia-copied .seldia-icon-copied {
+  display: inline-block;
+  color: var(--vscode-charts-green, var(--vscode-testing-iconPassed, #4caf50));
+}
+@media print {
+  .seldia-table-toolbar { display: none; }
+  .seldia-table-scroll { max-height: none; overflow: visible; }
+}

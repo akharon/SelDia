@@ -9,6 +9,7 @@
 //   ---
 //   seldia_toc: false
 //   seldia_captions: false
+//   seldia_tables: false
 //   ---
 //
 // This exists for documents that already carry their own hand-written TOC —
@@ -25,6 +26,8 @@ export interface SelDiAFrontMatterOverrides {
   toc?: boolean;
   /** `seldia_captions: false` in front-matter — suppresses numbered captions for this document. */
   captions?: boolean;
+  /** `seldia_tables: false` in front-matter — renders this document's tables plain (no SelDiA styling/toolbar). */
+  tables?: boolean;
 }
 
 /** Read `seldia_toc` / `seldia_captions` booleans out of a document's YAML
@@ -39,5 +42,7 @@ export function readFrontMatterOverrides(markdown: string): SelDiAFrontMatterOve
   if (toc) overrides.toc = toc[1] === 'true';
   const captions = /^seldia_captions\s*:\s*(true|false)\s*$/m.exec(body);
   if (captions) overrides.captions = captions[1] === 'true';
+  const tables = /^seldia_tables\s*:\s*(true|false)\s*$/m.exec(body);
+  if (tables) overrides.tables = tables[1] === 'true';
   return overrides;
 }

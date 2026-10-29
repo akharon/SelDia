@@ -63,8 +63,10 @@ export async function findDocWithBlock(
 /** Actions the preview may invoke over the `vscode://` deep-link channel.
  *  `editBlockVisually` opens the block in the custom editor (its own owned
  *  webview) rather than editing through this channel — see the header for
- *  why in-place editing here was never viable. */
-export const EDIT_URI_ACTIONS = new Set(['revealSource', 'editBlockVisually']);
+ *  why in-place editing here was never viable. `editTable` likewise only
+ *  OPENS the table editor panel (webview/table-provider.ts), which writes back
+ *  through its own owned webview. */
+export const EDIT_URI_ACTIONS = new Set(['revealSource', 'editBlockVisually', 'editTable']);
 
 export function registerEditCommands(context: vscode.ExtensionContext): void {
   const handler = vscode.window.registerUriHandler({

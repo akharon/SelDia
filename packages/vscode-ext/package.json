@@ -416,6 +416,11 @@
           "default": true,
           "description": "Render numbered captions (\"Diagram 1\", \"Diagram 2\") under diagrams in the Markdown preview"
         },
+        "seldia.markdown.tables.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Style GFM tables in the Markdown preview (zebra rows, sticky header, horizontal scroll) with an Edit table / Copy as CSV toolbar, and show an \"Edit Table\" CodeLens above tables. A document can opt out with `seldia_tables: false` in its front-matter."
+        },
         "seldia.marp.autoPreview": {
           "type": "boolean",
           "default": true,

@@ -21,6 +21,8 @@
 // markdown-it plugin stamped onto the container.
 // =============================================================================
 
+import { toCsv } from '../edit/table-patch.js';
+
 (() => {
   const zoomState = new Map<string, number>();
 
@@ -192,6 +194,14 @@
   // re-renders, and needs no per-block setup pass.
   document.addEventListener('click', (e) => {
     const target = e.target as Element | null;
+    // GFM table "Copy as CSV" — the table wrapper is not a diagram container.
+    const csvBtn = target?.closest?.('.seldia-btn-copy-csv') as HTMLElement | null;
+    if (csvBtn) {
+      e.preventDefault();
+      const table = csvBtn.closest('.seldia-table')?.querySelector('table');
+      if (table) void copyTableCsv(table, csvBtn);
+      return;
+    }
     const btn = target?.closest?.(
       '.seldia-mode-btn, .seldia-btn-zoom-in, .seldia-btn-zoom-out, .seldia-btn-reset, .seldia-btn-export, .seldia-btn-copy-source'
     ) as HTMLElement | null;
@@ -350,6 +360,26 @@
       setTimeout(() => {
         btn.classList.remove('seldia-copied');
         btn.setAttribute('title', 'Copy source to clipboard');
+      }, 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  // ── Copy a rendered GFM table as CSV ─────────────────────────────────────
+  // Read from the rendered DOM (cell text as the reader sees it, markup
+  // stripped) rather than the Markdown source, which the preview never has.
+  async function copyTableCsv(table: HTMLTableElement, btn: HTMLElement) {
+    const rows = Array.from(table.rows).map((tr) =>
+      Array.from(tr.cells).map((cell) => (cell.textContent || '').trim())
+    );
+    try {
+      await navigator.clipboard.writeText(toCsv(rows));
+      btn.classList.add('seldia-copied');
+      btn.setAttribute('title', 'Copied!');
+      setTimeout(() => {
+        btn.classList.remove('seldia-copied');
+        btn.setAttribute('title', 'Copy as CSV');
       }, 1500);
     } catch {
       /* clipboard unavailable */

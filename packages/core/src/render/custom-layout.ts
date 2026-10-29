@@ -18,6 +18,7 @@
 
 import type { DiagramIR, IRNode, IREdge } from '../ir/types.js';
 import { layoutPcb } from '../diagrams/pcb.js';
+import { layoutTable } from '../diagrams/table.js';
 import { layoutCircuit } from '../circuit/layout.js';
 import type { Point, Rect } from '../types/common.js';
 import type { FpDimension, FpMeasure, FpBox, FpWallSeg } from '../floorplan/dimensions.js';
@@ -924,6 +925,7 @@ export function customLayoutFor(type: string): ((ir: DiagramIR) => CustomLayoutR
     case 'floorplan': return layoutFloorplan;
     case 'circuit': return layoutCircuit;
     case 'pcb': return layoutPcb;
+    case 'table': return layoutTable;
     default: return undefined;
   }
 }

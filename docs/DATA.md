@@ -20,6 +20,8 @@ Guide to test data, golden values, fixtures, and reference data in SelDiA.
 | `packages/core/test/label-legibility.test.ts` | Label legibility over the docs/examples corpus: chips stay on their own edge, off arrowheads, nodes and group titles; token lint (`tokenViolations` = 0, every `stroke-width` and `font-size` is a DS token) | TypeScript | Run with the core suite |
 | `packages/core/test/edge-layer.test.ts` | Unit tests for `render/edge-layer.ts`: `postRoute` (nudge, apex snap, title-band avoidance, jumps), `edgePathD`, `arrowheadSvg` | TypeScript | Run with the core suite |
 | `packages/core/test/layout-metrics-labels.test.ts` | Hand-built IRs for the label metrics (`labelDetached`, `labelOnArrowhead`, `labelEdgeHits`, `groupTitleHits`, `parallelRunLength`) and `tokenViolations` | TypeScript | Run with the core suite |
+| `packages/core/test/table.test.ts` | `table` type: pipe-row parsing, `^`/`<` merge resolution (chains, 2x2 blocks, escapes), invalid and non-rectangular merges degrading with diagnostics, engine compile and theming, lossy GFM export | TypeScript | Run with the core suite |
+| `packages/vscode-ext/test/seldia-table-patch.test.ts` | Table editor write-back for `table` fences: merge/unmerge, span-aware insert/delete/move, marker escaping, GFM → fence conversion. Output is re-parsed with core's `parseTableBody` | TypeScript | Run with the vscode-ext suite |
 | `packages/cli/test/check.test.ts` | `seldia check`: per-fence report, `--json`, `--max` exit code, bad extension | TypeScript | Run with the CLI suite |
 
 **Readability metrics** (`measureLayout` in `layout/metrics.ts`, also in `docs/layout-metrics.json` and `seldia check`): `labelDetached` (chip more than 16px from its own edge), `labelOnArrowhead` (chip on the last 14px of an edge), `labelEdgeHits` (chip on another edge or a group title band), `groupTitleHits` (edge through a group title), `parallelRunLength` (px of overlapping collinear runs). `tokenViolations(svg)` counts `stroke-width` and `font-size` values that are not DS tokens.
@@ -58,6 +60,10 @@ interface IRNode {
 - **PlantUML**: Nearly lossless
   - Supported: all UML diagram types
   - Loss rate: ~2% (margins, advanced theming)
+- **GFM (Markdown table) export of `table` diagrams** (`exportTableGfm`): Lossy
+  - Supported: cell text, column alignment, header row
+  - Lost: merged cells (GFM has no rowspan/colspan). The anchor keeps the text and the cells it covered are written empty, so re-importing gives an unmerged table.
+  - `table` has no Mermaid/PlantUML mapping. `exportMermaid`/`exportPlantUml` return null and the CodeLens hides those lenses.
 
 **Parser Conformance:**
 - **Mermaid → IR**: All syntax must parse without error

@@ -17,11 +17,23 @@
 //   • The table is re-located on every change by id (hash of its source
 //     lines) with start-line proximity as the fallback, because every edit —
 //     ours or the user's — changes the hash.
+//
+// Two kinds of table share the panel: a plain GFM table (`mode: 'gfm'`) and
+// a SelDiA `table` diagram — a ```seldia fence or a whole .seldia/.sld file
+// (`mode: 'seldia'`). Only the latter can hold merged cells, so Merge/Unmerge
+// are enabled there only; a GFM table offers "Convert to SelDiA table", which
+// rewrites it as a fence and switches the open panel over to it.
 // =============================================================================
 
+export type TableEditorMode = 'gfm' | 'seldia';
+
 import * as vscode from 'vscode';
-import { locateGfmTable, type GfmTableLoc } from '../edit/blocks.js';
-import { parseGfmTable, serializeGfm, applyTableOp, type TableOp, type GfmTable } from '../edit/table-patch.js';
+import { locateGfmTable, locateSelDiATable, isSelDiAFilePath, type GfmTableLoc } from '../edit/blocks.js';
+import { parseGfmTable, serializeGfm, applyTableOp, type GfmTable } from '../edit/table-patch.js';
+import {
+  parseSelDiATableSource, serializeSelDiATableDoc, applySelDiATableOp, toView, gfmToSelDiATableFence,
+  type SelDiATableOp,
+} from '../edit/seldia-table-patch.js';
 import { EditSession } from '../edit/session.js';
 import { SerialQueue } from '../edit/serial-queue.js';
 
@@ -34,7 +46,8 @@ function getNonce(): string {
 
 type TableWebviewMessage =
   | { type: 'ready' }
-  | { type: 'op'; op: TableOp }
+  | { type: 'op'; op: SelDiATableOp }
+  | { type: 'convert' }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'revealSource' };
@@ -56,8 +69,9 @@ export class SelDiATableEditorPanel {
   private _expectingVersion: number | undefined;
   private _registryKey: string;
   private _lost = false;
+  private _mode: TableEditorMode;
 
-  static createOrShow(extensionUri: vscode.Uri, docUri: vscode.Uri, table: GfmTableLoc): SelDiATableEditorPanel {
+  static createOrShow(extensionUri: vscode.Uri, docUri: vscode.Uri, table: GfmTableLoc, mode: TableEditorMode = 'gfm'): SelDiATableEditorPanel {
     const key = `${docUri.toString()}#${SelDiATableEditorPanel.nextKey++}`;
     // Match by the panel's CURRENT identity — its start line moves with edits
     // above it, so the key it was registered under goes stale.
@@ -78,7 +92,7 @@ export class SelDiATableEditorPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
       }
     );
-    const editor = new SelDiATableEditorPanel(panel, extensionUri, docUri, table, key);
+    const editor = new SelDiATableEditorPanel(panel, extensionUri, docUri, table, key, mode);
     SelDiATableEditorPanel.panels.set(key, editor);
     return editor;
   }
@@ -88,9 +102,11 @@ export class SelDiATableEditorPanel {
     extensionUri: vscode.Uri,
     private readonly _docUri: vscode.Uri,
     table: GfmTableLoc,
-    key: string
+    key: string,
+    mode: TableEditorMode
   ) {
     this._panel = panel;
+    this._mode = mode;
     this._tableId = table.tableId;
     this._startLine = table.startLine;
     this._source = table.source;
@@ -125,8 +141,9 @@ export class SelDiATableEditorPanel {
   /** Once open, the panel only follows its own table: by id, else exactly at
    *  its (shifted) start line. A wide line fallback here would latch onto a
    *  neighbouring table while this one is mid-edit and briefly not a table. */
-  private locate(markdown: string): GfmTableLoc | undefined {
-    return locateGfmTable(markdown, this._tableId, this._startLine, 0);
+  private locate(text: string): GfmTableLoc | undefined {
+    if (this._mode === 'seldia') return locateSelDiATable(text, isSelDiAFilePath(this._docUri.path), this._tableId, this._startLine, 0);
+    return locateGfmTable(text, this._tableId, this._startLine, 0);
   }
 
   /** Keep the remembered start line in step with edits entirely above it. */
@@ -162,6 +179,9 @@ export class SelDiATableEditorPanel {
         break;
       case 'revealSource':
         void this.revealSource();
+        break;
+      case 'convert':
+        void this._queue.run(() => this.convertToSelDiA());
         break;
     }
   }
@@ -200,22 +220,42 @@ export class SelDiATableEditorPanel {
       return false;
     }
     // Re-adopt the table at its (unchanged) start line under its new id.
-    const loc = locateGfmTable(gt.document.getText(), undefined, gt.loc.startLine, 0);
+    this._tableId = '';
+    const loc = this.locate(gt.document.getText());
     if (loc) this.adopt(loc);
     return true;
   }
 
-  private async applyOp(op: TableOp): Promise<void> {
+  /** The op applied to the live source, as the replacement text — or
+   *  undefined when it is a no-op (or refused, e.g. Merge on a GFM table). */
+  private nextText(source: string, op: SelDiATableOp): string | undefined {
+    if (this._mode === 'seldia') {
+      const doc = parseSelDiATableSource(source);
+      if (!doc) return undefined;
+      const next = applySelDiATableOp(doc.table, op);
+      return next === doc.table ? undefined : serializeSelDiATableDoc(doc, next);
+    }
+    if (op.kind === 'merge' || op.kind === 'unmerge') return undefined;
+    const table = parseGfmTable(source);
+    if (!table) return undefined;
+    const next = applyTableOp(table, op);
+    return next === table ? undefined : serializeGfm(next);
+  }
+
+  private async applyOp(op: SelDiATableOp): Promise<void> {
     const gt = await this.groundTruth();
     if (!gt) { this.post(); return; }
-    const table = parseGfmTable(gt.loc.source);
-    if (!table) { this.post(); return; }
-    const next = applyTableOp(table, op);
-    if (next === table) { this.post(); return; }
+    const text = this.nextText(gt.loc.source, op);
+    if (text === undefined) {
+      if (op.kind === 'moveRow' || op.kind === 'moveCol') {
+        vscode.window.setStatusBarMessage('SelDiA: unmerge first — a merged cell spans that move', 4000);
+      }
+      this.post();
+      return;
+    }
     // The session's notion of "current" must be the live text before we
     // record, or undo would restore a stale snapshot.
     if (this._session.source !== gt.loc.source) this._session.onForeignEdit(gt.loc.source);
-    const text = serializeGfm(next);
     if (await this.replaceTable(text, gt.loc.source)) this._session.recordEdit(this._source);
     this.post();
   }
@@ -228,6 +268,36 @@ export class SelDiATableEditorPanel {
       if (dir === 'undo') this._session.redo();
       else this._session.undo();
     }
+    this.post();
+  }
+
+  /** Rewrite this GFM table as a ```seldia `table` fence and follow it: the
+   *  panel switches to seldia mode in place. Undo history restarts — the
+   *  snapshots are GFM text and would not fit the fence. */
+  private async convertToSelDiA(): Promise<void> {
+    if (this._mode !== 'gfm') return;
+    const gt = await this.groundTruth();
+    const table = gt && parseGfmTable(gt.loc.source);
+    if (!gt || !table) { this.post(); return; }
+    const fence = gfmToSelDiATableFence(table);
+    const inner = fence.split('\n').slice(1, -1).join('\n');
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(this._docUri, this.rangeOf(gt.document, gt.loc), fence);
+    const prev = { mode: this._mode, start: this._startLine, id: this._tableId, session: this._session };
+    this._mode = 'seldia';
+    this._startLine = gt.loc.startLine + 1;
+    this._tableId = '';
+    this._session = new EditSession(inner);
+    this._expectingVersion = gt.document.version + 1;
+    if (!(await vscode.workspace.applyEdit(edit))) {
+      this._expectingVersion = undefined;
+      this._mode = prev.mode; this._startLine = prev.start; this._tableId = prev.id; this._session = prev.session;
+      this.post();
+      return;
+    }
+    const loc = this.locate((await vscode.workspace.openTextDocument(this._docUri)).getText());
+    if (loc) { this._lost = false; this.adopt(loc); }
+    this._panel.title = `Table: ${this._docUri.path.split('/').pop()} @ line ${this._startLine + 1}`;
     this.post();
   }
 
@@ -244,9 +314,15 @@ export class SelDiATableEditorPanel {
   }
 
   private post(): void {
-    const table: GfmTable | undefined = this._lost ? undefined : parseGfmTable(this._source);
+    let table: GfmTable | undefined;
+    if (this._lost) table = undefined;
+    else if (this._mode === 'seldia') {
+      const doc = parseSelDiATableSource(this._source);
+      table = doc && doc.table.cols ? toView(doc.table, doc.indent) : undefined;
+    } else table = parseGfmTable(this._source);
     void this._panel.webview.postMessage({
       type: 'table',
+      mode: this._mode,
       table,
       canUndo: this._session.canUndo,
       canRedo: this._session.canRedo,
@@ -291,7 +367,9 @@ export class SelDiATableEditorPanel {
     <button data-act="alignRight" title="Align right">Right</button>
   </span>
   <span class="group">
-    <button data-act="merge" disabled title="Merging needs a SelDiA table (coming soon)">Merge</button>
+    <button data-act="merge" title="Merge the selected cells (Shift+click or Shift+arrows to select)">Merge</button>
+    <button data-act="unmerge" title="Split the merged cell back into single cells">Unmerge</button>
+    <button data-act="convert" title="Rewrite this table as a SelDiA table fence (enables merged cells and charts)">Convert to SelDiA table</button>
   </span>
   <span class="spacer"></span>
   <span class="group">
@@ -361,6 +439,8 @@ td.rowhead, th.corner {
 }
 th.colhead { font-size: 11px; font-weight: normal; opacity: 0.6; background: transparent; border-color: transparent; text-align: center; cursor: default; padding: 2px; }
 tr.sel-row > td.rowhead, th.colhead.sel-col { opacity: 1; color: var(--vscode-focusBorder); }
+th.in-range, td.in-range { background: color-mix(in srgb, var(--vscode-focusBorder) 14%, var(--vscode-editor-background)); }
+body[data-mode="seldia"] button[data-act="convert"], body[data-mode="gfm"] button[data-act="unmerge"] { display: none; }
 th:focus, td:focus {
   box-shadow: inset 0 0 0 2px var(--vscode-focusBorder);
   background: var(--vscode-input-background, transparent);

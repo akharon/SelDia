@@ -32,6 +32,7 @@
     - [5.19 Sankey Diagram](#519-sankey-diagram)
     - [5.20 Block Diagram](#520-block-diagram)
     - [5.21 Timeline](#521-timeline)
+    - [5.24 Tables (merged cells)](#524-tables-merged-cells)
 6. [Styling & Themes](#6-styling--themes)
 7. [Layout & Positioning](#7-layout--positioning)
 8. [Groups & Containers](#8-groups--containers)
@@ -1972,6 +1973,38 @@ scale: 6
 **Options.** `side: back` mirrors the board to the back view (front by default). `scale: N` sets pixels per mm (default 8). The canvas is the outline plus a 5 mm margin (item bounds when there is no `Edge.Cuts`).
 
 **Out of scope.** Zones and fills, text fonts beyond plain SVG text, 3D, autoplacement and autorouting.
+
+### 5.24 Tables (merged cells)
+
+A `table` diagram (alias `tbl`, or the long form `diagram table`) holds GFM-style pipe rows: a header row, an optional `|---|:-:|--:|` delimiter for column alignment, then the data rows. Unlike a plain Markdown table, a cell can **merge** with its neighbour:
+
+| Cell text | Meaning |
+|-----------|---------|
+| `^` | merge into the cell **above** (rowspan) |
+| `<` | merge into the cell to the **left** (colspan) |
+| `\^`, `\<` | the literal characters `^` / `<` |
+| `\|` | a literal pipe inside a cell |
+
+```seldia
+table "Quarterly sales" {
+| Region | Quarter | Revenue |
+|:--|:-:|--:|
+| North | Q1 | 1,200 |
+| ^ | Q2 | 1,450 |
+| South | Q1 | 980 |
+| Total | < | 3,630 |
+}
+```
+
+`North` spans two rows; `Total` spans two columns. Markers chain, so `^` under `^` keeps growing the same cell, and a `<`/`^` block builds a 2×2 merge. The header row can use `<` for a column-group heading (`| Region | Sales | < |`).
+
+The rendering matches the Markdown preview's tables: a faint header band, zebra rows, hairline row rules, a stronger rule under the header, tabular figures, and the theme's colours (light, dark and high-contrast). It is always drawn crisp, never sketchy.
+
+**Invalid merges never break the diagram.** A `^` in the header row or the first body row, a `<` in the first column, or a marker set that would make a non-rectangular cell becomes a plain cell instead. The editor shows a warning on that line. Short rows are padded and extra cells are dropped, also with a warning.
+
+**Editing.** In Markdown, the fence gets an **Edit Table** CodeLens. In a `.seldia`/`.sld` file, use *SelDiA: Edit Table*. Both open the grid editor. To merge, select a range with Shift+click or Shift+arrows, then press **Merge**. **Unmerge** splits a merged cell back into single cells. Edits are written back as `^`/`<` markers. A plain GFM table opened in the same editor has Merge disabled; **Convert to SelDiA table** rewrites it as a ```` ```seldia ```` `table` fence first.
+
+**Export.** *Export to Markdown table* (CodeLens, or *SelDiA: Export Table to Markdown (GFM)*) writes a plain GFM table. This is **lossy**: GFM has no spans, so a merged cell keeps its text in its top-left cell and leaves the cells it covered empty. Mermaid and PlantUML have no table type, so those export lenses are hidden for `table`.
 
 ---
 

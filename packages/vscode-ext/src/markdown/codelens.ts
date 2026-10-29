@@ -80,12 +80,17 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
       }));
 
       // "Edit Visually" lens — opens the interactive editor targeted at this
-      // fence; drags/edits write back into the fence via WorkspaceEdit.
+      // fence; drags/edits write back into the fence via WorkspaceEdit. A
+      // `table` diagram gets the grid editor instead (same command routes it).
+      const realType = this.realTypeOf(block.source);
+      const isTable = realType === 'table';
       lenses.push(new vscode.CodeLens(startRange, {
-        title: '$(edit) Edit Visually',
+        title: isTable ? '$(table) Edit Table' : '$(edit) Edit Visually',
         command: 'seldia.editBlockVisually',
         arguments: [{ doc: document.uri.toString(), blockId: blockIdForSource(block.source) }],
-        tooltip: 'Open a visual editor for this diagram — edits are written back into this code block',
+        tooltip: isTable
+          ? 'Open the grid editor for this table — merges and edits are written back into this code block'
+          : 'Open a visual editor for this diagram — edits are written back into this code block',
       }));
 
       // "Export" lens
@@ -104,7 +109,14 @@ export class SelDiACodeLensProvider implements vscode.CodeLensProvider {
       // exportPlantUml already return null for those rather than emitting
       // degraded output, but leaving the lens up regardless just turns every
       // click on an unsupported block into an error-message dead end.
-      const realType = this.realTypeOf(block.source);
+      if (isTable) {
+        lenses.push(new vscode.CodeLens(startRange, {
+          title: '$(arrow-swap) Export to Markdown table',
+          command: 'seldia.exportTableToMarkdown',
+          arguments: [block.source],
+          tooltip: 'Export as a plain GFM table (lossy: merged cells become empty cells)',
+        }));
+      }
       if (realType === undefined || isMermaidExportable(realType)) {
         lenses.push(new vscode.CodeLens(startRange, {
           title: '$(arrow-swap) Export to Mermaid',

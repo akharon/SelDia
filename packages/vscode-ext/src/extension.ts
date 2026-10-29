@@ -3,7 +3,7 @@
 // =============================================================================
 
 import * as vscode from 'vscode';
-import { createEngine, exportMermaid, isMermaidExportable, exportPlantUml, isPlantUmlExportable } from '@seldia/core';
+import { createEngine, exportMermaid, isMermaidExportable, exportPlantUml, isPlantUmlExportable, exportTableGfm } from '@seldia/core';
 import type { CoreEngine } from '@seldia/core';
 import { readFileSync, existsSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -14,7 +14,8 @@ import { registerLanguageServer } from './language-server/index.js';
 import { SelDiAInteractiveProvider, SelDiAEditorRegistration } from './webview/provider.js';
 import { createSelDiAMarkdownItPlugin } from './markdown-preview/plugin.js';
 import { registerEditCommands, findDocWithBlock } from './edit/commands.js';
-import { findSelDiABlocks, findGfmTables, locateGfmTable } from './edit/blocks.js';
+import { findSelDiABlocks, findGfmTables, locateGfmTable, findSelDiATables, locateSelDiATable, isSelDiAFilePath } from './edit/blocks.js';
+import { isSelDiATableSource } from './edit/seldia-table-patch.js';
 import { SelDiATableEditorPanel } from './webview/table-provider.js';
 import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
 import { isMarpDocument } from './marp/detect.js';
@@ -214,6 +215,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   const exportToMermaid = makeExportCommand('seldia.exportToMermaid', 'Mermaid', 'mmd', isMermaidExportable, exportMermaid);
   const exportToPlantUml = makeExportCommand('seldia.exportToPlantUml', 'PlantUML', 'puml', isPlantUmlExportable, exportPlantUml);
+  // A SelDiA `table` → plain GFM pipe table. Lossy: merged cells become an
+  // anchor plus empty cells (GFM has no spans) and a chart directive is dropped.
+  const exportTableToMarkdown = makeExportCommand('seldia.exportTableToMarkdown', 'Markdown', 'md', (t) => t === 'table', exportTableGfm);
 
   const exportMarkdownToPdf = vscode.commands.registerCommand('seldia.exportMarkdownToPdf', async () => {
     const editor = vscode.window.activeTextEditor;
@@ -549,6 +553,11 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showWarningMessage('SelDiA: could not locate this diagram block (it may have changed).');
         return;
       }
+      // A `table` diagram has no canvas to drag — it opens in the table editor.
+      if (isSelDiATableSource(block.source)) {
+        await vscode.commands.executeCommand('seldia.editTable', { doc: docUri.toString(), kind: 'seldia', tableId: block.blockId, line: block.sourceStartLine });
+        return;
+      }
       SelDiAInteractiveProvider.createOrShowForBlock(context.extensionUri, engine, docUri, block);
     }
   );
@@ -562,15 +571,15 @@ export function activate(context: vscode.ExtensionContext) {
   // edited, and the line is what still points at the right table.
   const editTable = vscode.commands.registerCommand(
     'seldia.editTable',
-    async (args?: { doc?: string; tableId?: string; line?: string | number }) => {
+    async (args?: { doc?: string; tableId?: string; line?: string | number; kind?: 'gfm' | 'seldia' }) => {
       let docUri: vscode.Uri;
       let line = args?.line !== undefined && args.line !== '' ? Number(args.line) : NaN;
       if (args?.doc) {
         docUri = vscode.Uri.parse(args.doc);
       } else {
         const editor = vscode.window.activeTextEditor;
-        if (!editor || !/\.(md|mdx)$/.test(editor.document.fileName)) {
-          vscode.window.showWarningMessage('Open a Markdown file with a table first.');
+        if (!editor || !/\.(md|mdx|seldia|sld)$/i.test(editor.document.fileName)) {
+          vscode.window.showWarningMessage('Open a Markdown file with a table (or a SelDiA table file) first.');
           return;
         }
         docUri = editor.document.uri;
@@ -578,6 +587,20 @@ export function activate(context: vscode.ExtensionContext) {
       }
       const doc = await vscode.workspace.openTextDocument(docUri);
       const text = doc.getText();
+      // SelDiA `table` diagrams: a whole .seldia/.sld file, an explicit
+      // `kind: 'seldia'` (CodeLens), or — from the palette — a fence the cursor is in.
+      const wholeFile = isSelDiAFilePath(docUri.path);
+      let st = wholeFile || args?.kind === 'seldia'
+        ? locateSelDiATable(text, wholeFile, args?.tableId, Number.isNaN(line) ? -1 : line, args?.tableId ? 3 : 0)
+        : undefined;
+      if (!st && !args?.doc && !Number.isNaN(line)) {
+        st = findSelDiATables(text, wholeFile).find((t) => line >= t.startLine - 1 && line <= t.endLine);
+      }
+      if (st) { SelDiATableEditorPanel.createOrShow(context.extensionUri, docUri, st, 'seldia'); return; }
+      if (wholeFile || args?.kind === 'seldia') {
+        vscode.window.showWarningMessage('SelDiA: no `table` diagram found here (it may have changed).');
+        return;
+      }
       let table = locateGfmTable(text, args?.tableId, Number.isNaN(line) ? -1 : line, args?.tableId ? 3 : 0);
       if (!table && !args?.tableId && !Number.isNaN(line)) {
         // Palette: the table containing the cursor, else the next one below it.
@@ -597,6 +620,10 @@ export function activate(context: vscode.ExtensionContext) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) { vscode.window.showWarningMessage('No active editor'); return; }
     const source = editor.document.getText();
+    if (isSelDiAFilePath(editor.document.uri.path) && isSelDiATableSource(source)) {
+      void vscode.commands.executeCommand('seldia.editTable', { doc: editor.document.uri.toString(), kind: 'seldia', line: 0 });
+      return;
+    }
     SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
   });
 
@@ -630,7 +657,7 @@ export function activate(context: vscode.ExtensionContext) {
   // ── Register all commands ─────────────────────────────────────────────────
   context.subscriptions.push(
     toggleView, openPreview, openInteractive, editBlockVisually, editTable, insertDiagram, exportDiagram,
-    exportToMermaid, exportToPlantUml, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
+    exportToMermaid, exportToPlantUml, exportTableToMarkdown, exportMarkdownToPdf, deploySkill, checkSkillStatus, updateSkill, uninstallSkill,
     revealSource, marpProviderSub, openMarpPreviewCmd, exportMarpDeck, marpAutoPreviewSub
   );
 

@@ -36,6 +36,7 @@ const DIAGRAM_TYPES = [
   { label: 'form', detail: 'Form definition', doc: 'Form layouts and fields' },
   { label: 'sankey', detail: 'Sankey diagram', doc: 'Flow quantity visualization' },
   { label: 'block', detail: 'Block diagram', doc: 'System block architecture' },
+  { label: 'table', detail: 'Table', doc: 'Pipe-row table with merged cells (`^` merges up, `<` merges left)' },
 ];
 
 const SHAPES = [

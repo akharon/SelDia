@@ -70,3 +70,9 @@ export type { FenceKind, FenceSource } from './import/fence.js';
 export { parseKicadPcb, parseSExp, boardBounds } from './pcb/kicad-pcb.js';
 export type { Board as PcbBoard } from './pcb/kicad-pcb.js';
 export { pcbPlugin, renderBoard, importPcb } from './diagrams/pcb.js';
+
+// Tables with merged cells (`table` fences) + lossy GFM export.
+export { tablePlugin, importTable, layoutTable, transformTable } from './diagrams/table.js';
+export { parseTableBody, splitPipeRow, isDelimiterLine, unescapeTableCell, escapeTableCell, parseTableNumber, columnName, valueAt, isNumericColumn } from './table/model.js';
+export type { TableModel, TableCell, TableAlign, TableDiagnostic } from './table/model.js';
+export { exportTableGfm } from './export/gfm.js';

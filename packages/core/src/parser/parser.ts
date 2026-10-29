@@ -632,6 +632,7 @@ class Parser {
       floorplan: 'floorplan', fp: 'floorplan', floor: 'floorplan',
       circuit: 'circuit', schematic: 'circuit', spice: 'circuit', netlist: 'circuit', ckt: 'circuit',
       pcb: 'pcb', board: 'pcb', kicadpcb: 'pcb',
+      table: 'table', tbl: 'table',
     };
     type = TYPE_ALIASES[type] || type;
 
@@ -1438,7 +1439,7 @@ export function checkSyntax(source: string, filePath?: string): SyntaxCheckResul
     'activity','component','deployment','mindmap','network','gitgraph','timeline',
     'wireframe','cloud','wire','chart-bar','chart-line','chart-pie','chart-radar','chart-scatter',
     'workitem','wi','work','trace','backlog','floorplan','fp','floor',
-    'circuit','schematic','spice','netlist','ckt','pcb','board','kicadpcb'];
+    'circuit','schematic','spice','netlist','ckt','pcb','board','kicadpcb','table','tbl'];
   // The tokenizer skips comments and blank lines, so this pre-check has to as
   // well — reading the raw first word made a leading `// ...` banner (which
   // every file in examples/ opens with) look like the diagram declaration and
@@ -1465,13 +1466,13 @@ export function checkSyntax(source: string, filePath?: string): SyntaxCheckResul
   return { valid: diagnostics.length === 0, diagnostics };
 }
 
-const RAW_BODY_TYPES: Record<string, string> = { circuit: 'circuit', schematic: 'circuit', spice: 'circuit', netlist: 'circuit', ckt: 'circuit', pcb: 'pcb', board: 'pcb', kicadpcb: 'pcb' };
+const RAW_BODY_TYPES: Record<string, string> = { circuit: 'circuit', schematic: 'circuit', spice: 'circuit', netlist: 'circuit', ckt: 'circuit', pcb: 'pcb', board: 'pcb', kicadpcb: 'pcb', table: 'table', tbl: 'table' };
 
-/** Circuit fences carry a raw netlist, not DSL: split the header off and keep
+/** Circuit/pcb/table fences carry a raw body, not DSL: split the header off and keep
  *  the body verbatim so SPICE/KiCad text never reaches the lexer.
  *    circuit "Title" { <netlist> }     or     circuit\n<netlist> */
 function parseRawBody(source: string): DiagramAST | undefined {
-  const m = /^((?:[ \t]*(?:\/\/[^\n]*)?\n)*)[ \t]*([A-Za-z]+)[ \t]*("(?:[^"\\]|\\.)*")?[ \t]*(\{)?[ \t]*\n?/.exec(source);
+  const m = /^((?:[ \t]*(?:\/\/[^\r\n]*)?\r?\n)*)[ \t]*(?:diagram[ \t]+)?([A-Za-z]+)[ \t]*("(?:[^"\\]|\\.)*")?[ \t]*(\{)?[ \t]*\r?\n?/.exec(source);
   if (!m || !RAW_BODY_TYPES[m[2].toLowerCase()]) return undefined;
   let body = source.slice(m[0].length);
   if (m[4]) {
@@ -1481,6 +1482,9 @@ function parseRawBody(source: string): DiagramAST | undefined {
   return {
     kind: 'Diagram', type: RAW_BODY_TYPES[m[2].toLowerCase()] as any, title: m[3] ? JSON.parse(m[3]) : undefined,
     metadata: {}, body: [], raw: body,
+    // 1-based source line the body starts on, so raw-body plugins can report
+    // diagnostics against the user's line numbers.
+    rawLine: (m[0].match(/\n/g)?.length ?? 0) + 1,
     loc: { file: '<unknown>', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1, offset: 0 },
   } as DiagramAST;
 }

@@ -1,6 +1,6 @@
 ---
 name: seldia-dsl
-description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 24 types: flowchart, sequence, class, er, state, c4 (context/container/component), bpmn, dmn, component, usecase, activity, deployment, gantt, mindmap, network, chart (bar/line/pie/radar/scatter), gitgraph, form, sankey, block, timeline, wireframe, cloud, workitem. Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
+description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 25 types: flowchart, sequence, class, er, state, c4 (context/container/component), bpmn, dmn, component, usecase, activity, deployment, gantt, mindmap, network, chart (bar/line/pie/radar/scatter), gitgraph, form, sankey, block, timeline, wireframe, cloud, workitem, table (merged cells). Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
 argument-hint: '[diagram description or .seldia file path]'
 user-invocable: true
 disable-model-invocation: false
@@ -36,6 +36,7 @@ When the user asks to create or modify a diagram, or to write `.seldia`/`.sld` f
 | UI mockups | `wireframe` |
 | Cloud/AWS topology | `cloud` |
 | Requirements & traceability | `wi` (`workitem`) |
+| Tables with merged cells | `table` (`tbl`) |
 
 ## Grammar
 
@@ -572,6 +573,21 @@ R2 out 0 4.7k
 * @seldia rank in V1
 .op
 .end
+```
+
+### Table
+
+A table body is GFM pipe rows, not DSL. Use the header row, an optional `|:--|:-:|--:|` alignment row, then the data rows. A cell that is exactly `^` merges into the cell above; one that is exactly `<` merges into the cell to the left. Write `\^` / `\<` for the literal characters. Do not put `^` in the header or the first body row, and do not put `<` in the first column: those show as text and raise a warning.
+
+```seldia
+table "Quarterly sales" {
+| Region | Quarter | Revenue |
+|:--|:-:|--:|
+| North | Q1 | 1,200 |
+| ^ | Q2 | 1,450 |
+| South | Q1 | 980 |
+| Total | < | 3,630 |
+}
 ```
 
 ## Verify

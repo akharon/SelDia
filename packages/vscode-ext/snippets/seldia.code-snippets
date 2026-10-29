@@ -249,5 +249,18 @@
       "}"
     ],
     "description": "Deployment diagram"
+  },
+  "Table": {
+    "prefix": "seldia-table",
+    "body": [
+      "table \"${1:Sales}\" {",
+      "| ${2:Region} | ${3:Quarter} | ${4:Revenue} |",
+      "|:--|:-:|--:|",
+      "| ${5:North} | Q1 | 1,200 |",
+      "| ^ | Q2 | 1,450 |",
+      "| ${6:South} | Q1 | 980 |",
+      "}"
+    ],
+    "description": "Table with merged cells (^ merges up, < merges left)"
   }
 }

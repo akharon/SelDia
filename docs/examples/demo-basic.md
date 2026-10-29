@@ -763,3 +763,19 @@ pcb "Blinky board" {
   (via (at 114 106) (size 0.8) (drill 0.4)))
 }
 ```
+
+## Table with merged cells
+
+Pipe rows like a Markdown table. A `^` cell merges into the cell above, a `<` cell into the cell to the left.
+
+```seldia
+table "Quarterly sales" {
+| Region | Quarter | Revenue |
+|:--|:-:|--:|
+| North | Q1 | 1,200 |
+| ^ | Q2 | 1,450 |
+| South | Q1 | 980 |
+| ^ | Q2 | 1,105 |
+| Total | < | 4,735 |
+}
+```

@@ -22,7 +22,7 @@
     "types": {
       "patterns": [{
         "name": "entity.name.type.seldia",
-        "match": "\\b(flowchart|sequence|class|er|state|usecase|activity|component|deployment|bpmn|dmn|gantt|mindmap|network|gitgraph|form|sankey|block|timeline|c4\\s+(context|container|component|code)|chart\\s+(bar|line|pie|radar|scatter))\\b"
+        "match": "\\b(flowchart|sequence|class|er|state|usecase|activity|component|deployment|bpmn|dmn|gantt|mindmap|network|gitgraph|form|sankey|block|timeline|table|c4\\s+(context|container|component|code)|chart\\s+(bar|line|pie|radar|scatter))\\b"
       }]
     },
     "shapes": {

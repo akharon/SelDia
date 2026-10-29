@@ -46,6 +46,7 @@ export enum DiagramType {
   WORKITEM = 'workitem',
   CIRCUIT = 'circuit',
   PCB = 'pcb',
+  TABLE = 'table',
   FLOORPLAN = 'floorplan',
 }
 

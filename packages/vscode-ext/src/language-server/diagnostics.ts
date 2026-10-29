@@ -93,6 +93,28 @@ export class SelDiADiagnosticsProvider {
       this.toVSCodeDiagnostic(d, document)
     );
 
+    // Syntax is clean → add the diagram type's own semantic checks (e.g. a
+    // `table`'s invalid `^`/`<` merges). These degrade at render time rather
+    // than failing the compile, so they are warnings on the offending line.
+    if (!diagnostics.length) {
+      const ast = this.engine.parse(source, filePath);
+      if (ast.ok) {
+        for (const d of this.engine.validateSemantics(ast.value)) {
+          if (d.line === undefined) continue; // no location to point at
+          const line = Math.min(Math.max(0, (d.line ?? 1) - 1), document.lineCount - 1);
+          const diag = new vscode.Diagnostic(
+            document.lineAt(line).range,
+            d.message,
+            d.severity === 'error' ? vscode.DiagnosticSeverity.Error
+              : d.severity === 'warning' ? vscode.DiagnosticSeverity.Warning
+              : vscode.DiagnosticSeverity.Information,
+          );
+          diag.source = 'seldia';
+          vscodeDiagnostics.push(diag);
+        }
+      }
+    }
+
     this.diagnosticCollection.set(document.uri, vscodeDiagnostics);
   }
 

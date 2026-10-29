@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { isDelimiterRow, splitRow } from './table-patch.js';
+import { isSelDiATableSource } from './seldia-table-patch.js';
 
 /** A ```seldia fenced block located inside a Markdown document. */
 export interface SelDiABlockLoc {
@@ -178,4 +179,38 @@ function nearest(tables: GfmTableLoc[], line: number): GfmTableLoc | undefined {
     if (d < bestDist) { best = t; bestDist = d; }
   }
   return best;
+}
+
+// ── SelDiA `table` fences ─────────────────────────────────────────────────
+
+/** True for a standalone SelDiA source file (the whole file is one diagram). */
+export function isSelDiAFilePath(path: string): boolean {
+  return /\.(seldia|sld)$/i.test(path);
+}
+
+/** Every SelDiA `table` diagram in a document, shaped like a GfmTableLoc so the
+ *  table editor can follow either kind with the same machinery: `source` is
+ *  the fence body (or the whole file), [startLine, endLine) its line range. */
+export function findSelDiATables(text: string, wholeFile: boolean): GfmTableLoc[] {
+  if (wholeFile) {
+    const source = text.replace(/\r\n/g, '\n');
+    if (!isSelDiATableSource(source)) return [];
+    return [{ tableId: blockIdForSource(source), source, startLine: 0, endLine: source.split('\n').length }];
+  }
+  return findSelDiABlocks(text)
+    .filter((b) => b.lang === 'seldia' && isSelDiATableSource(b.source))
+    .map((b) => ({ tableId: b.blockId, source: b.source, startLine: b.sourceStartLine, endLine: b.sourceEndLine }));
+}
+
+export function locateSelDiATable(text: string, wholeFile: boolean, tableId: string | undefined, line: number, maxDist = 50): GfmTableLoc | undefined {
+  const tables = findSelDiATables(text, wholeFile);
+  if (wholeFile) return tables[0];
+  if (tableId) {
+    const byId = tables.filter((t) => t.tableId === tableId);
+    if (byId.length === 1) return byId[0];
+    if (byId.length > 1) return nearest(byId, line);
+  }
+  if (line < 0) return undefined;
+  const near = nearest(tables, line);
+  return near && Math.abs(near.startLine - line) <= maxDist ? near : undefined;
 }

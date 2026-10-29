@@ -24,7 +24,7 @@ const SHAPE_DOCS: Record<string, string> = {
 };
 
 const KEYWORD_DOCS: Record<string, string> = {
-  diagram: '**`diagram`** — Start a diagram definition.\n\n```\ndiagram flowchart "My Diagram" {\n    ...\n}\n```\n\nType must be one of: flowchart, sequence, class, c4-context, c4-container, state, er, bpmn, dmn, component, deployment, usecase, activity, gantt, timeline, mindmap, network, gitgraph, form, sankey, block.',
+  diagram: '**`diagram`** — Start a diagram definition.\n\n```\ndiagram flowchart "My Diagram" {\n    ...\n}\n```\n\nType must be one of: flowchart, sequence, class, c4-context, c4-container, state, er, bpmn, dmn, component, deployment, usecase, activity, gantt, timeline, mindmap, network, gitgraph, form, sankey, block, table.',
   theme: '**`theme`** — Apply a built-in theme or define an inline theme.\n\n```\ntheme "sketchy-light"\n```\n\nBuilt-in themes: sketchy-light, sketchy-dark, smooth-light, smooth-dark, handdrawn.',
   layout: '**`layout`** — Set the layout engine and options.\n\n```\nlayout dagre { direction: "TB" }\n```',
   style: '**`style`** — Apply style rules to nodes, edges, or all elements.\n\n```\nstyle node { fill: "#e8f4f8", stroke: "#2c3e50" }\n```',

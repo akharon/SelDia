@@ -38,6 +38,7 @@ import { erPlugin } from './diagrams/er.js';
 import { workitemPlugin } from './diagrams/workitem.js';
 import { floorplanPlugin } from './diagrams/floorplan.js';
 import { pcbPlugin } from './diagrams/pcb.js';
+import { tablePlugin } from './diagrams/table.js';
 import { circuitPlugin } from './diagrams/circuit.js';
 import { tJunctions } from './circuit/layout.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
@@ -110,6 +111,9 @@ export interface CoreEngine {
    *  (including "elk", which requires async). */
   compile(source: string, filePath?: string): Promise<Result<RenderResult>>;
   validate(source: string, filePath?: string): Diagnostic[];
+  /** The diagram type plugin's own semantic checks (warnings that degrade
+   *  at render time rather than failing the compile), with 1-based lines. */
+  validateSemantics(ast: DiagramAST): PluginDiagnostic[];
   getSupportedDiagramTypes(): string[];
   registerTheme(theme: Theme): void;
   getTheme(id: string): Theme | undefined;
@@ -202,7 +206,7 @@ class SelDiAEngine implements CoreEngine {
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin, floorplanPlugin, circuitPlugin, pcbPlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin, floorplanPlugin, circuitPlugin, pcbPlugin, tablePlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -570,7 +574,10 @@ class SelDiAEngine implements CoreEngine {
     // right edge of exactly those diagram types.
     const recomputed = this.computeBounds(nodes, edges, groups);
     const lb = layoutResult.bounds;
-    const finalBounds: Rect = {
+    // A table's layout bounds are exact (cells tile the grid with no stroke
+    // overhang); the generic recompute's +20 slack would leave a lopsided
+    // right/bottom margin around it.
+    const finalBounds: Rect = (layoutResult.diagram.type as string) === 'table' ? { x: 0, y: 0, width: lb.width, height: lb.height } : {
       x: 0, y: 0,
       width: Math.max(recomputed.x + recomputed.width, lb.x + lb.width),
       height: Math.max(recomputed.y + recomputed.height, lb.y + lb.height),
@@ -620,7 +627,7 @@ class SelDiAEngine implements CoreEngine {
     // outward, plus the thickest stroke width in use, so nothing gets
     // clipped by the viewBox at any zoom level (see improvement_request.md
     // item 7).
-    const sketchy = this.config.render.sketchy !== false && (diagramType as string) !== 'circuit' && (diagramType as string) !== 'pcb';
+    const sketchy = this.config.render.sketchy !== false && !['circuit', 'pcb', 'table'].includes(diagramType as string);
     const maxStroke = Math.max(2, ...nodes.map((n) => (n.style?.strokeWidth as number) || 2));
     const displacement = sketchy ? 6 : 0;
     const pad = (this.config.render.padding || 20) + maxStroke + displacement;

@@ -22,7 +22,7 @@ import { DS } from './design-system.js';
 import { iconLabelLayout } from './node-label-geometry.js';
 import { clipStartToShape, clipEndToShape, isBoxShape } from './shape-clip.js';
 export { clipToShape } from './shape-clip.js';
-import { EdgeRouting, type IRNode, type IREdge } from '../ir/types.js';
+import { EdgeRouting, type IRNode, type IREdge, type IRGroup } from '../ir/types.js';
 import type { Point, Rect } from '../types/common.js';
 
 /** Gap left between a node's border and the edge that touches it, so an
@@ -448,6 +448,44 @@ class MinHeap<T> {
   }
 }
 
+/** Extra cost per px of route inside a group that owns neither endpoint: high
+ *  enough to detour around the box, finite so a route through it still exists. */
+const FOREIGN_GROUP_COST = 4;
+
+/** Length of the axis-aligned step a->b that lies inside any `rects` interior. */
+function foreignOverlap(a: Point, b: Point, rects: Rect[]): number {
+  let len = 0;
+  for (const r of rects) {
+    if (a.y === b.y) {
+      if (a.y <= r.y || a.y >= r.y + r.height) continue;
+      len += Math.max(0, Math.min(Math.max(a.x, b.x), r.x + r.width) - Math.max(Math.min(a.x, b.x), r.x));
+    } else {
+      if (a.x <= r.x || a.x >= r.x + r.width) continue;
+      len += Math.max(0, Math.min(Math.max(a.y, b.y), r.y + r.height) - Math.max(Math.min(a.y, b.y), r.y));
+    }
+  }
+  return len;
+}
+
+/** Rects of the groups that contain neither endpoint (directly or through a
+ *  nested group), i.e. boxes the edge has no business crossing. */
+function foreignGroupRects(groups: IRGroup[] | undefined, srcId?: string, tgtId?: string): Rect[] {
+  if (!groups?.length) return [];
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const holds = (g: IRGroup, id: string, seen = new Set<string>()): boolean => {
+    if (seen.has(g.id)) return false;
+    seen.add(g.id);
+    return g.childNodeIds.includes(id) || (g.childGroupIds ?? []).some((c) => { const cg = byId.get(c); return !!cg && holds(cg, id, seen); });
+  };
+  const out: Rect[] = [];
+  for (const g of groups) {
+    if (!g.position || !g.size || !g.size.width) continue;
+    if ((srcId && holds(g, srcId)) || (tgtId && holds(g, tgtId))) continue;
+    out.push({ x: g.position.x, y: g.position.y, width: g.size.width, height: g.size.height });
+  }
+  return out;
+}
+
 /** A* search on the visibility grid. Returns the shortest orthogonal path from
  *  `src` to `tgt` that avoids all `obstacles`, or `null` if unreachable. */
 function manhattanRoute(
@@ -455,7 +493,8 @@ function manhattanRoute(
   tgt: Point,
   obstacles: IRNode[],
   gap: number,
-  bendBias = 0
+  bendBias = 0,
+  foreign: Rect[] = []
 ): Point[] | null {
   const rects = obstacles.map((o) => routeRect(o, gap));
   const xs = gridLines(obstacles, gap, [src.x, tgt.x], 'x');
@@ -531,7 +570,8 @@ function manhattanRoute(
       }
       if (!clear) continue;
 
-      const stepCost = Math.abs(next.x - cur.v.x) + Math.abs(next.y - cur.v.y);
+      const stepCost = Math.abs(next.x - cur.v.x) + Math.abs(next.y - cur.v.y)
+        + (foreign.length ? FOREIGN_GROUP_COST * foreignOverlap(cur.v, next, foreign) : 0);
       const ng = cur.g + stepCost;
       // Small bias per-edge to break ties between equally-short paths,
       // spreading fanned edges apart instead of routing them identically.
@@ -606,7 +646,8 @@ export function routeBetween(
   src: IRNode | undefined,
   tgt: IRNode | undefined,
   fan: Fan = NO_FAN,
-  allNodes?: IRNode[]
+  allNodes?: IRNode[],
+  groups?: IRGroup[]
 ): Point[] {
   let pts: Point[];
   if (orthogonal && src && tgt) {
@@ -626,7 +667,7 @@ export function routeBetween(
       const obstacles = obstaclesFor(allNodes, src, tgt);
 
       // Run the grid-based A* manhattan router.
-      const route = manhattanRoute(a, b, obstacles, GRID_GAP, bo);
+      const route = manhattanRoute(a, b, obstacles, GRID_GAP, bo, foreignGroupRects(groups, src.id, tgt.id));
       if (route && route.length >= 2) {
         pts = simplifyPath(route);
       } else {
@@ -648,6 +689,22 @@ export function routeBetween(
   if (tgt) pts = clipEndNode(pts, tgt);
   pts = dedupe(pts);
   return pts.length >= 2 ? pts : raw;
+}
+
+/** Distance a self-loop reaches out from its node. */
+export const SELF_LOOP_OUT = 24;
+
+/** Fixed orthogonal 4-segment loop for `a -> a`: leaves the lateral side at
+ *  1/3 of its length, goes out, runs along, and re-enters at 2/3 (the arrowhead
+ *  lands on the re-entry). Lateral side is right for TB, bottom for LR. */
+export function selfLoopRoute(n: IRNode, side: 'right' | 'bottom'): Point[] {
+  const { x, y } = n.position, { width: w, height: h } = n.size;
+  if (side === 'right') {
+    const xr = x + w, xo = xr + SELF_LOOP_OUT;
+    return [{ x: xr, y: y + h / 3 }, { x: xo, y: y + h / 3 }, { x: xo, y: y + (2 * h) / 3 }, { x: xr, y: y + (2 * h) / 3 }];
+  }
+  const yb = y + h, yo = yb + SELF_LOOP_OUT;
+  return [{ x: x + w / 3, y: yb }, { x: x + w / 3, y: yo }, { x: x + (2 * w) / 3, y: yo }, { x: x + (2 * w) / 3, y: yb }];
 }
 
 /** Border-clip a route's endpoints without re-routing anything in between —
@@ -681,15 +738,17 @@ export function routeEdgePolyline(
   src?: IRNode,
   tgt?: IRNode,
   fan?: Fan,
-  allNodes?: IRNode[]
+  allNodes?: IRNode[],
+  groups?: IRGroup[]
 ): Point[] {
   if (wps.length < 2) return wps;
   if (manualEdgeRoute(edge)) return clipRouteToNodes(wps, src, tgt);
+  if (src && edge.sourceId === edge.targetId) return selfLoopRoute(src, (edge.data as any)?.loopSide === 'bottom' ? 'bottom' : 'right');
   // The layout engine (ELK) already produced an obstacle-aware route: keep it
   // and only trim the endpoints onto the node borders.
   if ((edge.data as any)?.exactEnds) return wps; // circuit wires end exactly on symbol pins
   if (edge.layoutRouted) return applyPortStubs(clipRouteToNodes(wps, src, tgt), allNodes);
-  return applyPortStubs(routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes), allNodes);
+  return applyPortStubs(routeBetween(wps, edge.routing === EdgeRouting.ORTHOGONAL, src, tgt, fan, allNodes, groups), allNodes);
 }
 
 const isH = (a: Point, b: Point) => Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5;
@@ -721,13 +780,13 @@ export function applyPortStubs(pts: Point[], allNodes?: IRNode[], stub = DS.port
 
 /** Route every edge that has layout waypoints, exactly as the renderer does
  *  (fans computed across the whole edge set, all nodes as obstacles). */
-export function routeAllEdges(edges: IREdge[], nodes: IRNode[]): Map<string, Point[]> {
+export function routeAllEdges(edges: IREdge[], nodes: IRNode[], groups?: IRGroup[]): Map<string, Point[]> {
   // Layout scoring (`auto`, metrics) and the final render route the same geometry:
   // key on everything the router reads and share the result.
-  const key = geometrySig(edges, nodes);
+  const key = geometrySig(edges, nodes) + (groups?.length ? '#' + groups.map((g) => `${g.id},${g.position?.x},${g.position?.y},${g.size?.width},${g.size?.height},${g.childNodeIds.join('+')}`).join(';') : '');
   const hit = routeCache.get(key);
   if (hit) { routeCache.delete(key); routeCache.set(key, hit); return cloneRoutes(hit); }
-  const out = routeAllEdgesUncached(edges, nodes);
+  const out = routeAllEdgesUncached(edges, nodes, groups);
   routeCache.set(key, out);
   if (routeCache.size > 6) routeCache.delete(routeCache.keys().next().value as string);
   return cloneRoutes(out);
@@ -750,14 +809,14 @@ export function geometrySig(edges: IREdge[], nodes: IRNode[]): string {
   }
   return s;
 }
-function routeAllEdgesUncached(edges: IREdge[], nodes: IRNode[]): Map<string, Point[]> {
+function routeAllEdgesUncached(edges: IREdge[], nodes: IRNode[], groups?: IRGroup[]): Map<string, Point[]> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const fans = computeFans(edges, nodeById);
   const out = new Map<string, Point[]>();
   for (const e of edges) {
     const raw = e.waypoints || [];
     if (raw.length < 2) continue;
-    out.set(e.id, routeEdgePolyline(e, raw, nodeById.get(e.sourceId), nodeById.get(e.targetId), fans.get(e.id), nodes));
+    out.set(e.id, routeEdgePolyline(e, raw, nodeById.get(e.sourceId), nodeById.get(e.targetId), fans.get(e.id), nodes, groups));
   }
   return out;
 }

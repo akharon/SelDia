@@ -912,7 +912,7 @@ class SelDiAEngine implements CoreEngine {
       // detours), so placing labels against the raw layout waypoints strands
       // them far from the visible line. Route once here and reuse.
       const allNodes = [...nodeById.values()];
-      const routedWps = routeAllEdges(edges, allNodes);
+      const routedWps = routeAllEdges(edges, allNodes, groups);
       // Nudge parallel runs apart and plan line jumps on the SAME polylines the
       // labels are placed against and the paths are drawn from. Schematic and
       // layout-owned geometry (sequence lifelines, circuits, PCBs, git lanes)

@@ -264,7 +264,7 @@ function groupViolations(ir: DiagramIR): number {
 export function routedPaths(ir: DiagramIR): Map<string, Point[]> {
   const nodes = ir.nodes ?? [];
   const edgeGeometry = !SELF_DRAWN_EDGES.has(ir.type as string);
-  const routed = edgeGeometry ? routeAllEdges(ir.edges ?? [], nodes) : new Map<string, Point[]>();
+  const routed = edgeGeometry ? routeAllEdges(ir.edges ?? [], nodes, ir.groups) : new Map<string, Point[]>();
   // Sankey ribbons are drawn from the layout's own centreline (end points of a monotone
   // S-curve), not from the generic router, so measure that centreline.
   if ((ir.type as string) === 'sankey') {

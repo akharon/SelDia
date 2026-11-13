@@ -289,6 +289,14 @@ The IR has `collapsible` and `collapsed` and the user guide documents them, but 
 
 `<seldia-live>` exists. Deploy it as a static page with the source in the URL hash and a "paste your Mermaid" entry point. The engine position is only credible if people can try their own Mermaid in ten seconds without installing anything.
 
+#### F7. Native DSL gaps (M)
+
+The native grammar lacks capabilities that the user guide used to promise and that only the Mermaid and PlantUML importers partly cover. Each item needs parser syntax and renderer support, not parser syntax alone:
+
+- **Sequence:** fragments (`alt`, `opt`, `loop`, `par`), notes, activation, and arrow variants (dashed, async, create, destroy).
+- **Class:** `abstract`/`enum`/`interface` modifiers, multiplicity, and distinct inheritance, composition and aggregation arrows.
+- **BPMN:** pools, lanes, message flows, and gateway types (parallel, inclusive, event-based).
+
 #### Not now: more diagram types
 
 There are already 35 `DiagramType` values. Breadth is not the constraint; layout quality, editor quality and distribution are.

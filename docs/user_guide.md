@@ -317,20 +317,9 @@ diagram flowchart "User Login" {
 }
 ```
 
-**Node shapes in flowcharts:**
-- `(label)` — Start / End (rounded rectangle)
-- `[label]` — Process / Action (rectangle)
-- `{label}` — Decision (diamond)
-- `[/label/]` — Input / Output (parallelogram)
-- `{{label}}` — Subroutine / Predefined process
-- `[()label()]` — Terminator (stadium)
-- `<label>` — Preparation (hexagon)
-
-**Edge styles:**
-- `-->` — solid arrow
-- `..>` — dotted arrow
-- `==>` — thick arrow
-- `-->|label|` — labeled arrow
+**Syntax:**
+- `(label)` is a start or end terminator, `[label]` a process step, `diamond "label"` a decision.
+- `a -> b` draws an edge; add `: "label"` to label it.
 
 ---
 
@@ -359,66 +348,10 @@ diagram sequence "OAuth 2.0 Authorization Code Flow" {
 }
 ```
 
-**Participants:**
-```
-participant <id>: "<name>"           // Basic participant
-participant actor <id>: "<name>"     // Stick figure actor
-participant boundary <id>: "<name>"  // System boundary
-participant control <id>: "<name>"   // Controller
-participant entity <id>: "<name>"    // Entity / Data
-participant database <id>: "<name>"  // Database
-participant queue <id>: "<name>"     // Message queue
-```
-
-**Messages:**
-- `a -> b: message` — solid arrow
-- `a --> b: message` — dashed return arrow
-- `a ->> b: message` — open arrow (async)
-- `a -->> b: message` — dashed open arrow (async return)
-- `a ->* b: message` — create instance
-- `a ->x b: message` — destroy / terminate
-
-**Control structures:**
-```
-alt <condition>      // Alternative paths
-    ...
-else <condition>
-    ...
-end
-
-opt <condition>      // Optional
-    ...
-end
-
-loop <label>         // Loop
-    ...
-end
-
-par                  // Parallel execution
-    ...
-and
-    ...
-end
-
-critical             // Critical section
-    ...
-end
-
-break                // Break / exception
-    ...
-end
-
-group <label>        // Generic grouping
-    ...
-end
-```
-
-**Notes:**
-```
-note left of <participant>: <text>
-note right of <participant>: <text>
-note over <participant1>, <participant2>: <text>
-```
+**Syntax:**
+- Declare each participant as `id "Name"`; participants appear in declaration order.
+- `a -> b: "message"` is a message, and `a -> a: "message"` a self-message.
+- Fragments (`alt`, `opt`, `loop`, `par`), notes, activation bars and arrow variants (dashed, async, create, destroy) have no native syntax. For fragments, write the diagram in a `plantuml` fence: the importer maps `alt`, `opt`, `loop`, `par`, `break`, `critical` and `group` blocks. The Mermaid importer skips `loop`/`alt`/`opt`/`par`/`note` blocks, and neither importer models notes.
 
 ---
 
@@ -441,39 +374,10 @@ diagram class "E-Commerce Domain" {
 }
 ```
 
-**Visibility modifiers:**
-- `+` public
-- `-` private
-- `#` protected
-- `~` package / internal
-
-**Members:**
-```
-class MyClass {
-    +attribute: Type
-    -privateAttr: Type = defaultValue
-    #protectedMethod(param: Type): ReturnType
-    ~internalMethod(): void {abstract}
-    +staticMethod(): Type {static}
-}
-```
-
-**Relationships:**
-- `<|--` — inheritance / extends
-- `<|..` — implements
-- `-->` — association
-- `*-->` — composition (strong ownership)
-- `o-->` — aggregation (weak ownership)
-- `..>` — dependency
-- `"1" --> "0..*"` — with multiplicity
-
-**Multiplicity notations:**
-- `1` — exactly one
-- `0..1` — zero or one
-- `*` or `0..*` — zero or many
-- `1..*` — one or many
-- `n` — exactly n
-- `n..m` — range
+**Syntax:**
+- A class is one node whose label rows are separated by `\n`: the name first, then members, each with an optional visibility prefix (`+` public, `-` private, `#` protected, `~` package).
+- `A -> B: "label"` relates two classes.
+- Abstract/enum/interface modifiers, multiplicity and distinct inheritance, composition and aggregation arrows have no native syntax. Use a `mermaid` or `plantuml` fence for inheritance (`<|--`); use a `plantuml` fence for `abstract class`.
 
 ---
 
@@ -492,16 +396,9 @@ diagram er "Online Shop Database" {
 }
 ```
 
-**Relationship cardinality (Chen notation):**
-- `||--||` — one to one
-- `||--o{` — one to zero-or-more
-- `||--|{` — one to one-or-more
-- `}o--o{` — zero-or-more to zero-or-more
-
-**Key annotations:**
-- `PK` — Primary Key
-- `FK` — Foreign Key
-- `UK` — Unique Key
+**Syntax:**
+- An entity is one node whose label rows are separated by `\n`: the name first, then one row per attribute (`id PK`, `customer_id FK`, `email string`).
+- `A -> B: "label"` relates two entities. Cardinality (crow's foot) has no native syntax; write it into the label, for example `"1 to many"`.
 
 ---
 
@@ -521,27 +418,10 @@ diagram state "Order Lifecycle" {
 }
 ```
 
-**Special states:**
-- `[*]` — initial pseudo-state (start)
-- `[*]` as target — final state (end)
-
-**Transition syntax:**
-```
-<source> --> <target>: <event> [guard] / action
-```
-
-Example with guards and actions:
-```
-Idle --> Running: start [system ready] / initialize()
-Running --> Idle: stop / cleanup()
-```
-
-**Composite states (nested):**
-```
-state <name> {
-    // inner states and transitions
-}
-```
+**Syntax:**
+- `[*] -> State` is the initial transition and `State -> [*]` the final one.
+- `A -> B: "event"` is a transition. Put guards and actions in the label, for example `"start [system ready] / initialize()"`.
+- Composite (nested) states have no native syntax.
 
 ---
 
@@ -563,24 +443,10 @@ diagram usecase "ATM System" {
 }
 ```
 
-**Actor syntax:**
-```
-actor <id>: "<name>" [{ external: true }]
-```
-
-**Relationships:**
-- `-->` — association
-- `..>` — dependency (include / extend)
-- `..> { label: "<<include>>" }` — include relationship
-- `..> { label: "<<extend>>" }` — extend relationship
-
-**System boundary:**
-```
-boundary "ATM System" {
-    usecase "..." as UC1
-    usecase "..." as UC2
-}
-```
+**Syntax:**
+- `(Name)` is an actor and `[Name]` a use case.
+- `a -> b` links them; write `<<include>>` or `<<extend>>` as the edge label: `a -> b: "<<include>>"`.
+- System boundaries have no native syntax.
 
 ---
 
@@ -606,32 +472,10 @@ diagram activity "Order Processing" {
 }
 ```
 
-**Activity nodes:**
-- `(label)` — initial / final node
-- `[label]` — action / activity
-- `{label}` — decision / merge
-- `<label>` — fork / join (parallel)
-
-**Swimlanes / Partitions:**
-```
-partition "<name>" {
-    <node-ids...>
-}
-```
-
-**Parallel execution:**
-```
-fork --> [Action A]
-fork --> [Action B]
-[Action A] --> join
-[Action B] --> join
-```
-
-**Signals:**
-```
-signal send "<signal name>"
-signal receive "<signal name>"
-```
+**Syntax:**
+- `(label)` is the initial or final node, `[label]` an action, `diamond "label"` a decision or merge.
+- `a -> b` is control flow; add `: "label"` for a guard.
+- Fork/join bars, swimlane partitions and signals have no native syntax; model parallel paths with several edges from one node.
 
 ---
 
@@ -652,20 +496,10 @@ diagram component "Microservices" {
 }
 ```
 
-**Component types:**
-- `component "<name>"` — software component
-- `interface "<name>"` — provided interface
-- `database "<name>"` — database
-- `queue "<name>"` — message queue
-- `service "<name>"` — external service
-
-**Ports:**
-```
-component "MyComponent" {
-    port in "HTTP" as pIn
-    port out "Database" as pOut
-}
-```
+**Syntax:**
+- `[Name]` is a component and `((Name))` an interface.
+- `a -> b` is a dependency; add `: "label"` to label it.
+- Ports have no native syntax.
 
 ---
 
@@ -916,36 +750,11 @@ diagram bpmn "Order Fulfillment Process" {
 }
 ```
 
-**BPMN elements:**
-| Syntax | Element |
-|--------|---------|
-| `startEvent <id>: "<label>"` | Start event (circle) |
-| `endEvent <id>: "<label>"` | End event (thick circle) |
-| `task <id>: "<label>"` | Task / activity |
-| `gateway <id>: "<label>"` | Gateway (diamond, exclusive by default) |
-| `messageFlow "<source>" --> <target>` | Message flow (dashed) |
-| `pool <id> "<label>" { ... }` | Pool / participant |
-| `lane <id> "<label>" { ... }` | Lane within a pool |
-
-Start and end events are inferred from edge topology: a `(...)` node with no incoming edges becomes a start event, one with no outgoing edges an end event, and a disconnected `(...)` stays an intermediate event.
-
-**Gateway types:**
-```
-gateway g1: "..." { type: exclusive }    // XOR (default)
-gateway g2: "..." { type: parallel }     // AND
-gateway g3: "..." { type: inclusive }    // OR
-gateway g4: "..." { type: event }        // Event-based
-```
-
-**Task types:**
-```
-task t1: "..." { type: user }            // User task (default)
-task t2: "..." { type: service }         // Service task (gear icon)
-task t3: "..." { type: script }          // Script task
-task t4: "..." { type: manual }          // Manual task
-task t5: "..." { type: send }            // Send task
-task t6: "..." { type: receive }         // Receive task
-```
+**Syntax:**
+- `id "Label"` is a task; `gateway id "Label"` is a gateway (diamond).
+- `a -> b` is sequence flow; add `: "label"` for a branch condition.
+- Start and end events are inferred from edge topology: a `(...)` node with no incoming edges becomes a start event, one with no outgoing edges an end event, and a disconnected `(...)` stays an intermediate event.
+- Pools, lanes, message flows, and gateway types (parallel, inclusive, event-based) have no native syntax.
 
 ---
 
@@ -964,19 +773,10 @@ diagram dmn "Loan Approval Decision" {
 }
 ```
 
-**Hit policies:**
-- `first` — first matching rule (default)
-- `unique` — exactly one matching rule
-- `any` — all matching rules must have same output
-- `priority` — rules ordered by priority
-- `collect` — collect all matching outputs
-- `ruleOrder` — rules evaluated in listed order
-
-**Input types:**
-```
-input <name>: <type> "<label>"
-// Types: number, string, boolean, date, enum
-```
+**Syntax:**
+- Start an input node's label with `Input:` and a rule node's label with `Rule:`; extra rows after `\n` hold the condition and the outcome.
+- `input -> rule` wires an input into a rule.
+- Hit policies and typed inputs have no native syntax.
 
 ---
 
@@ -995,20 +795,10 @@ diagram gantt "Project Alpha" {
 }
 ```
 
-**Task syntax:**
-```
-task <id>: "<label>" <start-date> to <end-date> [{ options }]
-```
-
-**Date formats:**
-- `YYYY-MM-DD` — absolute date
-- `after <task-id> <duration>` — relative (e.g., `after sprint1 5d`)
-- Duration: `Nd` (days), `Nw` (weeks), `Nm` (months)
-
-**Task options:**
-```
-{ assignee: "Name", dependsOn: taskId, progress: 65, critical: true }
-```
+**Syntax:**
+- A task is `id [Name: dates]`, with the dates written inside the label as words: `Jan 6-17`, `Jan 27 - Feb 14`, or a single day for a milestone (`Mar 10`).
+- `a -> b` makes `b` depend on `a`.
+- Relative dates (`after <task>`), assignees, progress and critical-path options have no native syntax.
 
 ---
 
@@ -1078,14 +868,9 @@ diagram network "Corporate Network" {
 }
 ```
 
-**Network elements:**
-- `cloud "<name>"` — cloud / internet
-- `firewall "<name>"` — firewall
-- `switch "<name>"` — network switch
-- `router "<name>"` — router
-- `server "<name>"` — server
-- `workstation "<name>"` — workstation
-- `node "<name>"` — generic node
+**Syntax:**
+- A device is `id [Name]`, and `a -> b` links two devices.
+- Per-device keywords (`router`, `firewall`, and so on) have no native syntax; the device kind is the label text.
 
 ---
 
@@ -1240,6 +1025,10 @@ diagram gitgraph "Release Workflow" {
 }
 ```
 
+**Syntax:**
+- A commit is `id [branch: message]`; the branch name is the text before the colon.
+- `a -> b` links a commit to its successor. Merge and cherry-pick markers have no native syntax.
+
 ---
 
 ### 5.18 Form Definition
@@ -1257,46 +1046,11 @@ diagram form "Employee Registration" {
 }
 ```
 
-**Field types:**
-| Type | Description |
-|------|-------------|
-| `text` | Single-line text input |
-| `textarea` | Multi-line text input |
-| `number` | Numeric input |
-| `email` | Email input with validation |
-| `password` | Password input (masked) |
-| `tel` | Telephone number input |
-| `url` | URL input |
-| `date` | Date picker |
-| `time` | Time picker |
-| `datetime` | Date & time picker |
-| `select` | Dropdown select |
-| `radio` | Radio button group |
-| `checkbox` | Single checkbox |
-| `checkboxGroup` | Multiple checkboxes |
-| `file` | File upload |
-| `color` | Color picker |
-| `range` | Range slider |
-| `signature` | Digital signature pad |
-
-**Field options:**
-```
-{
-    label: "<label>",
-    required: true | false,
-    placeholder: "<placeholder text>",
-    default: <default value>,
-    min: <minimum>,
-    max: <maximum>,
-    minLength: <number>,
-    maxLength: <number>,
-    pattern: "<regex>",
-    options: ["...", "..."],
-    readonly: true | false,
-    disabled: true | false,
-    description: "<help text>"
-}
-```
+**Syntax:**
+- A field is `id [Label: type, required]`, for example `[Email: email, required]` or `[Name: text]`.
+- A choice field lists its options separated by ` / `: `[Theme: Light / Dark / System]`.
+- A button is `[Submit: Caption]`.
+- `a -> b` orders the fields. Per-field options such as `placeholder`, `min`, `pattern` and `options` have no native syntax.
 
 ---
 
@@ -1315,6 +1069,10 @@ diagram sankey "Website User Flow" {
 }
 ```
 
+**Syntax:**
+- A node is `id "Name"`; a magnitude may follow in parentheses, as in `"Solar (120)"`.
+- `a -> b: "value"` is a flow, and the label is its magnitude.
+
 ---
 
 ### 5.20 Block Diagram
@@ -1332,15 +1090,9 @@ diagram block "Architecture" {
 }
 ```
 
-**Block options:**
-```
-block "<name>" as <id> {
-    color: <named-color>,
-    description: "<description>",
-    blocks: ["sub-block1", "sub-block2"],
-    icon: "<icon-name>"
-}
-```
+**Syntax:**
+- A block is `id [Name]`, and `a -> b` connects two blocks.
+- Nested blocks, colours and icons have no native syntax.
 
 ---
 
@@ -1356,6 +1108,9 @@ diagram timeline "Company History" {
     q2 -> q3
 }
 ```
+
+**Syntax:**
+- An entry is `id [Period: Event]`, and `a -> b` orders consecutive entries.
 
 ---
 

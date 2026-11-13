@@ -5,6 +5,7 @@
 // Supports zoom/pan, drag-drop node repositioning, double-click label editing,
 // right-click context menus, undo/redo, edge rerouting, and node resizing.
 
+import { formatDiagnostic } from './client/stale-state.js';
 import * as vscode from 'vscode';
 import { createEngine, type CoreEngine, type DiagramIR, getEditVocabulary } from '@seldia/core';
 import { WebviewMessenger } from './messenger.js';
@@ -454,7 +455,7 @@ export class SelDiAInteractiveProvider {
       // quote source fragments containing '<', which must not become markup.
       const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const errs = (result as { ok: false; errors: any[] }).errors || [];
-      errorMsg = errs.map((e: any) => esc(String(e.message))).join('<br>');
+      errorMsg = errs.map((e: any) => formatDiagnostic(e, esc(String(e.message)))).join('<br>');
     }
 
     if (this._disposed) return;
@@ -657,6 +658,9 @@ export class SelDiAInteractiveProvider {
       box-shadow: 0 2px 8px rgba(0,0,0,.25);
       pointer-events: none;
     }
+    #container.seldia-stale > :not(#modeBanner):not(#staleBanner) { opacity: .4; pointer-events: none; }
+    #staleBanner { display: none; position: sticky; top: 0; z-index: 20; background: #e53e3e; color: #fff; padding: 6px 12px; font: 13px monospace; }
+    #container.seldia-stale #staleBanner { display: block; }
     .error { color: #e53e3e; padding: 24px; font-family: monospace; font-size: 14px; }
     /* Selection highlight */
     .seldia-selected { outline: 2px solid #0e639c; outline-offset: 2px; }
@@ -740,6 +744,7 @@ export class SelDiAInteractiveProvider {
   <div id="container">
     ${svgContent || `<div class="error">${errorMsg || 'No diagram to render'}</div>`}
     <div id="modeBanner"></div>
+    <div id="staleBanner"></div>
   </div>
 
   <!-- Label editor overlay -->

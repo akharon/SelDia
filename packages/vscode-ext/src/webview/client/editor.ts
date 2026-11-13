@@ -9,6 +9,7 @@
 // window.__seldiaInit instead of template interpolation.
 // =============================================================================
 
+import { decideUpdate, isEditBlocked } from './stale-state.js';
 import { reduceInteraction, initialInteractionState, type InteractionEffect } from './interaction-reducer.js';
 
 interface SeldiaInit {
@@ -35,7 +36,14 @@ declare global {
 export {};
 
 // ── State ──────────────────────────────────────────────────────────
-const vscode = acquireVsCodeApi();
+const vscodeApi = acquireVsCodeApi();
+let isStale = false;
+const vscode = {
+  postMessage(m: any) {
+    if (isEditBlocked(isStale, m?.type)) return; // stale SVG: edits would patch wrong lines
+    vscodeApi.postMessage(m);
+  },
+};
 let scale = 1;
 let offsetX = 0,
   offsetY = 0;
@@ -1044,10 +1052,26 @@ function clearSelection() {
 
 // ── Message Handler (from extension) ───────────────────────────────
 let lastInstalledSvg: string | null = null; // first updateContent always installs
+let hasGoodSvg = !!container.querySelector('svg');
+function setStale(stale: boolean, html = '') {
+  isStale = stale;
+  container.classList.toggle('seldia-stale', stale);
+  const b = document.getElementById('staleBanner');
+  if (b) b.innerHTML = stale ? html + ' — Fix the error to edit' : '';
+}
 window.addEventListener('message', (event) => {
   const msg = event.data;
   switch (msg.type) {
     case 'updateContent': {
+      if (decideUpdate(msg, hasGoodSvg) === 'show-stale') {
+        // msg.error is pre-escaped by the extension host.
+        setStale(true, msg.error || 'Compilation failed');
+        const st = document.querySelector('.toolbar .stats');
+        if (st && msg.stats) st.textContent = msg.stats;
+        break;
+      }
+      setStale(false);
+      hasGoodSvg = !!msg.svg;
       // Incremental re-render: swap the diagram, keep zoom/pan/selection.
       // An unchanged SVG is not re-installed: every innerHTML swap tears
       // down and re-rasterizes the whole subtree, and pointless repaints

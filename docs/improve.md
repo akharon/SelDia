@@ -35,7 +35,7 @@ Top items by return, in suggested order:
 | 8 | [A1](#a1-typed-node-data-instead-of-label-parsing) Typed node data instead of label parsing | L | Removes a known silent-drop bug class; unblocks structured editing |
 | 9 | [A2](#a2-one-descriptor-per-diagram-type) One descriptor per diagram type | M | Adding a type goes from 8-10 edits to 1 |
 | 10 | [F1](#f1-drift-check) Drift check | M | The positioning, made executable |
-| 11 | [A3](#a3-keep-the-last-good-render) Keep last good render, then statement-level recovery | S, then M | Typing no longer blanks the diagram |
+| 11 | [A3](#a3-parser-error-recovery) Statement-level parser recovery | M | All errors reported; partial diagrams render |
 | 12 | [F2](#f2-png-output-and-copy-as-png) PNG output and copy as PNG | S | Already advertised in `--help`; needed for chat, slides, wikis |
 
 ## 2. Docs that disagree with the code
@@ -140,13 +140,6 @@ Either way, improve the own router where it is structurally weak. It routes edge
 
 *Done when.* The `stability` metric is recorded and falls sharply on the stress corpus; adding a leaf node in the preview moves only its neighbours. This also unlocks [L5](#l5-preview-polish) (animated transitions) and [F3](#f3-visual-diff-for-pull-requests) (visual diff).
 
-#### R5. Correctness gaps, verify first (S each)
-
-- **Parallel edges.** dagre is created with `multigraph: false` and keys edges by source and target, so two edges `a -> b` with different labels may collapse into one. Write the three-line fixture; if it fails, switch to a multigraph keyed by edge id.
-- **Self-loops.** No handling was found in core. Give `a -> a` a fixed loop template on the lateral side and reserve space for it in node spacing.
-- **dagre label size.** dagre is told a label is `length * 7` by 20 px. Use `text-measure.ts` like everything else.
-- **Foreign groups.** The A* router treats nodes as obstacles. Make the interior of a group that contains neither endpoint a high-cost zone, so edges go around boxes they have no business in.
-
 #### Not worth doing
 
 - Replacing dagre or ELK, or writing a third engine.
@@ -199,7 +192,6 @@ Questions for a design pass, not conclusions:
 #### L5. Preview polish
 
 - **Animated re-layout (S, after R4).** Match elements by `data-seldia-node-id` and animate the transform over about 180 ms when the SVG is swapped, respecting `prefers-reduced-motion`. Without stable layout this is noise; with it, an edit reads as an edit.
-- **Accessible SVG (S).** Root `role="img"` with `<title>` from the diagram title and a generated `<desc>` ("flowchart, 7 nodes, 9 edges"); a `<title>` per node. Today only labelled edges have one.
 - **Focus on click (S).** The hover highlight exists in CSS. Make it sticky on click so a neighbourhood can be studied in a dense diagram.
 - No minimap. Fit-to-view and zoom already cover it at the diagram sizes this tool targets.
 
@@ -233,13 +225,11 @@ Derive everything else from it: the parser's alias map and pre-check list (today
 
 Splitting `render/custom-renderers.ts` (1962 lines) into one file per type falls out of this for free. Do not split large files as a project of its own.
 
-#### A3. Keep the last good render
+#### A3. Parser error recovery
 
-*Problem.* The parser stops at the first error and the diagram is replaced by an error. While typing, that is most of the time.
+*Problem.* The parser stops at the first error. The editor panel now keeps the last good render dimmed, but the language server reports only the first error and nothing new renders until the source is valid.
 
-*How.* In two steps:
-1. **Preview (S).** On a failed compile, keep the last good SVG, dimmed, with the diagnostic shown over it. About twenty lines in the preview plugin and the edit panel.
-2. **Parser (M).** Statement-level recovery: on a `ParseError` inside a diagram body, record the diagnostic, skip to the next line at the same brace depth and continue. Render what parsed, with an "n errors" badge. The language server then reports all errors, not the first.
+*How (M).* Statement-level recovery: on a `ParseError` inside a diagram body, record the diagnostic, skip to the next line at the same brace depth and continue. Render what parsed, with an "n errors" badge. The language server then reports all errors, not the first.
 
 #### A4. Explicit layout stages
 
@@ -276,10 +266,6 @@ The same fault in a second command (S): `seldia md2pdf` is a stub that checks th
 #### F3. Visual diff for pull requests
 
 `diffDiagrams` gives a structural diff. Render it: lay out the union of both versions once (so positions agree, see [R4](#r4-stable-layout-across-edits)), draw added elements green, removed ones red and dashed, changed ones amber. `seldia diff a.sld b.sld --svg`, and the Action posts it on the PR. Reviewers see what changed in the architecture without reading DSL.
-
-#### F4. Quality tool for agents
-
-Add a fourth LM tool, `seldia_checkDiagram`, returning the `seldia check` report. An agent that draws a diagram can then see "3 crossings, 1 label detached" and reorder declarations until it is clean. The check exists; this is wiring.
 
 #### F5. Collapsible groups
 
@@ -330,10 +316,9 @@ Editing conveniences: multi-select or marquee, group drag, arrow-key nudge, dupl
 
 ## 8. Suggested order
 
-1. **Truth (days).** the R5 fixtures; accessible SVG; keep the last good render.
-2. **Rulers.** M1, M2, L4. After this step, every later claim of "better" has a number or a picture behind it.
-3. **Geometry.** R3 steps 1 and 2, then R1, then the R2 experiment, then R4.
-4. **Surface.** L1, L2, the L3 design pass, F2.
-5. **Structure and wedge.** A2, then A1, then F1 and F3 on top of them.
+1. **Rulers.** M1, M2, L4. After this step, every later claim of "better" has a number or a picture behind it.
+2. **Geometry.** R3 steps 1 and 2, then R1, then the R2 experiment, then R4.
+3. **Surface.** L1, L2, the L3 design pass, F2.
+4. **Structure and wedge.** A2, then A1, then F1 and F3 on top of them.
 
 The visual-editor work ([section 7](#7-visual-editor)) runs alongside: E1 to E3 at any time, E4 and snap-to-grid only after R1 and R3, because they would otherwise be built on attach points and coordinates that are about to change.

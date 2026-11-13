@@ -116,14 +116,13 @@ export class SelDiAInteractiveProvider {
    *  target), and id-uniqueness when adding nodes. */
   private _positionedIr: DiagramIR | null = null;
   /** Node id to auto-open the label editor for on the next render after an
-   *  add-node gesture (arch.md §9.4: adding a node should prompt for its
-   *  label immediately, not leave the user to hunt for it and double-click). */
+   *  add-node gesture. */
   private _pendingFocusNodeId: string | null = null;
   /** Source/target of an edge just added, resolved to that edge's actual id
    *  once the recompiled IR comes back (edge id formats vary per diagram
    *  type — `edge-<src>-<tgt>`, `class-edge-<src>-<tgt>`, `seq-edge-<n>`,
    *  etc — so it can't be predicted, only looked up), to auto-open its label
-   *  editor (next_steps.md Step 3.4, mirrors `_pendingFocusNodeId`). */
+   *  editor. */
   private _pendingFocusEdgeEndpoints: { sourceId: string; targetId: string } | null = null;
 
   /** Snapshot-based undo/redo over the edited source (the fence contents in
@@ -136,7 +135,7 @@ export class SelDiAInteractiveProvider {
 
   /** Serializes every edit-producing message so two quick gestures (e.g. two
    *  fast drags) can't interleave `groundTruth()` reads with `applySourceEdits`
-   *  writes — see docs/next_steps.md §3.2 step 1.1. */
+   *  writes. */
   private readonly _editQueue = new SerialQueue();
 
   private _currentSource: string = '';
@@ -642,7 +641,7 @@ export class SelDiAInteractiveProvider {
     }
     #nodePalette .menu-item, #edgePalette .menu-item { padding: 5px 14px; cursor: pointer; font-size: 12px; color: var(--fg-color); white-space: nowrap; }
     #nodePalette .menu-item:hover, #edgePalette .menu-item:hover { background: #0e639c; color: #fff; }
-    /* Edge-draw mode banner (arch.md §9.4.5): visible confirmation of which
+    /* Edge-draw mode banner: visible confirmation of which
        mode is active, since the toolbar button alone easily goes unnoticed. */
     #modeBanner {
       display: none;
@@ -667,7 +666,7 @@ export class SelDiAInteractiveProvider {
     .edge-draw-line { stroke: #0e639c; stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
     /* Marks the source node while drawing a new edge (Edit mode). */
     .seldia-edge-source { outline: 2px dashed #0e639c; outline-offset: 3px; }
-    /* Drawing-edge mode (next_steps.md Step 3.2): crosshair over the canvas,
+    /* Drawing-edge mode: crosshair over the canvas,
        and the node under the cursor highlights as the drop target. */
     #container.seldia-drawing-edge { cursor: crosshair; }
     .seldia-edge-target { outline: 2px solid #4ec9b0; outline-offset: 3px; }
@@ -978,7 +977,7 @@ export class SelDiAInteractiveProvider {
    *  via a WorkspaceEdit. Used by undo/redo restore. Unlike the old version,
    *  this also refreshes the dirty indicator and honours autosave — before,
    *  undo/redo left the Save button's dot stale and never persisted under
-   *  `files.autoSave: afterDelay` (docs/next_steps.md §3.2 step 1.4). */
+   *  `files.autoSave: afterDelay`. */
   private async restoreSource(text: string): Promise<void> {
     const gt = await this.groundTruth();
     if (!gt) return;
@@ -1045,7 +1044,7 @@ export class SelDiAInteractiveProvider {
     else this.editSkipped(`no source line found for '${nodeId ?? edgeId}'`);
   }
 
-  /** Explicit add-node (arch.md §9.4, next_steps.md Step 2): the statement
+  /** Explicit add-node: the statement
    *  emitted depends on the diagram type's edit vocabulary
    *  (`getEditVocabulary`) instead of always being a flowchart `[Label]`
    *  node, and positionable kinds get an initial `x`/`y` near the existing
@@ -1106,8 +1105,7 @@ export class SelDiAInteractiveProvider {
     const edit = computeAppendStatementEdit(gt.source, stmt);
     if (!edit) { this.editSkipped('no closing brace to insert before'); return; }
     await this.applySourceEdits(gt, [edit]);
-    // Open the label editor on the new edge right away (next_steps.md Step
-    // 3.4); resolved to the edge's actual id once the recompile comes back.
+    // Open the label editor on the new edge right away; resolved to the edge's actual id once the recompile comes back.
     this._pendingFocusEdgeEndpoints = { sourceId, targetId };
   }
 

@@ -10,7 +10,7 @@
 // That third check is what catches the class of bug unit tests on IR shape
 // alone cannot: a renderer silently dropping structure it never reads
 // (documented precedent: class members / ER attributes read from the label,
-// not a data bag — see docs/next_steps.md §1).
+// not a data bag).
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';

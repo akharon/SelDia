@@ -201,7 +201,7 @@ describe('diagram-wide manual layout override', () => {
   });
 });
 
-describe('edge via/routing attrs (next_steps.md Step 4.2/4.3)', () => {
+describe('edge via/routing attrs', () => {
   it('a `via` edge lays out through its pinned points, no node manually positioned', () => {
     const src = 'fl "T" { a (Start)\n b [Do]\n a -> b { via: [100, 400, 300, 400] } }';
     const parsed = engine.parse(src);

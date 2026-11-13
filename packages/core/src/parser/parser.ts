@@ -1194,7 +1194,7 @@ class Parser {
     // Optional edge attribute/style block: { stroke: "...", label: "..." }
     const style = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
     if (!label && style && typeof style.label === 'string') label = style.label;
-    // `route: straight|orthogonal|curved|spline` (next_steps.md Step 4.3) picks
+    // `route: straight|orthogonal|curved|spline` picks
     // this edge's routing explicitly; `routing:` accepted as an alias for
     // parity with the IR/AST field name. Falls through to undefined (the
     // diagram plugin's own default) when absent — was previously always

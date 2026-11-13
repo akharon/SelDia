@@ -12,8 +12,7 @@
    focuses the block (the same pattern as GitHub's on-hover code-copy button
    and VS Code's own hover actions), at which point a faint frame fades in to
    scope them. This replaces the previous always-on border+toolbar, which
-   still read as a bolted-on widget next to native Markdown elements
-   (docs/next_steps.md §3 container-chrome item). */
+   still read as a bolted-on widget next to native Markdown elements. */
 .seldia-diagram {
   margin: 16px 0;
   border: 1px solid transparent;

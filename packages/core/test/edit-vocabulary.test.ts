@@ -2,7 +2,7 @@
 // SelDiA — edit vocabulary templates must actually compile
 // =============================================================================
 // getEditVocabulary() feeds the visual editor's add-node/add-edge palettes
-// (see docs/next_steps.md Step 2/3). A template that doesn't parse for its
+// A template that doesn't parse for its
 // own diagram type would make "add node" silently fail the moment someone
 // clicked it, so every node and edge template is round-tripped through the
 // real engine here instead of only being reviewed by eye.

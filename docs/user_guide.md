@@ -32,6 +32,8 @@
     - [5.19 Sankey Diagram](#519-sankey-diagram)
     - [5.20 Block Diagram](#520-block-diagram)
     - [5.21 Timeline](#521-timeline)
+    - [5.22 Circuit Schematics](#522-circuit-schematics)
+    - [5.23 PCB Board View](#523-pcb-board-view)
     - [5.24 Tables (merged cells)](#524-tables-merged-cells)
     - [5.25 Charts from a table](#525-charts-from-a-table)
 6. [Styling & Themes](#6-styling--themes)
@@ -72,12 +74,12 @@ Anything can draw a diagram. The problem SelDiA is built for is what happens *af
 - **You don't have to switch formats.** Keep your Mermaid, keep your GitHub rendering, keep letting AI generate it from memory. SelDiA runs it.
 - **Your diagram is a structure, not a picture.** The IR sits between text and pixels, so a diagram can be queried ("what depends on auth-service?"), mutated, and written back — not just re-drawn from scratch.
 - **Mistakes surface instead of rendering.** LSP diagnostics mean a broken diagram *tells you*. Formats without an IR fail silently or render garbage; that matters most when the author is a model, because a model can be told it's wrong and fix itself.
-- **One engine, 31 diagram types.** Flowcharts, sequences, class, C4, BPMN, DMN, ER, gantt, mindmap, sankey, gitgraph, charts, forms — the SelDiA DSL is the engine's native format, available in full when you want it.
-- **The usual table stakes**, all present: plain-text and version-controllable, auto-layout with manual overrides, SVG/PNG/PDF/HTML export, VS Code integration, MIT licensed.
+- **One engine, 35 diagram types (C4 levels and chart kinds counted separately).** Flowcharts, sequences, class, C4, BPMN, DMN, ER, gantt, mindmap, sankey, gitgraph, charts, forms — the SelDiA DSL is the engine's native format, available in full when you want it.
+- **The usual table stakes**, all present: plain-text and version-controllable, auto-layout with manual overrides, SVG output, PDF export from VS Code, VS Code integration, dual licensed (AGPL-3.0-or-later or commercial; see `LICENSE`).
 
 ### File Extension
 
-SelDiA diagrams use the `.sld` file extension — this is what the VS Code extension and `examples/` register.
+SelDiA diagrams use the `.sld` or `.seldia` extension; the VS Code extension and the CLI recognise both. In Markdown, use a ```` ```seldia ```` fence.
 
 ---
 
@@ -2237,98 +2239,50 @@ group <id> "<label>" {
 
 ## 9. CLI Usage
 
+The `seldia` command lives in `@seldia/cli` (`npm run cli -- <args>` from a checkout, or `node packages/cli/dist/index.js`). It writes SVG; PDF export is a VS Code feature (section 11.5).
+
 ### 9.1 Commands
 
 ```bash
-# Render an existing Mermaid file through the SelDiA engine — no conversion,
-# no new file: the .mmd stays your source of truth.
+# Compile a .sld/.seldia file to SVG (default: next to the input)
+seldia compile diagram.sld -o output.svg [--theme <name>] [--scale <n>] [--background <color>] [--debug]
+
+# Compile every .sld/.seldia file in a directory
+seldia compile src/diagrams/ --batch -o out/
+
+# Render a whole tree: every .sld file plus the ```seldia fences of Markdown files
+seldia render docs/ -o diagrams [--theme <name>] [--ext .seldia]
+
+# Render a foreign file through the engine (no conversion, the file stays your source)
 seldia mermaid diagram.mmd -o output.svg
+seldia plantuml diagram.puml -o output.svg
+seldia circuit amp.cir -o output.svg          # SPICE / KiCad netlist
 
-# Compile a diagram to SVG
-seldia compile diagram.sld -o output.svg
+# Convert to another format (stdout unless -o is given)
+seldia export diagram.sld --to mermaid|plantuml|bpmn|sql-ddl [-o out.file]
 
-# Compile to PNG (2x Retina scale)
-seldia compile diagram.sld -o output.png --scale 2
-
-# Compile to PDF
-seldia compile diagram.sld -o output.pdf
-
-# Compile to interactive HTML
-seldia compile diagram.sld -o output.html --interactive
+# Structural diff of two diagrams
+seldia diff old.sld new.sld [--format text|json]
 
 # Validate without rendering
 seldia validate diagram.sld
 
-# Start live preview server
-seldia serve diagram.sld --port 3000
+# Readability report for a diagram file or the fences of a Markdown file
+seldia check README.md [--json] [--max <n>]
 
-# Scaffold a new diagram
+# Scaffold, serve, list
 seldia init flowchart --title "My Flow" -o myflow.sld
-
-# List available themes
+seldia serve diagram.sld --port 3000
+seldia list-types
 seldia theme list
-
-# Show theme details
 seldia theme show sketchy-light
-
-# Create a custom theme scaffold
-seldia theme create my-company -o my-theme.sld
-
-# Batch compile all .sld files in a directory
-seldia compile src/diagrams/ -o out/ --batch
-
-# Export Markdown to PDF with rendered diagrams
-seldia md2pdf README.md -o docs/architecture.pdf
-
-# Export with custom options
-seldia md2pdf README.md --format A4 --landscape --theme sketchy-dark --toc
-
-# Batch export all .md files in a directory to PDF
-seldia md2pdf docs/ --batch -o pdfs/
 ```
 
-### 9.2 Global Options
+`seldia check` exits 1 when a diagram has more than `--max` problems or cannot be measured, so it can gate CI. `seldia --help` and `seldia <command> --help` list every option. A `seldia md2pdf` command exists but is a stub that only checks the file and prints instructions; use the VS Code command instead.
 
-| Option | Description |
-|--------|-------------|
-| `--theme <name>` | Override diagram theme |
-| `--scale <n>` | Output scale factor |
-| `--background <color>` | Background color |
-| `--sketchy / --no-sketchy` | Enable/disable Rough.js |
-| `--debug` | Show debug information |
-| `--quiet` | Suppress all output except errors |
-| `--config <path>` | Path to config file |
+### 9.2 Layout engine
 
-### 9.3 Configuration File
-
-Create `seldia.config.json` in your project root:
-
-```json
-{
-    "defaultDirection": "TB",
-    "defaultTheme": "sketchy-light",
-    "defaultLayoutEngine": "dagre",
-    "render": {
-        "format": "svg",
-        "scale": 1,
-        "background": "transparent",
-        "padding": 20
-    },
-    "layout": {
-        "direction": "TB",
-        "nodeSpacing": [80, 60],
-        "rankSpacing": 80
-    },
-    "parser": {
-        "lenient": false
-    },
-    "output": {
-        "outDir": "./out",
-        "overwrite": true,
-        "filenamePattern": "{name}.{ext}"
-    }
-}
-```
+The CLI has no config file. Choose the layout engine per diagram with a `layout dagre|elk|auto` line (section 7); the defaults per diagram type are listed in [reference.md](reference.md).
 
 ---
 
@@ -2429,7 +2383,7 @@ Install `SelDiA` from the VS Code Marketplace, or search for `@seldia/vscode-ext
 
 - **Syntax highlighting** for `.sld` files and ` ```seldia ` blocks in Markdown
 - **Markdown Diagram Detection** — SelDiA code blocks in `.md` files are auto-detected and rendered inline
-- **Live preview** — open a `.sld` file, press `Ctrl+Shift+P` → "SelDiA: Open Preview"
+- **Live preview** — open a `.sld` file, press `Ctrl+Shift+P` → "SelDiA: Open Diagram in Markdown Preview" (or `Ctrl+K V`)
 - **Visual editing** — double-click shapes to edit labels, drag to reposition, right-click for context menu
 - **Code ↔ Diagram toggle** — switch between DSL source and rendered diagram with `Ctrl+Shift+V`
 - **Autocomplete** — suggestions for diagram keywords, shapes, and theme properties
@@ -2652,100 +2606,33 @@ seldia_tables: false
 
 ### 11.4 Visual Editing
 
-Visual editing is available in the **interactive editor for `.sld` files**
-(`Ctrl+K V`). Diagrams embedded in Markdown are laid out automatically and
-previewed read-only — edit their DSL in the file instead.
-
-In the interactive editor:
+Visual editing works in the **interactive editor for `.sld`/`.seldia` files** (`Ctrl+K V`, or **SelDiA: Open Interactive Diagram**) and, for a diagram inside Markdown, through **SelDiA: Edit Diagram Block Visually** (also offered as a CodeLens and in the preview toolbar). Every edit is written back as a minimal change to the source text.
 
 | Gesture | Action |
 |---------|--------|
-| **Drag a node** | Move it to a new position |
-| **Double-click a shape** | Edit the label text inline |
-| **Right-click → Edit Style** | Change fill, stroke, roughness, font |
-| **Right-click → Add Node** | Insert a new connected node |
-| **Delete key** | Remove the selected node or edge |
-| **`Ctrl+Z` / `Ctrl+Shift+Z`** | Undo / Redo visual edits |
-| **Arrow keys** | Nudge selected node 1px (10px with Shift) |
-| **Scroll** | Zoom in/out |
-| **Drag canvas** | Pan around the diagram |
+| **Drag a node** | Move it (writes `x`/`y` to the source) |
+| **Double-click a shape** | Edit the label inline |
+| **Right-click a node, Edit Style** | Pick fill, border or text color |
+| **Right-click a node, Add Connected Node / Add Edge** | Insert a node or edge; the palette offers the kinds valid for this diagram type |
+| **Right-click an edge, Reconnect Source / Target** | Move one end of the edge to another node |
+| **Right-click the canvas, Add Node** | Insert a new node |
+| **Delete** | Remove the selected node or edge |
+| **`Ctrl+Z` / `Ctrl+Shift+Z`** | Undo / redo visual edits (dropped if you type in the text editor) |
+| **Scroll / drag canvas** | Zoom / pan |
 
-All visual edits update the `.sld` source file automatically.
+Floorplan diagrams also support dragging furniture with live clearance guides and rotating by 90 degrees.
 
 ### 11.5 Markdown → PDF Export
 
-Export your entire Markdown document — including all SelDiA diagrams — as a beautifully formatted PDF. SelDiA diagrams are compiled to SVG, embedded in the document, and rendered via a headless Chromium browser.
+Export a Markdown document, including all its diagrams, as a PDF. Diagrams are compiled to SVG, embedded in the document, and printed by headless Chromium through Puppeteer.
 
-#### How to Export
+1. Open a `.md` file containing diagram fences.
+2. Run **SelDiA: Export Markdown to PDF** from the Command Palette, the editor context menu or the editor title menu.
+3. Pick the output location in the save dialog.
 
-**Via Command Palette:**
-1. Open a `.md` file containing ` ```seldia ` blocks
-2. Press `Ctrl+Shift+P` → **"SelDiA: Export Markdown to PDF"**
-3. The PDF is generated and saved next to your `.md` file
+The export uses the `seldia.defaultTheme` setting. The PDF is A4 with page numbers, print-optimized CSS (diagrams avoid page breaks) and an automatic table of contents when the document has three or more diagrams. A diagram that fails to render shows an error box and the rest still export. Page format, orientation, scale and custom CSS exist in the pipeline's options (`packages/vscode-ext/src/md2pdf/types.ts`) but are not exposed as settings.
 
-**Via Editor Toolbar:**
-1. Click the **SelDiA icon** in the editor toolbar (visible when a `.md` file with diagrams is open)
-2. Select **"Export as PDF"** from the dropdown
-
-**Via Right-Click Menu:**
-1. Right-click anywhere in a `.md` editor
-2. Select **"SelDiA: Export Markdown to PDF"**
-
-#### PDF Output Features
-
-- **A4 format** by default (Letter, Legal, and custom sizes available)
-- **Page numbers** in the footer
-- **Auto-generated Table of Contents** when the document has 3+ diagrams
-- **Print-optimized CSS** — diagrams avoid page breaks, code blocks stay monospace
-- **Error resilience** — a broken diagram shows an error box; other diagrams still render
-- **External images** are loaded before printing (waits for `networkidle0`)
-
-#### Custom Export Options
-
-Use **"SelDiA: Export Markdown to PDF (Custom)"** to configure:
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| **Page Format** | A4, A3, Letter, Legal, Tabloid | A4 |
-| **Orientation** | Portrait or Landscape | Portrait |
-| **Scale** | PDF scale factor | 1.0 |
-| **Theme** | SelDiA diagram theme | sketchy-light |
-| **Table of Contents** | Auto-generate TOC | Off (auto if ≥3 diagrams) |
-| **Page Numbers** | Show page numbers | On |
-| **Custom CSS** | Additional print stylesheet | — |
-| **Output Path** | Where to save the PDF | Same folder as .md |
-
-#### Requirements
-
-The MD-to-PDF feature requires **Puppeteer** (headless Chromium). On first use, SelDiA will prompt:
-
-> *"Puppeteer is required for PDF export. Install now?"*
-
-Click **"Install"** and SelDiA will run `npx puppeteer browsers install chrome` automatically.
-
-Alternatively, install manually:
-```bash
-npm install -g puppeteer
-npx puppeteer browsers install chrome
-```
-
-#### CLI Usage
-
-```bash
-# Export a single Markdown file
-seldia md2pdf README.md -o docs/architecture.pdf
-
-# With custom options
-seldia md2pdf README.md \
-    --format A4 \
-    --landscape \
-    --theme sketchy-dark \
-    --toc \
-    --scale 0.9
-
-# Batch export all .md files in a directory
-seldia md2pdf docs/ --batch -o pdfs/
-```
+**Requirements.** Puppeteer needs a Chrome download the first time; if it is missing, the extension downloads it with progress. To install it yourself: `npx puppeteer browsers install chrome`.
 
 ### 11.6 Marp Slide Decks
 
@@ -2798,38 +2685,30 @@ comments are preserved as real PPTX notes.
 
 ### 11.7 Keybindings
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+V` | Toggle Code / Diagram view |
-| `Ctrl+Shift+T` | Cycle through diagram themes |
-| `Ctrl+Shift+E` | Export diagram to SVG (standalone .sld files) |
-| `Ctrl+Shift+P` → "SelDiA: Export Markdown to PDF" | Export .md file to PDF |
-| `Ctrl+Shift+P` → "SelDiA: Open Preview" | Open live preview |
-| `Ctrl+Shift+P` → "SelDiA: Insert Diagram Block" | Insert ` ```seldia ` block in Markdown |
-| `Ctrl+Shift+P` → "SelDiA: Open Marp Slide Preview" | Open a Marp deck (`marp: true`) in the slide-by-slide preview |
-| `Ctrl+Shift+P` → "SelDiA: Export Marp Deck (PDF/PPTX/HTML)" | Export the active Marp deck |
-| `Ctrl+Space` | Trigger autocomplete |
-| `Ctrl+Shift+F` | Format document |
-| `F2` | Rename (edit label of selected node in diagram view) |
-| `Delete` | Delete selected node/edge in diagram view |
+| Shortcut | When | Action |
+|----------|------|--------|
+| `Ctrl+Shift+V` | `.sld`/`.seldia` editor | Toggle code / diagram view |
+| `Ctrl+K V` | `.sld`/`.seldia` or Markdown | Open the diagram in the preview |
+| `Ctrl+Shift+I` | Markdown | Insert a diagram block |
+
+Everything else is a Command Palette entry (`Ctrl+Shift+P`, type "SelDiA"): Export Diagram, Export Diagram to Mermaid / PlantUML, Export Table to Markdown (GFM), Export Markdown to PDF, Edit Diagram Block Visually, Edit Table, Open Interactive Diagram, Open Marp Slide Preview, Export Marp Deck, Reveal Diagram Source, and the Copilot skill commands. Standard editor shortcuts (autocomplete, format, rename) come from the language server and VS Code itself.
 
 ### 11.8 Extension Settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `seldia.defaultView` | `diagram` \| `code` \| `split` | `diagram` | Default view mode |
-| `seldia.defaultTheme` | string | `sketchy-light` | Default diagram theme |
-| `seldia.markdown.enabled` | boolean | `true` | Enable diagram detection in Markdown |
-| `seldia.markdown.renderOnOpen` | boolean | `true` | Auto-render diagrams when opening .md files |
-| `seldia.markdown.maxDiagramsPerFile` | number | `20` | Max diagrams to auto-render per file |
-| `seldia.markdown.toc.enabled` | boolean | `true` | Inject the auto-generated Table of Contents into the Markdown preview |
-| `seldia.markdown.captions.enabled` | boolean | `true` | Render numbered "Diagram N" captions under diagrams in the Markdown preview |
-| `seldia.markdown.tables.enabled` | boolean | `true` | Style GFM tables in the Markdown preview and show the Edit table / Copy as CSV toolbar and the Edit Table CodeLens (front-matter `seldia_tables` overrides it) |
-| `seldia.interactive.enabled` | boolean | `true` | Enable visual editing (drag, double-click) |
-| `seldia.interactive.undoStackSize` | number | `50` | Undo history size for visual edits |
-| `seldia.md2pdf.defaultFormat` | string | `A4` | Default PDF page format |
-| `seldia.md2pdf.openAfterExport` | boolean | `true` | Open PDF after export |
+| `seldia.defaultTheme` | string | `sketchy-light` | Default theme for rendered diagrams |
+| `seldia.layout.engine` | `dagre` \| `elk` | `dagre` | Default automatic layout engine; a diagram can override it with a `layout` line |
+| `seldia.markdown.enabled` | boolean | `true` | Detect and render diagrams in Markdown |
+| `seldia.markdown.autoPreview` | boolean | `true` | Open the Markdown preview automatically for files with SelDiA blocks |
+| `seldia.markdown.toc.enabled` | boolean | `true` | Inject a table of contents (headings plus numbered diagrams) |
+| `seldia.markdown.captions.enabled` | boolean | `true` | Numbered "Diagram N" captions under diagrams |
+| `seldia.markdown.tables.enabled` | boolean | `true` | Style GFM tables and show the table toolbar and Edit Table CodeLens |
+| `seldia.marp.autoPreview` | boolean | `true` | Open the Marp slide preview automatically for `marp: true` files |
+| `seldia.interactive.enabled` | boolean | `true` | Enable visual editing |
+| `seldia.interactive.undoStackSize` | number | `50` | Undo steps kept for visual edits |
 | `seldia.export.defaultFormat` | `svg` \| `png` \| `pdf` | `svg` | Default export format |
+| `seldia.copilotSkill.enabled` | boolean | `true` | Enable deployment of the SelDiA DSL Copilot skill |
 
 ### 11.9 Copilot Integration — SelDiA DSL Skill
 
@@ -3116,17 +2995,7 @@ Since `.sld` files are plain text:
 
 ### 14.2 Debug Mode
 
-Enable debug mode to see detailed information:
-
-```bash
-seldia compile diagram.sld --debug
-```
-
-This outputs:
-- Parse tree (AST)
-- Intermediate Representation (IR)
-- Layout bounds and positions
-- Render timing
+`seldia compile diagram.sld --debug` additionally prints the output size and theme. To inspect a diagram's structure and readability, use `seldia check diagram.sld` (per-diagram layout report) and `seldia validate diagram.sld` (diagnostics only).
 
 ### 14.3 Getting Help
 
@@ -3211,16 +3080,19 @@ seldia list-types
 ### 15.4 CLI Quick Reference
 
 ```bash
-seldia compile <file> -o <output>     # Compile to SVG/PNG/PDF/HTML
-seldia serve <file> [--port <n>]      # Live preview server
-seldia validate <file>                # Check for errors
-seldia init <type> [--title "..."]    # Scaffold new diagram
-seldia md2pdf <file> [-o <output>]    # Export Markdown + diagrams to PDF
-seldia theme list                     # List themes
-seldia theme show <name>              # Show theme details
-seldia list-types                     # List supported diagram types
+seldia compile <file> -o <output.svg>  # Compile to SVG
+seldia render <dir> -o <outdir>        # Render .sld files and Markdown fences under a tree
+seldia mermaid|plantuml|circuit <file> # Render a foreign-format file
+seldia export <file> --to <format>     # mermaid, plantuml, bpmn, sql-ddl
+seldia diff <old> <new>                # Structural diff
+seldia validate <file>                 # Check for errors
+seldia check <file>                    # Readability report
+seldia serve <file> [--port <n>]       # Live preview server
+seldia init <type> [--title "..."]     # Scaffold new diagram
+seldia theme list                      # List themes
+seldia list-types                      # List supported diagram types
 ```
 
 ---
 
-*SelDiA User Guide — Version 1.1 — July 2026*
+*SelDiA User Guide*

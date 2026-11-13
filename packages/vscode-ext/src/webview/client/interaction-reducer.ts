@@ -5,15 +5,14 @@
 // mode decisions: whether a click starts/completes an edge draw, what Escape
 // resets, and when the "Add Edge" toolbar button should toggle. Those
 // decisions were previously inline `if`s scattered across click/keydown/
-// context-menu handlers with no test coverage (next_steps.md §3.2 step 0.2).
+// context-menu handlers with no test coverage.
 //
 // This module pulls just the *mode transition* logic out as a pure
 // `(state, event) -> (state, effects[])` reducer — no DOM, no vscode API — so
 // it can be unit tested directly. `editor.ts` still owns all DOM/canvas work;
 // it calls `reduceInteraction` and applies the returned effects imperatively.
 // This is intentionally a partial extraction: drag geometry, floorplan guide
-// math, and zoom/pan stay inline in editor.ts (see next_steps.md for why a
-// full reducer rewrite of that DOM-coupled code was not attempted blind).
+// math, and zoom/pan stay inline in editor.ts.
 // =============================================================================
 
 export type InteractionMode = 'idle' | 'selected' | 'drawing-edge' | 'reconnecting-edge';
@@ -125,7 +124,7 @@ export function reduceInteraction(state: InteractionState, event: InteractionEve
       if (state.mode === 'drawing-edge') {
         // A source is already picked and the user dropped on open canvas
         // instead of a node — offer "create connected node here" rather
-        // than silently doing nothing (next_steps.md Step 3.1).
+        // than silently doing nothing.
         if (state.edgeDrawSourceId) {
           return {
             state: { ...state, mode: 'idle', edgeDrawSourceId: null },

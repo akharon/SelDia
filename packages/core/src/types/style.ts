@@ -187,7 +187,7 @@ export interface EdgeStyle {
   fontStyle: FontStyle;
   textColor: string;
 
-  // --- User-pinned route (next_steps.md Step 4.2) ---
+  // --- User-pinned route ---
   /** Flat `[x1, y1, x2, y2, ...]` waypoint list from the DSL's `via:` edge
    *  attribute. When present, layout skips routing for this edge and uses
    *  these points (plus the node border clip) as-is — same "manual override

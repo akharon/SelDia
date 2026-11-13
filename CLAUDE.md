@@ -21,13 +21,13 @@
 
 ## Reading Order
 
-1. **Configuration**: [docs/CONFIG.md](docs/CONFIG.md) — Build config, monorepo setup, linting/formatting
-2. **Data & Fixtures**: [docs/DATA.md](docs/DATA.md) — Test fixtures, golden values, fidelity per-renderer
-3. **Architecture**: [docs/arch.md](docs/arch.md) — Design, IR concepts, plugin system
-4. **User guide**: [docs/user_guide.md](docs/user_guide.md) — How to use DSL and CLI
-5. **Examples**: [docs/examples/](docs/examples/) — Demo files (Mermaid, PlantUML, Marp)
-6. **Roadmap**: [docs/roadmap.md](docs/roadmap.md) — Next steps and open work
-7. **Market context**: [docs/market.md](docs/market.md) — Competitive analysis
+Four docs besides `docs/examples/`:
+
+1. **User guide**: [docs/user_guide.md](docs/user_guide.md) — How to use DSL, CLI and the VS Code extension
+2. **Architecture**: [docs/arch.md](docs/arch.md) — Positioning, pipeline, IR, plugins, layout, editor
+3. **Reference**: [docs/reference.md](docs/reference.md) — Build config, monorepo, layout settings, test fixtures, fidelity per exporter
+4. **Roadmap**: [docs/roadmap.md](docs/roadmap.md) — Open work only
+5. **Examples**: [docs/examples/](docs/examples/) — Demo files (Mermaid, PlantUML, Marp, circuits); also the layout-metrics corpus
 
 ---
 
@@ -45,24 +45,22 @@
 Available in `/scripts/`:
 - `build.sh` — Turbo builds all packages (core, CLI, LSP, VS Code ext, web)
 - `test.sh` — Vitest suite (watch/once modes)
-- `dev.sh` — Watch mode for active development
-- `lint.sh` — ESLint + Prettier
-- `validate-examples.sh` — Compile all demo files; ensure examples stay valid
+- `debug.sh`, `package-vsix.sh`, `install-vscode.sh`, `bump-versions.sh`, `deploy.sh` — see scripts/README.md
+- `layout-metrics.mjs` — layout-quality report over docs/examples (gated by a Vitest baseline)
 
 **Bash aliases** (add to session):
 ```bash
 alias build='npm run build'
 alias dev='npm run dev'
 alias test='npm run test'
-alias lint='./scripts/lint.sh'
-alias validate='./scripts/validate-examples.sh'
+alias metrics='node scripts/layout-metrics.mjs --quiet'
 ```
 
 ---
 
 ## Workspace Layout
 
-Monorepo (pnpm): `packages/core/`, `packages/cli/`, `packages/interaction/`, `packages/vscode-ext/`, `packages/web/`, `docs/`.
+Monorepo (npm workspaces + Turborepo): `packages/core/`, `packages/cli/`, `packages/interaction/`, `packages/vscode-ext/`, `packages/web/`, `docs/`.
 
 ## Key Architecture Points
 
@@ -108,26 +106,14 @@ git log --grep="ADR" --oneline
 ## Maintenance
 
 **When adding/removing config files or monorepo packages:**
-1. Update [docs/CONFIG.md](docs/CONFIG.md) — add/remove file/package row
+1. Update [docs/reference.md](docs/reference.md) (Build and config table) — add/remove the file or package row
 2. Document purpose and how to modify
 
-**When adding/removing test fixtures or renderer fidelity tests:**
-1. Update [docs/DATA.md](docs/DATA.md) — add/remove fixture row
-2. Update renderer fidelity section with loss rate and supported features
-3. Document how to add new golden values for visual regression tests
+**When adding/removing test fixtures, corpora or exporter fidelity tests:**
+1. Update [docs/reference.md](docs/reference.md) (Test fixtures and gates table) — add/remove the fixture row
+2. Update the fidelity section with what survives the import/export round trip
+3. Layout baseline changes: regenerate `layout-baseline.json` as described there and review the diff
 
-**Example:** If you add a new `packages/json-renderer/`:
-```markdown
-| File | Purpose | Format | Usage |
-|------|---------|--------|-------|
-| `packages/json-renderer/tests/golden_*.json` | Expected JSON output | JSON | Visual regression tests |
-```
-
-And fidelity:
-```markdown
-- **JSON Renderer**: Lossless (exports IR directly to JSON)
-  - Supported: All IR node types
-  - Loss rate: 0% (complete fidelity)
-```
+**When finishing a roadmap item:** delete it from [docs/roadmap.md](docs/roadmap.md) (it holds open work only).
 
 **Last updated:** 2026-09-15 (Token-optimized with memory enforcement)

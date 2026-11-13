@@ -513,7 +513,7 @@ class SelDiAEngine implements CoreEngine {
   }
 
   /** A user-pinned route: the flat `[x1,y1,x2,y2,...]` list from the DSL's
-   *  `via:` edge attribute (next_steps.md Step 4.2), read the same way
+   *  `via:` edge attribute, read the same way
    *  `manualOverride` reads a node's `{x,y}` — as a style field that wins
    *  over anything layout would otherwise compute. Odd-length or empty
    *  arrays are treated as absent rather than guessed at. */

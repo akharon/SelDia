@@ -138,7 +138,7 @@ describe('computeEdgeDeleteEdit', () => {
   });
 });
 
-describe('computeEdgeReconnectEdit (next_steps.md Step 4.1)', () => {
+describe('computeEdgeReconnectEdit', () => {
   it('rewrites the target of a single-edge line', () => {
     const out = applyTextEdit(SRC, computeEdgeReconnectEdit(SRC, 'start', 'build', 'target', 'check')!);
     expect(out).toContain('start --> check');

@@ -27,7 +27,7 @@ diagram flowchart "Login Flow" {
 
 Generating a diagram is solved and commoditized — every model writes Mermaid from memory. **Keeping a diagram true as the system drifts is not solved.** That takes an IR, diagnostics, and round-tripping: parse → structure → validate → write back. Mermaid is a parser bolted to a renderer; PlantUML is a Java monolith. Neither has the layer this needs. SelDiA does.
 
-The wedge is *drift*, not drawing. See [docs/market.md](docs/market.md) for the full reasoning.
+The wedge is *drift*, not drawing. See the positioning section of [docs/arch.md](docs/arch.md) for the full reasoning.
 
 ## Features
 

@@ -5,23 +5,26 @@ export default defineConfig({
   description: 'The diagram engine — keep your Mermaid, PlantUML, or SelDiA DSL; SelDiA keeps it true.',
   lang: 'en-US',
   lastUpdated: true,
+  // The user guide is the site home page.
+  rewrites: {
+    'user_guide.md': 'index.md',
+  },
   themeConfig: {
-    logo: '/icon.svg',
     siteTitle: 'SelDiA',
     nav: [
-      { text: 'Guide', link: '/user_guide' },
+      { text: 'Guide', link: '/' },
       { text: 'Architecture', link: '/arch' },
-      { text: 'Roadmap', link: '/next_steps' },
-      { text: 'Positioning', link: '/market' },
+      { text: 'Reference', link: '/reference' },
+      { text: 'Roadmap', link: '/roadmap' },
     ],
     sidebar: [
       {
         text: 'Docs',
         items: [
-          { text: 'User Guide', link: '/user_guide' },
+          { text: 'User Guide', link: '/' },
           { text: 'Architecture', link: '/arch' },
-          { text: 'Roadmap', link: '/next_steps' },
-          { text: 'Positioning & Market', link: '/market' },
+          { text: 'Reference', link: '/reference' },
+          { text: 'Roadmap', link: '/roadmap' },
         ],
       },
     ],
@@ -29,8 +32,8 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/mkyr/seldia' },
     ],
     footer: {
-      message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2025 SelDiA',
+      message: 'Released under AGPL-3.0-or-later or a commercial license.',
+      copyright: 'Copyright © SelDiA',
     },
   },
 });

@@ -17,7 +17,7 @@
 // the round trip instead of silently splitting into two cells.
 //
 // Merged cells do not exist in GFM; that is deliberately absent from the
-// model (a future SelDiA table type would carry them, see docs/roadmap.md).
+// model (the SelDiA `table` type carries them).
 // =============================================================================
 
 export type GfmAlign = 'left' | 'center' | 'right' | null;

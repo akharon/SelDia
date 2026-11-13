@@ -145,7 +145,7 @@ describe('renderMermaidBlock', () => {
 
   it('declines unsupported diagram types so the default fence can have them', () => {
     // `journey` is deliberately unsupported (no DiagramType.JOURNEY, no
-    // renderer) — see next_steps.md. pie/gantt used to sit here too, but both
+    // renderer). pie/gantt used to sit here too, but both
     // importers shipped in the second wave and now render for real.
     expect(renderMermaidBlock(engine, 'journey\n  title My day\n  section Go to work\n    Make tea: 5: Me')).toBeNull();
     expect(renderMermaidBlock(engine, 'quadrantChart\n  title Reach\n  A: [0.3, 0.6]')).toBeNull();
@@ -319,7 +319,7 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
     const fallback = vi.fn(() => '<pre><code>original</code></pre>');
     md.renderer.rules.fence = fallback;
     createSelDiAMarkdownItPlugin(engine)(md);
-    // `journey` has no importer/renderer by design (see next_steps.md), so it
+    // `journey` has no importer/renderer by design, so it
     // exercises the fallback. pie imports for real now.
     const tokens = [{ info: 'mermaid', content: 'journey\n  title My day\n  section Go to work\n    Make tea: 5: Me' }];
     const out = md.renderer.rules.fence(tokens, 0, {}, {}, {});

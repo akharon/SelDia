@@ -5,8 +5,7 @@
 // acquireVsCodeApi()). Bundled by esbuild into media/editor.js and loaded via
 // asWebviewUri + a nonce'd <script> tag from provider.ts's getHtmlContent.
 // Extracted from the inline <script> that used to live in that template
-// literal (see docs/next_steps.md §3.2 step 0.1) — behavior is unchanged,
-// only the packaging moved. Initial IR/theme now arrive via
+// literal — behavior is unchanged, only the packaging moved. Initial IR/theme now arrive via
 // window.__seldiaInit instead of template interpolation.
 // =============================================================================
 
@@ -435,12 +434,12 @@ function applyInteractionEffects(effects: InteractionEffect[]) {
         break;
       case 'setAddEdgeButtonActive':
         document.getElementById('btnAddEdge')!.classList.toggle('active', eff.active);
-        // Visible mode banner (arch.md §9.4.5): the toolbar button alone is
+        // Visible mode banner: the toolbar button alone is
         // easy to miss, so say explicitly what clicking will do next.
         modeBanner.style.display = eff.active ? 'block' : 'none';
         modeBanner.textContent = eff.active ? 'Click source node, then target node — Esc to cancel' : '';
         // Crosshair cursor for the whole canvas while in draw mode
-        // (next_steps.md Step 3.2); cleared here so ESCAPE/TOGGLE_EDGE_DRAW
+        // Cleared here so ESCAPE/TOGGLE_EDGE_DRAW
         // both reset it via this one effect.
         container.classList.toggle('seldia-drawing-edge', eff.active);
         if (!eff.active) clearRubberBand();
@@ -776,7 +775,7 @@ window.handleAddEdge = () => {
 // Popovers listing the current diagram type's edit vocabulary
 // (getEditVocabulary in @seldia/core), so "add node" and "draw edge" pick a
 // concrete element kind instead of always emitting the same flowchart
-// template regardless of diagram type (next_steps.md Step 2/3).
+// template regardless of diagram type.
 const nodePalette = document.getElementById('nodePalette')!;
 const edgePalette = document.getElementById('edgePalette')!;
 const btnAddNode = document.getElementById('btnAddNode')!;
@@ -959,12 +958,12 @@ function clearEdgeDrawSource() {
   container.querySelectorAll('.seldia-edge-source').forEach((el) => el.classList.remove('seldia-edge-source'));
 }
 
-// ── Rubber-band line + hover target (next_steps.md Step 3.1/3.2) ────
+// ── Rubber-band line + hover target ────
 // Once a source node is picked in drawing-edge mode, a dashed line follows
 // the cursor from the source node's centre, and whatever node the cursor is
 // over highlights as the drop target — mirroring the click-to-click flow's
 // eventual endpoint without requiring a drag gesture (drag-from-handle is
-// left for a future pass; see next_steps.md).
+// left for a future pass; see docs/roadmap.md).
 let rubberBandLine: SVGLineElement | null = null;
 
 function nodeCenterSvg(id: string): { x: number; y: number } | null {
@@ -1094,7 +1093,7 @@ window.addEventListener('message', (event) => {
         else selectedEdgeId = null;
       }
       renderPalettes();
-      // Explicit add-node (next_steps.md Step 2.2): open the label editor on
+      // Explicit add-node: open the label editor on
       // the node that was just added instead of leaving the user to find and
       // double-click it themselves.
       if (msg.focusNodeId) {
@@ -1104,7 +1103,7 @@ window.addEventListener('message', (event) => {
           openLabelEditor(el, textEl ? textEl.textContent! || '' : '', msg.focusNodeId, 'node');
         }
       }
-      // Explicit draw-edge (next_steps.md Step 3.4): open the label editor
+      // Explicit draw-edge: open the label editor
       // on the edge that was just created, same as add-node does for nodes.
       if (msg.focusEdgeId) {
         const el = container.querySelector('[data-id="' + msg.focusEdgeId + '"]');

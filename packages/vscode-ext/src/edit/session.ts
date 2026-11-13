@@ -10,8 +10,7 @@
 // them.
 //
 // Each entry is the pre-edit source plus the document version it was
-// captured at (see docs/next_steps.md §3.2 step 1.2). A foreign edit bumps
-// the version; entries captured at a stale version are dropped rather than
+// captured at. A foreign edit bumps the version; entries captured at a stale version are dropped rather than
 // replayed, since replaying them would silently discard whatever the user
 // just typed by hand.
 // =============================================================================
@@ -68,7 +67,7 @@ export class EditSession {
    *  against a version that no longer exists, and restoring one now would
    *  overwrite the hand edit that just happened. This is the fix for
    *  "undo after typing replaces the whole source with a stale snapshot and
-   *  silently discards the typing" (next_steps.md §3.2 step 1.2). */
+   *  silently discards the typing". */
   onForeignEdit(newSource: string): void {
     this._source = newSource;
     this._version++;

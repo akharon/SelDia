@@ -23,8 +23,8 @@ describe('T1 cylinder labels', () => {
     expect(svg).not.toContain('Customer orders database primary replica</tspan>');
   });
   it('wraps long component datastore and C4 database labels', () => {
-    expect(svgOf('component "C" { database db "Customer orders database primary replica store" }')).not.toContain('>Customer orders database primary replica store<');
-    expect(svgOf('c4c "C" { database db "Customer orders database primary replica" "d" }')).not.toContain('>Customer orders database primary replica<');
+    expect(svgOf('component "C" { database db "Customer orders database primary replica store" }').replace(/<title[^>]*>.*?<\/title>/g, '')).not.toContain('>Customer orders database primary replica store<');
+    expect(svgOf('c4c "C" { database db "Customer orders database primary replica" "d" }').replace(/<title[^>]*>.*?<\/title>/g, '')).not.toContain('>Customer orders database primary replica<');
   });
   it('shapeTextBox for a cylinder stays within its body', () => {
     const n: any = { position: { x: 0, y: 0 }, size: { width: 160, height: 100 }, shape: 'cylinder', label: 'x' };

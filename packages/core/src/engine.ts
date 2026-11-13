@@ -686,7 +686,28 @@ class SelDiAEngine implements CoreEngine {
     };
   }
 
+  /** Adds role/title/desc to the root and a <title> to each node group. */
   private renderToSvg(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = [], fragmentBoxes: any[] = [], metadata?: Record<string, unknown>): string {
+    const raw = this.renderToSvgRaw(nodes, edges, bounds, diagramType, groups, fragmentBoxes, metadata);
+    const type = String(diagramType);
+    const mt = metadata?.title;
+    const title = (typeof mt === 'string' && mt.trim()) ? mt.trim() : `${type} diagram`;
+    const desc = `${type}, ${nodes.length} nodes, ${edges.length} edges` + (groups.length ? `, ${groups.length} groups` : '');
+    let h = 5381;
+    const key = raw + title;
+    for (let i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0;
+    const id = `sd${h.toString(36)}`;
+    const labels = new Map(nodes.map((n) => [n.id as string, String(n.label ?? '').replace(/\s*\n\s*/g, ', ').trim()]));
+    const out = raw.replace(/^(<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" class="seldia-diagram-svg-el[^>]*?)>/,
+      `$1 role="img" aria-labelledby="${id}-t ${id}-d">\n  <title id="${id}-t">${this.esc(title)}</title>\n  <desc id="${id}-d">${this.esc(desc)}</desc>`);
+    return out.replace(/(<g class="seldia-node" data-seldia-node-id="([^"]*)"[^>]*>)(\n?)(?!\s*<title)/g, (m, open, nid, nl) => {
+      const raw = nid.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      const l = labels.get(raw);
+      return l ? `${open}<title>${this.esc(l)}</title>${nl}` : m;
+    });
+  }
+
+  private renderToSvgRaw(nodes: IRNode[], edges: IREdge[], bounds: Rect, diagramType: DiagramType, groups: IRGroup[] = [], fragmentBoxes: any[] = [], metadata?: Record<string, unknown>): string {
     // Padding must cover both the configured breathing room AND the extra
     // pixels Rough.js's roughness/multi-stroke wobble can push geometry
     // outward, plus the thickest stroke width in use, so nothing gets

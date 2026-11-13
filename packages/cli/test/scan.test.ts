@@ -134,12 +134,17 @@ describe('scanRepo', () => {
     expect(results.some(r => r.file.endsWith('readme.md'))).toBe(false);
   });
 
-  it('respects extra extensions via extraExts', () => {
-    writeFileSync(join(dir, 'extra.seldia'), 'diagram flowchart "Extra" {\n  a (A)\n}\n');
-    const withoutExt = scanRepo(dir);
-    expect(withoutExt.some(r => r.file.endsWith('extra.seldia'))).toBe(false);
+  it('scans .seldia files by default', () => {
+    writeFileSync(join(dir, 'native.seldia'), 'diagram flowchart "N" {\n  a (A)\n}\n');
+    expect(scanRepo(dir).some(r => r.file.endsWith('native.seldia'))).toBe(true);
+  });
 
-    const withExt = scanRepo(dir, ['.seldia']);
-    expect(withExt.some(r => r.file.endsWith('extra.seldia'))).toBe(true);
+  it('respects extra extensions via extraExts', () => {
+    writeFileSync(join(dir, 'extra.diag'), 'diagram flowchart "Extra" {\n  a (A)\n}\n');
+    const withoutExt = scanRepo(dir);
+    expect(withoutExt.some(r => r.file.endsWith('extra.diag'))).toBe(false);
+
+    const withExt = scanRepo(dir, ['.diag']);
+    expect(withExt.some(r => r.file.endsWith('extra.diag'))).toBe(true);
   });
 });

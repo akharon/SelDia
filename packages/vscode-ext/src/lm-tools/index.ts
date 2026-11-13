@@ -15,7 +15,7 @@ import * as vscode from 'vscode';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { CoreEngine } from '@seldia/core';
+import { checkDiagramQuality, formatCheckReport, type CoreEngine } from '@seldia/core';
 
 interface RenderDiagramInput {
   source: string;
@@ -110,6 +110,26 @@ class ListDiagramTypesTool implements vscode.LanguageModelTool<Record<string, ne
   }
 }
 
+interface CheckDiagramInput {
+  code: string;
+  language?: 'seldia' | 'mermaid' | 'plantuml';
+}
+
+/** Lays out a diagram as it renders and reports readability defects with fix hints. */
+class CheckDiagramTool implements vscode.LanguageModelTool<CheckDiagramInput> {
+  constructor(private engine: CoreEngine) {}
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<CheckDiagramInput>
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { code, language } = options.input;
+    const r = await checkDiagramQuality(this.engine, language ?? 'seldia', code);
+    return new vscode.LanguageModelToolResult([
+      new vscode.LanguageModelTextPart(formatCheckReport(r)),
+    ]);
+  }
+}
+
 /** Registers all SelDiA Language Model Tools with VS Code. Tool names must
  *  match the `languageModelTools` contributions in package.json exactly. */
 export function registerLanguageModelTools(
@@ -119,6 +139,7 @@ export function registerLanguageModelTools(
   context.subscriptions.push(
     vscode.lm.registerTool('seldia_renderDiagram', new RenderDiagramTool(engine)),
     vscode.lm.registerTool('seldia_validateDiagram', new ValidateDiagramTool(engine)),
-    vscode.lm.registerTool('seldia_listDiagramTypes', new ListDiagramTypesTool(engine))
+    vscode.lm.registerTool('seldia_listDiagramTypes', new ListDiagramTypesTool(engine)),
+    vscode.lm.registerTool('seldia_checkDiagram', new CheckDiagramTool(engine))
   );
 }

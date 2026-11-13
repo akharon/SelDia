@@ -78,3 +78,5 @@ export type { TableModel, TableCell, TableAlign, TableDiagnostic, TableChartKind
 export { tableToChartIR } from './table/to-chart.js';
 export { chartCategoryOf } from './render/custom-renderers.js';
 export { exportTableGfm } from './export/gfm.js';
+export { checkDiagramQuality, formatCheckReport, CHECK_KEYS, CHECK_HINTS } from './check.js';
+export type { CheckResult } from './check.js';

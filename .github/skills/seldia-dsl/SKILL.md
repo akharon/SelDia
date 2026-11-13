@@ -1,6 +1,6 @@
 ---
 name: seldia-dsl
-description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. 25 types: flowchart, sequence, class, er, state, c4 (context/container/component), bpmn, dmn, component, usecase, activity, deployment, gantt, mindmap, network, chart (bar/line/pie/radar/scatter), gitgraph, form, sankey, block, timeline, wireframe, cloud, workitem, table (merged cells). Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
+description: 'Author SelDiA (Self-Diagramming Architecture) diagrams. Documents 25 of the 35 diagram types (C4 levels and chart kinds counted separately): flowchart, sequence, class, er, state, c4 (context/container/component), bpmn, dmn, component, usecase, activity, deployment, gantt, mindmap, network, chart (bar/line/pie/radar/scatter), gitgraph, form, sankey, block, timeline, wireframe, cloud, workitem, table (merged cells). Rough.js hand-drawn rendering. Use for any text-to-diagram .seldia/.sld files.'
 argument-hint: '[diagram description or .seldia file path]'
 user-invocable: true
 disable-model-invocation: false

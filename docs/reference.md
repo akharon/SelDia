@@ -14,7 +14,7 @@ The repo is an **npm workspaces + Turborepo** monorepo (Node >= 22, `packageMana
 | `packages/*/package.json` | Per-package scripts. Tests are Vitest (`vitest run`). The per-package `lint` script is a placeholder (`echo lint`); no ESLint or Prettier config is committed |
 | `packages/vscode-ext/package.json` | Extension manifest: commands, menus, keybindings, `seldia.*` settings, LM tools |
 | `packages/vscode-ext/scripts/build.mjs` | esbuild bundles: extension host, language server, and the webview client `media/editor.js` |
-| `docs/.vitepress/config.ts` | Docs site (`user_guide.md` is served as the home page via `rewrites`) |
+| `docs/.vitepress/config.mts` | Docs site (`user_guide.md` is served as the home page via `rewrites`) |
 | `.github/actions/seldia-render`, `.github/workflows/render-diagrams.yml.example` | GitHub Action that renders diagram blocks to SVG |
 
 Scripts in `scripts/` (see `scripts/README.md`): `build.sh`, `test.sh`, `debug.sh`, `deploy.sh`, `bump-versions.sh`, `package-vsix.sh`, `install-vscode.sh`, `convert-icon.sh`, `github-setup.sh`, `verify-github-ready.sh`, plus `layout-metrics.mjs` / `layout-metrics-lib.mjs` (the layout-quality report).
@@ -36,7 +36,7 @@ Set in `packages/core/src/config.ts` (`DEFAULT_CONFIG`), overridable per engine 
 
 | Key | Default | Purpose | Where |
 |-----|---------|---------|-------|
-| `layoutEngineByType` | `auto` for `flowchart`; `elk` for `class`, `state`, `component`, `network`, `block`, `workitem`; `dagre` for the rest | Per-type auto-layout engine. Consulted after a diagram's own `layout` line and before `defaultLayoutEngine`. Custom-layout types ignore it. Values: `dagre`, `elk`, `auto` (see `autoMaxNodes`) | `packages/core/src/config.ts` |
+| `layoutEngineByType` | `auto` for `flowchart`; `elk` for `class`, `state`, `component`, `network`, `block`, `workitem`; `dagre` for the rest | Per-type auto-layout engine. Precedence (`engine.ts` `requestedEngine`): a diagram's own `layout` line, then a global `defaultLayoutEngine: 'elk'`, then `layoutEngineByType[type]`, then `defaultLayoutEngine`; grouped diagrams then go to ELK when `elkWhenGrouped`. Custom-layout types ignore it. Values: `dagre`, `elk`, `auto` (see `autoMaxNodes`) | `packages/core/src/config.ts` |
 | `elkWhenGrouped` | `true` | A diagram that would default to `dagre` and has a group with members uses `elk` instead. An explicit `layout` line still wins. Also governs `auto`: a grouped diagram is not compared, it goes to `elk` (or `dagre` when this is `false`) | `packages/core/src/config.ts` |
 | `autoMaxNodes` | `60` | `auto` engine only: a diagram with more nodes than this skips the comparison and uses a single ELK layout; a diagram with fewer than 2 edges uses dagre. Corpus cost of `auto` on flowcharts is about +1.2-1.4x total compile time (largest corpus flowchart is far below 60 nodes) | `packages/core/src/config.ts` |
 | `autoMaxEdges` | `120` | `auto` engine only: a diagram with more edges than this also skips the comparison and uses a single ELK layout | `packages/core/src/config.ts` |

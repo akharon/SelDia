@@ -40,24 +40,7 @@ Top items by return, in suggested order:
 
 ## 2. Docs that disagree with the code
 
-Fix these first (all S). Each is a place where a reader is told something false.
-
-| Where | Says | Reality |
-|-------|------|---------|
-| user guide 7.1 | Two engines; flowchart defaults to `dagre` | Flowchart defaults to `auto` (reference.md and `config.ts`); `auto` is not described in the user guide at all |
-| user guide 7 | Sections run 7.1, 7.3, 7.4 | 7.2 is missing |
-| user guide 7.4 | `sameRow` and `align` hints | Only AST fields exist (`ast/nodes.ts:194,197`); nothing reads them. Remove, or ship [R3](#r3-straight-lines-and-alignment) |
-| user guide 8 | Groups take `collapsible` / `collapsed` | The parser hard-codes `collapsible: false`. Remove, or ship [F5](#f5-collapsible-groups) |
-| user guide 7.5 | "Edges have no casing, labels are plain text with a halo", then two lines later "a label sits on a background chip" | One of them. The agreed style is no casing and no chips; arch.md section 7 ("edge casings") and section 10 ("jumps and casings") need the same correction |
-| reference.md | `docs/.vitepress/config.ts` | The file is `config.mts` |
-| arch.md 4 | Adding a type needs three registrations | The survey counts 8-10 touch points, including per-type branches in `engine.ts`, `layout/metrics.ts`, exporters, and extension lists. See [A2](#a2-one-descriptor-per-diagram-type) |
-| arch.md 6 | Describes routing in one bullet | Omits that there are two routers and when each applies. Replace with [section 3.1](#31-how-it-works-today) |
-| reference.md | `layoutEngineByType` is consulted before `defaultLayoutEngine` | The survey read `requestedEngine` (`engine.ts:392`) the other way round. *Verify first*, then fix whichever is wrong |
-| seldia-dsl skill | 23 types | `DiagramType` has 35 members |
-
-One omission rather than a contradiction (S): BPMN start/end events are inferred from edge topology, so a disconnected `(...)` stays an intermediate event. Say so in the user guide.
-
-**Stop this recurring (S).** `skill-examples.test.ts` already compiles every example in SKILL.md. Do the same for every `seldia` block in `user_guide.md`. That test would have caught the `sameRow` and `collapsible` rows above.
+Done. The remaining debt is the user guide's section 5, tracked below.
 
 ## 3. Routing and alignment
 
@@ -339,7 +322,7 @@ Editing conveniences: multi-select or marquee, group drag, arrow-key nudge, dupl
 
 ## 8. Suggested order
 
-1. **Truth (days).** Section 2 doc fixes and the user-guide compile test; the R5 fixtures; accessible SVG; keep the last good render.
+1. **Truth (days).** the R5 fixtures; accessible SVG; keep the last good render.
 2. **Rulers.** M1, M2, L4. After this step, every later claim of "better" has a number or a picture behind it.
 3. **Geometry.** R3 steps 1 and 2, then R1, then the R2 experiment, then R4.
 4. **Surface.** L1, L2, the L3 design pass, F2.

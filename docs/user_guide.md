@@ -1171,6 +1171,8 @@ diagram bpmn "Order Fulfillment Process" {
 | `pool <id> "<label>" { ... }` | Pool / participant |
 | `lane <id> "<label>" { ... }` | Lane within a pool |
 
+Start and end events are inferred from edge topology: a `(...)` node with no incoming edges becomes a start event, one with no outgoing edges an end event, and a disconnected `(...)` stays an intermediate event.
+
 **Gateway types:**
 ```
 gateway g1: "..." { type: exclusive }    // XOR (default)
@@ -2055,7 +2057,7 @@ There is one source of truth. The chart is rebuilt from the table on every rende
 
 ### 6.2 Applying Themes
 
-```
+```text
 diagram flowchart "Example" {
     theme "sketchy-dark"
     // ...
@@ -2130,22 +2132,23 @@ theme "my-company" {
 
 ### 7.1 Layout Engines
 
-SelDiA has two auto-layout engines, `dagre` and `elk` (ELK layered). Custom-layout types (sequence, charts, gantt, mind map, and similar) use their own layout and ignore both.
+SelDiA has three layout modes: `dagre`, `elk` (ELK layered) and `auto`. `auto` lays the diagram out with several dagre and ELK variants, scores each with the layout metrics (crossings, bends, overlaps, and so on) and keeps the best. Custom-layout types (sequence, charts, gantt, mind map, and similar) use their own layout and ignore all three.
 
 **Per-type defaults**
 
 | Diagram type | Default engine |
 |--------------|----------------|
+| `flowchart` | `auto` |
 | `class`, `state`, `component`, `network`, `block`, `workitem` | `elk` |
-| All other graph types (`flowchart`, `er`, `usecase`, `activity`, `deployment`, `c4-*`, `bpmn`, `dmn`, `cloud`, `form`, `wireframe`) | `dagre` |
+| All other graph types (`er`, `usecase`, `activity`, `deployment`, `c4-*`, `bpmn`, `dmn`, `cloud`, `form`, `wireframe`) | `dagre` |
 
-**Grouped diagrams.** A diagram that would otherwise use `dagre` and has a group with members uses `elk` instead, because dagre's cluster boxes can overlap. To turn this off, set `elkWhenGrouped: false` in the engine config:
+**Grouped diagrams.** A diagram that would otherwise use `dagre` or `auto` and has a group with members uses `elk` instead, because dagre's cluster boxes can overlap. To turn this off, set `elkWhenGrouped: false` in the engine config:
 
 ```ts
 const engine = createEngine({ config: { elkWhenGrouped: false } });
 ```
 
-**Per-diagram override.** Put `layout dagre` or `layout elk` as the last line of the diagram block, just before the closing brace. An explicit line beats both the per-type default and `elkWhenGrouped`.
+**Per-diagram override.** Put `layout dagre`, `layout elk` or `layout auto` as the last line of the diagram block, just before the closing brace. An explicit line beats both the per-type default and `elkWhenGrouped`.
 
 ```
 fl "User Login" {
@@ -2161,7 +2164,7 @@ fl "User Login" {
 
 **Routing is automatic.** Edges are routed orthogonally by either engine, and arrows are clipped to the outline of the shape they touch, so they meet diamonds, ellipses and actors at the visible edge.
 
-### 7.3 Manual Positioning
+### 7.2 Manual Positioning
 
 ```
 pinnedNode: [Always Here] {
@@ -2169,21 +2172,14 @@ pinnedNode: [Always Here] {
 }
 ```
 
-### 7.4 Alignment Hints
-
-```
-nodeA --> nodeB { layout: { sameRow: true } }
-nodeC { layout: { align: left } }
-```
-
-### 7.5 Readability
+### 7.3 Readability
 
 Diagrams are drawn to stay legible without hand-tuning:
 
 - **Clean edges.** The config key `edgeStyle` is `clean` (default) or `sketch`. `clean` draws rounded orthogonal paths; `sketch` keeps the hand-drawn rough lines. Edges have no casing: crossings are marked by line jumps, and edge labels are plain text with a canvas-coloured halo. A single diagram can override the config with a one-line directive inside the fence, `edges sketch` or `edges clean`, on its own line before or among the statements; it wins over `edgeStyle`. `edges` stays usable as a node id when it is not followed by `sketch` or `clean` on the same line.
 - **Line jumps.** Where a later edge crosses an earlier horizontal one, it hops over with a small arc (clean edges only). Parallel runs that would overlap are nudged apart.
 - **Hover highlight.** In SVG output, hovering an edge or node thickens it and its connections and dims the rest (pure CSS, no script).
-- **Labels on the line.** An edge label sits on a background chip on its own edge, never over an arrowhead, a node or a group title. If it has to move away, a thin dashed leader ties it back to the line.
+- **Labels on the line.** An edge label sits on its own edge, never over an arrowhead, a node or a group title. If it has to move away, a thin dashed leader ties it back to the line.
 - **Shapes sized to their text.** Nodes grow to fit their label, wrapped inside the usable area of the shape (diamond, cylinder, hexagon).
 
 Check a diagram from the terminal:
@@ -2211,7 +2207,7 @@ diagram flowchart "Payment Processing" {
         retry: [Retry Payment]
 
         gateway --> fraud
-        fraud -->|pass| retry
+        fraud -> retry: "pass"
     }
 
     group "Order System" {
@@ -2226,14 +2222,7 @@ diagram flowchart "Payment Processing" {
 }
 ```
 
-**Group options:**
-```
-group <id> "<label>" {
-    collapsible: true   // Can be expanded/collapsed in interactive mode
-    collapsed: false    // Initial state
-    style: { ... }      // Visual style
-}
-```
+Groups take a label and may nest. They have no collapse option.
 
 ---
 

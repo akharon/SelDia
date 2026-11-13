@@ -1,6 +1,6 @@
 # SelDiA — Readability Gallery
 
-Examples of the legibility features: line jumps, label chips, group titles, parallel-run separation and shapes sized to their text. Check any of them from the terminal with `seldia check docs/examples/demo-readability.md`. See the [user guide](../user_guide.md#75-readability).
+Examples of the legibility features: line jumps, label chips, group titles, parallel-run separation and shapes sized to their text. Check any of them from the terminal with `seldia check docs/examples/demo-readability.md`. See the [user guide](../user_guide.md#73-readability).
 
 ## Line jumps
 

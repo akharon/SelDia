@@ -57,7 +57,7 @@ Some types carry structure in the node **label** (newline-joined lines) rather t
 
 A `DiagramPlugin` (`plugin/types.ts`) declares an `id`, a `diagramType`, optional lifecycle hooks (`onRegister`, `onActivate`, `onDeactivate`) and, above all, `transform(ast, config) => DiagramIR`, plus optional layout defaults and semantic validation. `DefaultPluginManager` and `InlinePluginRegistry` keep them by id and by type. All plugins are built in and registered by the engine; there is no external discovery. Plugin families: flowchart, sequence, class, state, er, c4, bpmn, component, workitem, floorplan, circuit, pcb, table, and `misc` for the generic and standalone types.
 
-Adding a type needs three registrations that the compiler does not link: the `DiagramType` enum, the alias map **and** the separate pre-check list in `parser.ts` (a type missing from the pre-check silently loses its keyword; collapsing the two lists is in the [improvement plan](improve.md#a2-one-descriptor-per-diagram-type)), and the plugin registration. A new closed-vocabulary type should say so in its schema (see `workitem/schema.ts`).
+Adding a type touches roughly ten places that the compiler does not link: the `DiagramType` enum; `TYPE_ALIASES` and the separate `diagramTypes` pre-check lists in `parser/parser.ts` (a type missing from the pre-check silently loses its keyword); the plugin registration; per-type branches in `engine.ts`; `layout/metrics.ts`; `POST_ROUTE_TYPES`; `customLayoutFor`; exporter guards; the VS Code CodeLens and completion lists; the TextMate grammar; and the skill docs. One descriptor per type is planned ([improvement plan](improve.md#a2-one-descriptor-per-diagram-type)). A new closed-vocabulary type should say so in its schema (see `workitem/schema.ts`).
 
 ## 5. Import, export and fences
 
@@ -75,8 +75,19 @@ Per-type engine choice is configuration (`layoutEngineByType`, `elkWhenGrouped`,
 - **ELK** (`layout/elk-sync.ts`): elkjs driven synchronously through its FakeWorker, with the version pinned exactly because this depends on its internals. Used for class, state, component, network, block, workitem, circuits, and for any diagram with populated groups (`elkWhenGrouped`). Groups become real nested ELK clusters, and ELK's compound bounds are kept. Any ELK exception falls back to dagre.
 - **auto** (flowchart): tries several dagre and ELK variants within node/edge budgets, then refines by median/barycenter sweeps and neighbour swaps, scored on gated defects, then `crossings * crossingBendWeight + bends`, rank skips and routed length (`layout/engines.ts`, `layout/refine.ts`). Large diagrams use a single ELK layout.
 - **Manual positions**: nodes carrying `x`/`y` (written by drags) are laid out by `layoutManual`, which keeps the same engine so one dragged node does not reflow the diagram. A per-edge `via` list pins an interior route; a `route:` attribute selects the routing style.
-- **Routing and clipping**: `render/edge-routing.ts` routes orthogonally around obstacles, and `render/shape-clip.ts` clips edge ends to the actual shape outline. When ELK routed an edge (`layoutRouted`), only clipping is applied.
-- **Edge layer** (`render/edge-layer.ts`): a post-route pass that nudges collinear overlaps apart, pushes segments off node borders, snaps apexes, avoids title bands, and adds line jumps at crossings. Label chips are placed by `render/edge-label-placement.ts`.
+- **Routing** (stage by stage, from `engine.ts` and `render/`):
+
+| Stage | What happens | Code |
+|-------|--------------|------|
+| 1. Pick engine | The diagram's `layout` line, then config (`layoutEngineByType`, `defaultLayoutEngine`), then `elkWhenGrouped`. Custom-layout types skip stages 1-3 | `engine.ts` `requestedEngine`, `render/custom-layout.ts` `customLayoutFor` |
+| 2. Place nodes | **dagre**; or **ELK layered** (Brandes-Koepf balanced, layer sweep, model order `NODES_AND_EDGES`, `INCLUDE_CHILDREN`, seed 1); or **auto**, which lays out up to about 6 dagre/ELK variants, scores them, and refines small ungrouped graphs with order sweeps and neighbour swaps; or **manual**, where nodes with `x`/`y` are pinned and the rest are auto-laid-out and offset below them | `layout/engines.ts`, `layout/refine.ts`, `engine.ts` `layoutManual` |
+| 3. Route edges | **Two routers.** An edge ELK routed keeps ELK's orthogonal sections (`layoutRouted`) and is only clipped. Every other edge (all dagre layouts, all manual layouts, and any layout the refine pass touched, because refine resets `layoutRouted`) goes through the in-house grid A* router with all nodes as obstacles. A `via:` list pins interior points | `render/edge-routing.ts` `routeBetween`, `clipRouteToNodes` |
+| 4. Attach | Ends are clipped to the shape outline (diamond, circle, hexagon, parallelogram, stadium; others as a box), then lengthened to a stub. There are no ELK ports and no side constraints; only circuits use ports | `render/shape-clip.ts`, `applyPortStubs` |
+| 5. Post-route | In order: `snapApexes`, `fanPorts`, `simplifyRoutes`, `nudgeRoutes` (6 px steps), `unhugRoutes`, `avoidBands`, `simplifyRoutes`, `capBends`, then `findJumps`. Graph types only (`POST_ROUTE_TYPES`); circuits have their own net-aware variant | `render/edge-layer.ts` `postRoute` |
+| 6. Labels | Candidate positions along the route (segment midpoints, 30% and 70%, near ends), each on the line and then offset; hard rejects for nodes, arrowheads, other edges and title bands; least-bad fallback with a dashed leader | `render/edge-label-placement.ts` |
+| 7. Measure | `measureLayout` runs the same passes and counts defects | `layout/metrics.ts` |
+
+- **Edge layer** (`render/edge-layer.ts`): a post-route pass that nudges collinear overlaps apart, pushes segments off node borders, snaps apexes, avoids title bands, and adds line jumps at crossings. Labels are placed by `render/edge-label-placement.ts`.
 - **Determinism**: output is byte-identical across runs (seeds derive from type and edge id, ELK `randomSeed` is pinned). Declaration order is intentionally a way to steer layout.
 
 ### Measured, not eyeballed
@@ -85,7 +96,7 @@ Per-type engine choice is configuration (`layoutEngineByType`, `elkWhenGrouped`,
 
 ## 7. Rendering
 
-- **Output** is SVG, always. `render()` in `engine.ts` draws groups, edge casings and edges, nodes, arrowheads, then label chips (that z-order is deliberate: nodes never cover labels).
+- **Output** is SVG, always. `render()` in `engine.ts` draws groups, edges, nodes, arrowheads, then edge labels as plain text with a halo (that z-order is deliberate: nodes never cover labels).
 - **Design tokens** (`render/design-system.ts`, `DS`): every stroke width, font size, radius and arrow size is a token, and a lint test (`tokenViolations`) enforces it over the corpus. Size and draw text from one model (`node-label-geometry.ts`, `layout/text-measure.ts`) so label boxes and drawn text cannot drift.
 - **Styles**: `edgeStyle: clean` (rounded orthogonal edges, jumps, hover highlight through CSS) or `sketch` (Rough.js hand-drawn, `render/rough.ts`), switchable in a fence with an `edges sketch|clean` line. Themes (`themes.ts`): sketchy-light, sketchy-dark, clean-light, clean-dark, mono. Palettes (`BUILTIN_PALETTES`: default, dark, ...) swap colors. Text color is derived with a contrast helper (`readableTextOn`) and the legibility test asserts a 4.5 ratio.
 - **Per-type renderers** (`render/custom-renderers.ts`, `floorplan-render.ts`, `workitem-render.ts`, `diagrams/*`): each type has its own visual grammar (lifelines for sequence, tables for ER, radial for mindmap, and so on), not a generic box-and-arrow fallback.
@@ -109,7 +120,7 @@ Per-type engine choice is configuration (`layoutEngineByType`, `elkWhenGrouped`,
 ## 10. Decisions worth remembering
 
 - **Custom DSL, with importers.** The DSL exists because per-type grammars (class, ER, BPMN, floorplans) need structure Mermaid cannot express; importers keep existing Mermaid/PlantUML usable.
-- **Rough.js plus a clean mode.** Hand-drawn output signals "sketch, not spec" in design docs; clean mode with jumps and casings serves dense architecture diagrams.
+- **Rough.js plus a clean mode.** Hand-drawn output signals "sketch, not spec" in design docs; clean mode with line jumps serves dense architecture diagrams.
 - **SVG only.** Embeds everywhere, themable, selectable, diffable. PNG goes through external tools.
 - **TypeScript monorepo, synchronous core.** Sync compile keeps the Markdown preview and CLI simple; async exists only where the layout call is async.
 - **Security.** Labels and attribute values are escaped (`render/escape.ts`); the webview uses a nonce'd CSP; the PDF pipeline runs a headless browser only on content the user already has.

@@ -49,7 +49,7 @@ program
     if (options.batch) {
       const { readdirSync } = await import('fs');
       const dir = resolve(process.cwd(), input);
-      const files = readdirSync(dir).filter(f => f.endsWith('.sld'));
+      const files = readdirSync(dir).filter(f => /\.(sld|seldia)$/.test(f));
       const outDir = resolve(process.cwd(), options.output || dir);
       if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
@@ -57,7 +57,7 @@ program
         const source = readFileSync(resolve(dir, file), 'utf-8');
         const result = await engine.compile(source, file);
         if (result.ok) {
-          const outFile = resolve(outDir, file.replace('.sld', '.svg'));
+          const outFile = resolve(outDir, file.replace(/\.(sld|seldia)$/, '.svg'));
           writeFileSync(outFile, result.value.svg);
           console.log(`✅ ${file} → ${basename(outFile)}`);
         } else {
@@ -76,7 +76,7 @@ program
     const source = readFileSync(inPath, 'utf-8');
     const outPath = options.output
       ? resolve(process.cwd(), options.output)
-      : resolve(dirname(inPath), basename(inPath, '.sld') + '.svg');
+      : resolve(dirname(inPath), basename(inPath).replace(/\.(sld|seldia)$/, '') + '.svg');
 
     const start = Date.now();
     const result = await engine.compile(source, inPath);

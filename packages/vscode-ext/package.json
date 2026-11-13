@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.73.0",
+  "version": "1.74.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -71,7 +71,8 @@
       {
         "id": "seldia",
         "extensions": [
-          ".sld"
+          ".sld",
+          ".seldia"
         ],
         "aliases": [
           "SelDiA",
@@ -94,6 +95,9 @@
         "selector": [
           {
             "filenamePattern": "*.sld"
+          },
+          {
+            "filenamePattern": "*.seldia"
           }
         ],
         "priority": "default"

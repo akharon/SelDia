@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Toggle between diagram preview and code view
     const source = editor.document.getText();
-    const isSldFile = editor.document.fileName.endsWith('.sld');
+    const isSldFile = /\.(sld|seldia)$/.test(editor.document.fileName);
     if (isSldFile) {
       SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
     } else if (editor.document.fileName.match(/\.(md|mdx|rst)$/)) {
@@ -131,7 +131,7 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     const fileName = editor.document.fileName;
-    if (fileName.endsWith('.sld')) {
+    if (/\.(sld|seldia)$/.test(fileName)) {
       const source = editor.document.getText();
       SelDiAInteractiveProvider.createOrShow(context.extensionUri, engine, source, editor.document.uri);
     } else if (fileName.match(/\.(md|mdx|rst)$/)) {

@@ -91,7 +91,7 @@ export function scanRepo(root: string, extraExts: string[] = []): FoundDiagram[]
   const files: string[] = [];
   walk(root, files);
 
-  const sldExts = new Set(['.sld', ...extraExts]);
+  const sldExts = new Set(['.sld', '.seldia', ...extraExts]);
   const results: FoundDiagram[] = [];
 
   for (const file of files) {

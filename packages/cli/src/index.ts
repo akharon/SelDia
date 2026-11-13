@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { Command } from 'commander';
-import { createEngine, importMermaid, importPlantUml, importCircuit, exportMermaid, fenceToSource, exportPlantUml, exportBpmn, exportSqlDdl, diffDiagrams, measureLayout, BUILTIN_PALETTES } from '@seldia/core';
+import { createEngine, importMermaid, importPlantUml, importCircuit, exportMermaid, fenceToSource, exportPlantUml, exportBpmn, exportSqlDdl, diffDiagrams, measureLayout, checkDiagramQuality, BUILTIN_PALETTES } from '@seldia/core';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, extname, dirname, basename, join, relative as pathRelative } from 'path';
 import { scanRepo } from './scan.js';
@@ -373,7 +373,6 @@ program
 // ── check ─────────────────────────────────────────────────────────────────────
 // Readability report: lays out each diagram exactly as it renders and prints the
 // layout-metric defects a reader would notice (see core layout/metrics.ts).
-const CHECK_KEYS = ['crossings', 'edgeOverlaps', 'edgeNodeHits', 'labelOverlaps', 'labelDetached', 'labelOnArrowhead', 'labelEdgeHits', 'groupViolations', 'nodeLabelHits'] as const;
 
 /** Diagram fences of a Markdown file. Same fence rules as scripts/layout-metrics-lib.mjs;
  *  the language-to-source mapping is core fenceToSource (one source of truth). */
@@ -393,30 +392,7 @@ function extractDiagramFences(text: string): Array<{ index: number; lang: string
   return out;
 }
 
-async function checkDiagram(engine: ReturnType<typeof createEngine>, lang: string, code: string) {
-  try {
-    const fence = fenceToSource(lang, code);
-    if (!fence) throw new Error(`unsupported fence language: ${lang}`);
-    let ir: any;
-    if (fence.kind === 'mermaid') ir = importMermaid(fence.source).ir;
-    else if (fence.kind === 'plantuml') ir = importPlantUml(fence.source).ir;
-    else {
-      const p: any = engine.parse(fence.source); if (!p.ok) throw new Error('parse failed');
-      const a: any = engine.analyze(p.value); if (!a.ok) throw new Error('analyze failed');
-      const t: any = engine.transform(a.value); if (!t.ok) throw new Error('transform failed');
-      ir = t.value;
-    }
-    if (!ir) throw new Error('import failed');
-    const l: any = await engine.layoutAsync(ir); if (!l.ok) throw new Error('layout failed');
-    const m: any = measureLayout(l.value.diagram);
-    const problems: Record<string, number> = {};
-    let total = 0;
-    for (const k of CHECK_KEYS) if (m[k]) { problems[k] = m[k]; total += m[k]; }
-    return { type: String(ir.type), problems, total };
-  } catch (e: any) {
-    return { type: lang, problems: {} as Record<string, number>, total: 0, error: String(e?.message ?? e) };
-  }
-}
+const checkDiagram = checkDiagramQuality;
 
 program
   .command('check')

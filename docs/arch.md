@@ -31,7 +31,7 @@ Why this position:
 | `@seldia/web` | Lit web components `<seldia-viewer>`, `<seldia-editor>`, `<seldia-live>` and a CodeMirror language definition. |
 | `seldia-vscode` (`packages/vscode-ext`) | The VS Code extension: language server, Markdown preview plugin, visual edit panel, table editor, Marp preview, Markdown-to-PDF, export commands, LM tools. |
 
-The agent surface is the extension's LM tools (`seldia_renderDiagram`, `seldia_validateDiagram`, `seldia_listDiagramTypes`) plus the `seldia-dsl` skill; there is no MCP package (it was removed).
+The agent surface is the extension's LM tools (`seldia_renderDiagram`, `seldia_validateDiagram`, `seldia_checkDiagram`, `seldia_listDiagramTypes`) plus the `seldia-dsl` skill; there is no MCP package (it was removed).
 
 ## 4. Pipeline
 

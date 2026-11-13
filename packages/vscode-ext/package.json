@@ -249,6 +249,22 @@
         }
       },
       {
+        "name": "seldia_checkDiagram",
+        "displayName": "Check SelDiA Diagram Quality",
+        "modelDescription": "Lays out a diagram exactly as it renders and reports readability defects (edge crossings, overlaps, detached or colliding labels, group violations) with a hint per defect on what to change. Call it after rendering a diagram, apply the hints (reorder declarations, shorten labels, set direction), and iterate until the report is clean.",
+        "toolReferenceName": "seldiaCheck",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(checklist)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string", "description": "The diagram source text." },
+            "language": { "type": "string", "enum": ["seldia", "mermaid", "plantuml"], "description": "Source language; defaults to seldia." }
+          },
+          "required": ["code"]
+        }
+      },
+      {
         "name": "seldia_listDiagramTypes",
         "displayName": "List SelDiA Diagram Types",
         "modelDescription": "Returns the list of diagram type keywords supported by SelDiA (e.g. flowchart, sequence, class, er, c4-context, bpmn, state, gantt, mindmap). Use this before generating a new diagram from scratch to pick a valid type keyword for the `diagram <type> \"Title\" { ... }` header.",

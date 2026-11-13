@@ -15,7 +15,7 @@ export default defineConfig({
       { text: 'Guide', link: '/' },
       { text: 'Architecture', link: '/arch' },
       { text: 'Reference', link: '/reference' },
-      { text: 'Roadmap', link: '/roadmap' },
+      { text: 'Plan', link: '/improve' },
     ],
     sidebar: [
       {
@@ -24,7 +24,7 @@ export default defineConfig({
           { text: 'User Guide', link: '/' },
           { text: 'Architecture', link: '/arch' },
           { text: 'Reference', link: '/reference' },
-          { text: 'Roadmap', link: '/roadmap' },
+          { text: 'Improvement plan', link: '/improve' },
         ],
       },
     ],

@@ -26,7 +26,7 @@ Four docs besides `docs/examples/`:
 1. **User guide**: [docs/user_guide.md](docs/user_guide.md) — How to use DSL, CLI and the VS Code extension
 2. **Architecture**: [docs/arch.md](docs/arch.md) — Positioning, pipeline, IR, plugins, layout, editor
 3. **Reference**: [docs/reference.md](docs/reference.md) — Build config, monorepo, layout settings, test fixtures, fidelity per exporter
-4. **Roadmap**: [docs/roadmap.md](docs/roadmap.md) — Open work only
+4. **Improvement plan**: [docs/improve.md](docs/improve.md) — Open work only (replaces the former roadmap)
 5. **Examples**: [docs/examples/](docs/examples/) — Demo files (Mermaid, PlantUML, Marp, circuits); also the layout-metrics corpus
 
 ---
@@ -114,6 +114,6 @@ git log --grep="ADR" --oneline
 2. Update the fidelity section with what survives the import/export round trip
 3. Layout baseline changes: regenerate `layout-baseline.json` as described there and review the diff
 
-**When finishing a roadmap item:** delete it from [docs/roadmap.md](docs/roadmap.md) (it holds open work only).
+**When finishing a plan item:** delete it from [docs/improve.md](docs/improve.md) (it holds open work only).
 
 **Last updated:** 2026-09-15 (Token-optimized with memory enforcement)

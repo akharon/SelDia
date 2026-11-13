@@ -1,6 +1,6 @@
 # Reference: build, configuration, fixtures, fidelity
 
-Everything verified against the repository. Design lives in [arch.md](arch.md), usage in [user_guide.md](user_guide.md), open work in [roadmap.md](roadmap.md).
+Everything verified against the repository. Design lives in [arch.md](arch.md), usage in [user_guide.md](user_guide.md), open work in [improve.md](improve.md).
 
 ## Build and config
 

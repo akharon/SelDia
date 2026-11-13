@@ -963,7 +963,7 @@ function clearEdgeDrawSource() {
 // the cursor from the source node's centre, and whatever node the cursor is
 // over highlights as the drop target — mirroring the click-to-click flow's
 // eventual endpoint without requiring a drag gesture (drag-from-handle is
-// left for a future pass; see docs/roadmap.md).
+// left for a future pass; see docs/improve.md, E4).
 let rubberBandLine: SVGLineElement | null = null;
 
 function nodeCenterSvg(id: string): { x: number; y: number } | null {

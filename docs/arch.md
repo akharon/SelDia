@@ -1,6 +1,6 @@
 # Architecture
 
-SelDiA (Self-Diagramming Architecture) is a diagram **engine**: text in, SVG out, with an intermediate representation (IR) in the middle that everything else reads from. Usage is in [user_guide.md](user_guide.md), build/config/fixtures in [reference.md](reference.md), open work in [roadmap.md](roadmap.md).
+SelDiA (Self-Diagramming Architecture) is a diagram **engine**: text in, SVG out, with an intermediate representation (IR) in the middle that everything else reads from. Usage is in [user_guide.md](user_guide.md), build/config/fixtures in [reference.md](reference.md), open work in [improve.md](improve.md).
 
 ## 1. Positioning
 
@@ -57,7 +57,7 @@ Some types carry structure in the node **label** (newline-joined lines) rather t
 
 A `DiagramPlugin` (`plugin/types.ts`) declares an `id`, a `diagramType`, optional lifecycle hooks (`onRegister`, `onActivate`, `onDeactivate`) and, above all, `transform(ast, config) => DiagramIR`, plus optional layout defaults and semantic validation. `DefaultPluginManager` and `InlinePluginRegistry` keep them by id and by type. All plugins are built in and registered by the engine; there is no external discovery. Plugin families: flowchart, sequence, class, state, er, c4, bpmn, component, workitem, floorplan, circuit, pcb, table, and `misc` for the generic and standalone types.
 
-Adding a type needs three registrations that the compiler does not link: the `DiagramType` enum, the alias map **and** the separate pre-check list in `parser.ts` (a type missing from the pre-check silently loses its keyword; collapsing the two lists is on the [roadmap](roadmap.md)), and the plugin registration. A new closed-vocabulary type should say so in its schema (see `workitem/schema.ts`).
+Adding a type needs three registrations that the compiler does not link: the `DiagramType` enum, the alias map **and** the separate pre-check list in `parser.ts` (a type missing from the pre-check silently loses its keyword; collapsing the two lists is in the [improvement plan](improve.md#a2-one-descriptor-per-diagram-type)), and the plugin registration. A new closed-vocabulary type should say so in its schema (see `workitem/schema.ts`).
 
 ## 5. Import, export and fences
 

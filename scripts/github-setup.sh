@@ -136,7 +136,7 @@ print_success "Updated .gitignore"
 print_info "Step 3: Cleaning up development documentation..."
 print_warning "Removing internal development/review docs..."
 
-# Keep only: README.md, user_guide.md, arch.md, reference.md, roadmap.md
+# Keep only: README.md, user_guide.md, arch.md, reference.md, improve.md
 # Remove: improvement_request.md, review-*.md, plan.md
 if [ -f "docs/improvement_request.md" ]; then
     rm -f docs/improvement_request.md

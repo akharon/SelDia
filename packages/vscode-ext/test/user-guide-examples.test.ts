@@ -38,18 +38,6 @@ function extract(md: string): Fence[] {
   return out;
 }
 
-// Sections whose examples use a grammar the parser does not accept (the guide's
-// section 5 reference was written ahead of the parser: `id: shape` nodes,
-// `-->|label|` edges, keyword-first statements). `it.fails` keeps the gate green
-// while the debt is visible, and flips red as soon as a section starts compiling,
-// so remove it from this list then. Do not add new entries; fix the doc instead.
-const KNOWN_BROKEN = new Set([
-  '5.1 Flowchart', '5.2 Sequence Diagram', '5.3 Class Diagram', '5.4 Entity-Relationship Diagram',
-  '5.5 State Diagram', '5.6 Use Case Diagram', '5.7 Activity Diagram', '5.8 Component Diagram',
-  '5.11 BPMN Process Diagram', '5.12 DMN Decision Table', '5.13 Gantt Chart', '5.15 Network Diagram',
-  '5.17 Git Graph', '5.18 Form Definition', '5.19 Sankey Diagram', '5.20 Block Diagram', '5.21 Timeline',
-]);
-
 const fences = extract(readFileSync(GUIDE, 'utf8'));
 
 describe('user_guide.md seldia examples', () => {
@@ -58,8 +46,7 @@ describe('user_guide.md seldia examples', () => {
   });
   const engine = createEngine();
   for (const f of fences) {
-    const t = KNOWN_BROKEN.has(f.title) ? it.fails : it;
-    t(`compiles: ${f.title} (line ${f.line})`, async () => {
+    it(`compiles: ${f.title} (line ${f.line})`, async () => {
       const r = await engine.compile(f.source, 'user_guide.md');
       if (!r.ok) {
         const msgs = r.errors.map((e) => `[${e.severity}] L${e.source.startLine}: ${e.message}`).join('\n');

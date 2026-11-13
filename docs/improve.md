@@ -40,7 +40,7 @@ Top items by return, in suggested order:
 
 ## 2. Docs that disagree with the code
 
-Done. The remaining debt is the user guide's section 5, tracked below.
+None open. `packages/vscode-ext/test/user-guide-examples.test.ts` compiles every user guide example.
 
 ## 3. Routing and alignment
 

@@ -298,22 +298,22 @@ Flowcharts visualize processes, workflows, and algorithms.
 
 ```
 diagram flowchart "User Login" {
-    start: (Start)
-    enter: [Enter Credentials]
-    validate: {Valid Credentials?}
-    dashboard: [Show Dashboard]
-    error: [Show Error Message]
-    lockout: [Lock Account]
-    end: (End)
+    start (Start)
+    enter [Enter Credentials]
+    validate diamond "Valid Credentials?"
+    dashboard [Show Dashboard]
+    error [Show Error Message]
+    lockout [Lock Account]
+    end (End)
 
-    start --> enter
-    enter --> validate
-    validate -->|yes| dashboard
-    validate -->|no| error
-    error --> enter { label: "Retry" }
-    error --> lockout { label: "3rd attempt" }
-    dashboard --> end
-    lockout --> end
+    start -> enter
+    enter -> validate
+    validate -> dashboard: "yes"
+    validate -> error: "no"
+    error -> enter: "Retry"
+    error -> lockout: "3rd attempt"
+    dashboard -> end
+    lockout -> end
 }
 ```
 
@@ -340,26 +340,22 @@ Sequence diagrams show interactions between participants over time.
 
 ```
 diagram sequence "OAuth 2.0 Authorization Code Flow" {
-    participant user: "User"
-    participant app: "Client App"
-    participant auth: "Auth Server"
-    participant api: "Resource API"
+    user "User"
+    app "Client App"
+    auth "Auth Server"
+    api "Resource API"
 
-    user -> app: Click "Login"
-    app -> auth: GET /authorize\n?client_id=...&redirect_uri=...
-    auth --> user: Show login form
-    user -> auth: Submit credentials
-    auth -> auth: Validate credentials
-    alt valid credentials
-        auth --> app: 302 Redirect with auth code
-        app -> auth: POST /token with auth code
-        auth --> app: 200 { access_token, refresh_token }
-        app -> api: GET /userinfo\nAuthorization: Bearer <token>
-        api --> app: 200 { user data }
-        app --> user: Show dashboard
-    else invalid credentials
-        auth --> user: Show error message
-    end
+    user -> app: "Click Login"
+    app -> auth: "GET /authorize"
+    auth -> user: "Show login form"
+    user -> auth: "Submit credentials"
+    auth -> auth: "Validate credentials"
+    auth -> app: "302 Redirect with auth code"
+    app -> auth: "POST /token with auth code"
+    auth -> app: "200 access_token"
+    app -> api: "GET /userinfo"
+    api -> app: "200 user data"
+    app -> user: "Show dashboard"
 }
 ```
 
@@ -432,74 +428,16 @@ Class diagrams model object-oriented systems.
 
 ```
 diagram class "E-Commerce Domain" {
+    User "User\n+id: UUID\n+email: String\n+login(password: String): Boolean\n+logout(): void"
+    Customer "Customer\n+billingAddress: Address\n-loyaltyPoints: Integer\n+placeOrder(cart: Cart): Order"
+    Admin "Admin\n+manageProducts(): void\n+viewReports(): Report"
+    Order "Order\n+id: UUID\n+total: Money\n+calculateTotal(): Money\n+cancel(): void"
+    Product "Product\n+sku: String\n+price: Money\n+stock: Integer"
 
-    // Abstract class
-    abstract class User {
-        +id: UUID
-        +email: String
-        +name: String
-        +createdAt: DateTime
-        +login(password: String): Boolean {abstract}
-        +logout(): void
-    }
-
-    class Customer {
-        +billingAddress: Address
-        +shippingAddress: Address
-        -loyaltyPoints: Integer
-        +placeOrder(cart: Cart): Order
-    }
-
-    class Admin {
-        +permissions: Set<Permission>
-        +manageProducts(): void
-        +viewReports(): Report
-    }
-
-    class Order {
-        +id: UUID
-        +status: OrderStatus
-        +total: Money
-        -items: List<OrderItem>
-        +calculateTotal(): Money
-        +cancel(): void
-    }
-
-    class OrderItem {
-        +quantity: Integer
-        +unitPrice: Money
-    }
-
-    class Product {
-        +sku: String
-        +name: String
-        +price: Money
-        +stock: Integer
-    }
-
-    enum OrderStatus {
-        PENDING
-        CONFIRMED
-        SHIPPED
-        DELIVERED
-        CANCELLED
-    }
-
-    // Relationships
-    User <|-- Customer: extends
-    User <|-- Admin: extends
-    Customer "1" --> "*" Order: places
-    Order "1" --> "*" OrderItem: contains
-    OrderItem "*" --> "1" Product: references
-    Order ..> OrderStatus: uses
-
-    // Interface
-    interface Payable {
-        +processPayment(amount: Money): Boolean
-        +refund(transactionId: UUID): void
-    }
-
-    Order ..|> Payable: implements
+    User -> Customer: "extends"
+    User -> Admin: "extends"
+    Customer -> Order: "places"
+    Order -> Product: "references"
 }
 ```
 
@@ -543,49 +481,14 @@ class MyClass {
 
 ```
 diagram er "Online Shop Database" {
+    Customer [Customer\nid PK\nemail string\nname string]
+    Order [Order\nid PK\ncustomer_id FK\nplaced_at date]
+    Product [Product\nid PK\nsku string\nprice decimal]
+    OrderItem [OrderItem\norder_id FK\nproduct_id FK\nquantity int]
 
-    entity Customer {
-        +id: UUID PK
-        +email: String UK
-        +name: String
-        +created_at: Timestamp
-    }
-
-    entity Order {
-        +id: UUID PK
-        +customer_id: UUID FK
-        +status: OrderStatus
-        +total: Decimal(10,2)
-        +placed_at: Timestamp
-    }
-
-    entity OrderItem {
-        +order_id: UUID PK,FK
-        +product_id: UUID PK,FK
-        +quantity: Integer
-        +unit_price: Decimal(10,2)
-    }
-
-    entity Product {
-        +id: UUID PK
-        +sku: String UK
-        +name: String
-        +price: Decimal(10,2)
-        +stock: Integer
-        +category_id: UUID FK
-    }
-
-    entity Category {
-        +id: UUID PK
-        +name: String
-        +parent_id: UUID FK
-    }
-
-    Customer ||--o{ Order: "places"
-    Order ||--|{ OrderItem: "contains"
-    Product ||--o{ OrderItem: "ordered as"
-    Category ||--o{ Product: "groups"
-    Category ||--o{ Category: "subcategory of"
+    Customer -> Order: "places"
+    Order -> OrderItem: "contains"
+    Product -> OrderItem: "appears in"
 }
 ```
 
@@ -608,46 +511,13 @@ State diagrams model the lifecycle of an entity.
 
 ```
 diagram state "Order Lifecycle" {
-
-    state "New" as New
-    state "Confirmed" as Confirmed
-    state "Processing" as Processing
-    state "Shipped" as Shipped
-    state "Delivered" as Delivered
-    state "Cancelled" as Cancelled
-    state "Returned" as Returned
-
-    [*] --> New: Customer places order
-
-    New --> Confirmed: Payment verified
-    New --> Cancelled: Payment failed / timeout
-
-    Confirmed --> Processing: Warehouse picks items
-    Confirmed --> Cancelled: Customer cancels
-
-    Processing --> Shipped: Carrier picks up
-    Processing --> Cancelled: Out of stock
-
-    Shipped --> Delivered: Delivery confirmed
-    Shipped --> Returned: Customer returns
-
-    Delivered --> Returned: Return requested
-    Delivered --> [*]
-
-    Cancelled --> [*]
-    Returned --> [*]
-
-    // Composite state
-    state Processing {
-        state "Picking" as picking
-        state "Packing" as packing
-        state "Labeling" as labeling
-
-        [*] --> picking
-        picking --> packing
-        packing --> labeling
-        labeling --> [*]
-    }
+    [*] -> Pending
+    Pending -> Confirmed: "paid"
+    Pending -> Cancelled: "timeout"
+    Confirmed -> Shipped: "dispatched"
+    Shipped -> Delivered: "arrived"
+    Delivered -> [*]
+    Cancelled -> [*]
 }
 ```
 
@@ -679,36 +549,17 @@ state <name> {
 
 ```
 diagram usecase "ATM System" {
+    customer (Customer)
+    bank (Bank)
+    withdraw [Withdraw Cash]
+    balance [Check Balance]
+    deposit [Deposit Funds]
 
-    actor customer: "Bank Customer"
-    actor admin: "Bank Administrator"
-    actor bankSystem: "Banking System" { external: true }
-
-    usecase "Withdraw Cash" as UC1
-    usecase "Check Balance" as UC2
-    usecase "Deposit Funds" as UC3
-    usecase "Transfer Money" as UC4
-    usecase "Print Statement" as UC5
-    usecase "Authenticate" as UC6
-    usecase "Manage ATM" as UC7
-
-    customer --> UC1
-    customer --> UC2
-    customer --> UC3
-    customer --> UC4
-    customer --> UC5
-
-    UC1 ..> UC6: <<include>>
-    UC2 ..> UC6: <<include>>
-    UC3 ..> UC6: <<include>>
-    UC4 ..> UC6: <<include>>
-
-    UC1 ..> UC7: <<extend>> (out of cash)
-
-    admin --> UC7
-
-    UC1 --> bankSystem
-    UC2 --> bankSystem
+    customer -> withdraw
+    customer -> balance
+    customer -> deposit
+    withdraw -> bank
+    deposit -> bank
 }
 ```
 
@@ -737,49 +588,21 @@ boundary "ATM System" {
 
 ```
 diagram activity "Order Processing" {
+    start (Start)
+    receive [Receive Order]
+    validate [Validate Order]
+    inStock diamond "In Stock?"
+    ship [Ship Order]
+    backorder [Create Backorder]
+    done (Done)
 
-    start: (Start)
-
-    receive: [Receive Order]
-    validate: [Validate Order]
-    checkInventory: {In Stock?}
-    fulfill: [Fulfill Order]
-    backorder: [Create Backorder]
-    ship: [Ship Order]
-    notifyCustomer: [Notify Customer]
-    end: (End)
-
-    start --> receive
-    receive --> validate
-
-    validate --> checkInventory
-
-    checkInventory -->|yes| fulfill
-    checkInventory -->|no| backorder
-
-    backorder --> notifyCustomer
-
-    fulfill --> ship
-    ship --> notifyCustomer
-
-    notifyCustomer --> end
-
-    // Swimlanes
-    partition "Customer Service" {
-        receive
-        notifyCustomer
-    }
-
-    partition "Warehouse" {
-        checkInventory
-        fulfill
-        backorder
-        ship
-    }
-
-    partition "System" {
-        validate
-    }
+    start -> receive
+    receive -> validate
+    validate -> inStock
+    inStock -> ship: "yes"
+    inStock -> backorder: "no"
+    ship -> done
+    backorder -> done
 }
 ```
 
@@ -815,46 +638,17 @@ signal receive "<signal name>"
 ### 5.8 Component Diagram
 
 ```
-diagram component "Microservice Architecture" {
+diagram component "Microservices" {
+    ui [Web UI]
+    api [API Gateway]
+    orders [Order Service]
+    iface ((Payment Interface))
+    db [Database]
 
-    component "API Gateway" as gateway {
-        interface "REST API" as api1
-    }
-
-    component "Auth Service" as auth {
-        interface "OAuth 2.0" as authApi
-    }
-
-    component "User Service" as users {
-        interface "gRPC" as userApi
-    }
-
-    component "Order Service" as orders {
-        interface "gRPC" as orderApi
-    }
-
-    component "Product Service" as products {
-        interface "gRPC" as productApi
-    }
-
-    component "Payment Service" as payment {
-        interface "gRPC" as paymentApi
-    }
-
-    database "PostgreSQL" as db
-    queue "RabbitMQ" as mq
-
-    gateway --> authApi: "authenticates via"
-    gateway --> userApi: "routes to"
-    gateway --> orderApi: "routes to"
-    gateway --> productApi: "routes to"
-
-    orders --> paymentApi: "processes payment via"
-    orders --> mq: "publishes events to"
-
-    users --> db: "reads/writes"
-    orders --> db: "reads/writes"
-    products --> db: "reads/writes"
+    ui -> api
+    api -> orders
+    orders -> iface
+    orders -> db
 }
 ```
 
@@ -1106,57 +900,19 @@ diagram c4 code "Account Repository — Implementation" {
 
 ```
 diagram bpmn "Order Fulfillment Process" {
+    start "Order Received"
+    validate "Validate Order"
+    gateway payment "Payment OK?"
+    ship "Ship Order"
+    refund "Process Refund"
+    done "Order Complete"
 
-    startEvent start: "Order Received"
-
-    task validate: "Validate Order" {
-        performer: "Sales System"
-    }
-
-    task checkInventory: "Check Inventory" {
-        performer: "Warehouse System"
-    }
-
-    gateway payment: "Payment OK?" {
-        type: exclusive
-    }
-
-    gateway inventory: "In Stock?" {
-        type: exclusive
-    }
-
-    task ship: "Ship Order" {
-        performer: "Warehouse"
-    }
-
-    task backorder: "Create Backorder" {
-        performer: "Warehouse"
-    }
-
-    task refund: "Process Refund" {
-        performer: "Finance"
-    }
-
-    endEvent done: "Order Complete"
-    endEvent cancelled: "Order Cancelled"
-
-    // Flow
-    start --> validate
-    validate --> checkInventory
-    checkInventory --> inventory
-
-    inventory -->|yes| payment
-    inventory -->|no| backorder
-
-    payment -->|ok| ship
-    payment -->|not ok| refund
-
-    ship --> done
-    backorder --> done
-    refund --> cancelled
-
-    // Message flow
-    messageFlow "Order Service" --> validate: "Order Placed Event"
+    start -> validate
+    validate -> payment
+    payment -> ship: "yes"
+    payment -> refund: "no"
+    ship -> done
+    refund -> done
 }
 ```
 
@@ -1197,52 +953,14 @@ task t6: "..." { type: receive }         // Receive task
 
 ```
 diagram dmn "Loan Approval Decision" {
+    age "Input: Applicant Age"
+    income "Input: Annual Income"
+    approve "Rule: Approve\nage >= 18 AND income > 30000\n-> APPROVE"
+    denyAge "Rule: Deny (Age)\nage < 18\n-> DENY"
 
-    input age: number "Applicant Age"
-    input annualIncome: number "Annual Income (€)"
-    input creditScore: number "Credit Score"
-    input employmentYears: number "Years of Employment"
-
-    output decision: string "Loan Decision"
-    output maxAmount: number "Maximum Loan Amount (€)"
-
-    rule R1:
-        age >= 18
-        and annualIncome > 30000
-        and creditScore > 700
-        and employmentYears >= 2
-        => decision = "APPROVE",
-           maxAmount = annualIncome * 3
-
-    rule R2:
-        age >= 18
-        and annualIncome > 30000
-        and creditScore > 600
-        and creditScore <= 700
-        and employmentYears >= 1
-        => decision = "APPROVE",
-           maxAmount = annualIncome * 1.5
-
-    rule R3:
-        age >= 18
-        and annualIncome > 20000
-        and creditScore > 650
-        => decision = "MANUAL_REVIEW",
-           maxAmount = 0
-
-    rule R4:
-        age < 18
-        => decision = "DENY",
-           maxAmount = 0
-
-    rule R5:
-        annualIncome <= 20000
-        and creditScore < 600
-        => decision = "DENY",
-           maxAmount = 0
-
-    hitPolicy: first
-    description: "Determines loan eligibility and maximum amount"
+    age -> approve
+    income -> approve
+    age -> denyAge
 }
 ```
 
@@ -1265,41 +983,15 @@ input <name>: <type> "<label>"
 ### 5.13 Gantt Chart
 
 ```
-diagram gantt "Project Alpha — Q1 2026" {
+diagram gantt "Project Alpha" {
+    t1 [Requirements: Jan 6-17]
+    t2 [Architecture: Jan 13-24]
+    t3 [Sprint 1: Jan 27 - Feb 14]
+    m1 [MVP Release: Mar 10]
 
-    title: "Project Alpha Development Plan"
-
-    section "Initiation" {
-        task requirements: "Gather Requirements" 2026-01-06 to 2026-01-17 {
-            assignee: "Alice"
-        }
-        task architecture: "Architecture Design" 2026-01-20 to 2026-01-31 {
-            assignee: "Bob"
-            dependsOn: requirements
-        }
-    }
-
-    section "Development" {
-        task sprint1: "Sprint 1 — Core API" 2026-02-03 to 2026-02-21 {
-            assignee: "Team A"
-            dependsOn: architecture
-        }
-        task sprint2: "Sprint 2 — Frontend" 2026-02-24 to 2026-03-14 {
-            assignee: "Team B"
-            dependsOn: sprint1
-        }
-    }
-
-    section "Testing" {
-        task integration: "Integration Testing" 2026-03-17 to 2026-03-28 {
-            assignee: "QA Team"
-            dependsOn: sprint2
-        }
-    }
-
-    milestone mvp: "MVP Release" at 2026-04-01 {
-        dependsOn: integration
-    }
+    t1 -> t2
+    t2 -> t3
+    t3 -> m1
 }
 ```
 
@@ -1373,54 +1065,16 @@ root "<central topic>"
 
 ```
 diagram network "Corporate Network" {
+    internet [Internet]
+    firewall [Firewall]
+    router [Router]
+    switch [Switch]
+    server [App Server]
 
-    cloud "Internet"
-
-    firewall "Edge Firewall" as fw
-
-    switch "Core Switch" as sw1
-
-    node "DMZ Switch" as dmzSw
-
-    server "Web Server" as web {
-        ip: "10.0.1.10"
-        ports: [80, 443]
-    }
-
-    server "Mail Server" as mail {
-        ip: "10.0.1.20"
-        ports: [25, 587, 993]
-    }
-
-    node "Internal Switch" as intSw
-
-    server "App Server" as app {
-        ip: "10.0.2.10"
-    }
-
-    server "DB Server" as db {
-        ip: "10.0.2.20"
-    }
-
-    workstation "Admin PC" as admin {
-        ip: "10.0.3.100"
-    }
-
-    workstation "Dev PC 1" as dev1 {
-        ip: "10.0.3.101"
-    }
-
-    // Connections
-    Internet --> fw: "WAN"
-    fw --> sw1
-    sw1 --> dmzSw: "VLAN 10 — DMZ"
-    dmzSw --> web
-    dmzSw --> mail
-    sw1 --> intSw: "VLAN 20 — Internal"
-    intSw --> app
-    intSw --> db
-    sw1 --> admin: "VLAN 30 — Management"
-    sw1 --> dev1
+    internet -> firewall
+    firewall -> router
+    router -> switch
+    switch -> server
 }
 ```
 
@@ -1577,54 +1231,12 @@ diagram chart scatter "Correlation Analysis" {
 
 ```
 diagram gitgraph "Release Workflow" {
+    main1 [main: init]
+    main2 [main: release]
+    feat1 [feature: work]
 
-    branch main {
-        commit "Initial commit"
-        commit "Setup CI/CD"
-        commit "Release v1.0.0" { tag: "v1.0.0" }
-    }
-
-    branch develop from main {
-        commit "Start develop"
-    }
-
-    branch "feature/login" from develop {
-        commit "Add login form"
-        commit "Add auth API"
-        commit "Add JWT handling"
-    }
-
-    merge "feature/login" into develop
-
-    branch "feature/dashboard" from develop {
-        commit "Create dashboard layout"
-        commit "Add charts"
-    }
-
-    commit on develop: "Update dependencies"
-
-    merge "feature/dashboard" into develop
-
-    branch "release/1.1.0" from develop {
-        commit "Version bump"
-        commit "Final QA fixes"
-    }
-
-    merge "release/1.1.0" into main {
-        tag: "v1.1.0"
-    }
-
-    merge "release/1.1.0" into develop
-
-    branch "hotfix/critical-bug" from main {
-        commit "Fix critical auth bug"
-    }
-
-    merge "hotfix/critical-bug" into main {
-        tag: "v1.1.1"
-    }
-
-    merge "hotfix/critical-bug" into develop
+    main1 -> feat1
+    feat1 -> main2
 }
 ```
 
@@ -1634,104 +1246,14 @@ diagram gitgraph "Release Workflow" {
 
 ```
 diagram form "Employee Registration" {
+    name [Name: text, required]
+    email [Email: email, required]
+    theme [Theme: Light / Dark / System]
+    submit [Submit: Register]
 
-    title: "New Employee Registration"
-    description: "Please fill in all required fields marked with *"
-
-    section "Personal Information" {
-        field firstName: text {
-            label: "First Name"
-            required: true
-            placeholder: "Enter first name"
-            minLength: 2
-            maxLength: 50
-        }
-
-        field lastName: text {
-            label: "Last Name"
-            required: true
-            placeholder: "Enter last name"
-        }
-
-        field email: email {
-            label: "Work Email"
-            required: true
-            placeholder: "name@company.com"
-            pattern: "^[\\w.-]+@company\\.com$"
-        }
-
-        field phone: tel {
-            label: "Phone Number"
-            placeholder: "+1 (555) 000-0000"
-        }
-
-        field birthDate: date {
-            label: "Date of Birth"
-            min: "1950-01-01"
-            max: "today"
-        }
-    }
-
-    section "Employment Details" {
-        field department: select {
-            label: "Department"
-            required: true
-            options: ["Engineering", "Marketing", "Sales", "HR", "Finance", "Operations"]
-        }
-
-        field position: text {
-            label: "Job Title"
-            required: true
-        }
-
-        field manager: select {
-            label: "Reports To"
-            options: ["Alice Johnson", "Bob Smith", "Carol Davis"]
-        }
-
-        field startDate: date {
-            label: "Start Date"
-            required: true
-            min: "today"
-        }
-
-        field employmentType: radio {
-            label: "Employment Type"
-            required: true
-            options: ["Full-time", "Part-time", "Contract", "Intern"]
-        }
-    }
-
-    section "Equipment Request" {
-        field laptop: select {
-            label: "Laptop Preference"
-            options: ["MacBook Pro", "ThinkPad X1", "Dell XPS"]
-            default: "MacBook Pro"
-        }
-
-        field accessories: checkboxGroup {
-            label: "Accessories Needed"
-            options: ["External Monitor", "Keyboard", "Mouse", "Headset", "Docking Station"]
-        }
-    }
-
-    section "Acknowledgement" {
-        field agreement: checkbox {
-            label: "I agree to the company policies and code of conduct"
-            required: true
-        }
-
-        field signature: signature {
-            label: "Digital Signature"
-            required: true
-        }
-    }
-
-    submit "Submit Registration" {
-        style: primary
-    }
-
-    reset "Clear Form"
+    name -> email
+    email -> theme
+    theme -> submit
 }
 ```
 
@@ -1782,44 +1304,14 @@ diagram form "Employee Registration" {
 
 ```
 diagram sankey "Website User Flow" {
+    solar "Solar (120)"
+    wind "Wind (80)"
+    grid "Electricity Grid"
+    loss "Transmission Loss"
 
-    source "Landing Page"  { value: 10000 }
-    source "Direct Link"   { value: 3000 }
-    source "Social Media"  { value: 2000 }
-
-    flow "Landing Page" -> "Product Page"     { value: 4500 }
-    flow "Landing Page" -> "Pricing Page"     { value: 2500 }
-    flow "Landing Page" -> "Blog"             { value: 1500 }
-    flow "Landing Page" -> "Bounce"           { value: 1500 }
-
-    flow "Product Page"  -> "Add to Cart"     { value: 1800 }
-    flow "Product Page"  -> "Pricing Page"    { value: 1200 }
-    flow "Product Page"  -> "Bounce"          { value: 1500 }
-
-    flow "Pricing Page"  -> "Sign Up"         { value: 2200 }
-    flow "Pricing Page"  -> "Bounce"          { value: 1500 }
-
-    flow "Add to Cart"   -> "Checkout"        { value: 1200 }
-    flow "Add to Cart"   -> "Bounce"          { value: 600 }
-
-    flow "Checkout"      -> "Purchase"        { value: 800 }
-    flow "Checkout"      -> "Bounce"          { value: 400 }
-
-    flow "Sign Up"       -> "Onboarding"      { value: 1600 }
-    flow "Sign Up"       -> "Bounce"          { value: 600 }
-
-    flow "Direct Link"   -> "Product Page"    { value: 1500 }
-    flow "Direct Link"   -> "Blog"            { value: 1500 }
-
-    flow "Social Media"  -> "Blog"            { value: 1200 }
-    flow "Social Media"  -> "Landing Page"    { value: 800 }
-
-    flow "Blog"          -> "Product Page"    { value: 2000 }
-    flow "Blog"          -> "Bounce"          { value: 2200 }
-
-    sink "Purchase"    { label: "Completed Purchase" }
-    sink "Onboarding"  { label: "New Sign-ups" }
-    sink "Bounce"      { label: "Exited Site" }
+    solar -> grid: "110"
+    wind -> grid: "75"
+    solar -> loss: "10"
 }
 ```
 
@@ -1828,44 +1320,15 @@ diagram sankey "Website User Flow" {
 ### 5.20 Block Diagram
 
 ```
-diagram block "System Overview" {
+diagram block "Architecture" {
+    cli [CLI]
+    web [Web App]
+    engine [Core Engine]
+    render [Renderer]
 
-    block "Frontend" as fe {
-        color: blue
-        description: "React SPA + Mobile App"
-    }
-
-    block "API Layer" as api {
-        color: purple
-        description: "REST + GraphQL + gRPC"
-    }
-
-    block "Services" as svc {
-        color: green
-        blocks: ["Auth", "Users", "Orders", "Payments", "Notifications"]
-    }
-
-    block "Data Layer" as data {
-        color: orange
-        blocks: ["PostgreSQL", "Redis", "Elasticsearch", "S3"]
-    }
-
-    block "Infrastructure" as infra {
-        color: gray
-        blocks: ["Kubernetes", "Istio", "Prometheus", "Grafana"]
-    }
-
-    block "CI/CD" as cicd {
-        color: teal
-        blocks: ["GitHub Actions", "ArgoCD", "Docker Registry"]
-    }
-
-    fe --> api: "HTTPS"
-    api --> svc: "internal"
-    svc --> data: "drivers"
-    infra --> svc
-    infra --> data
-    cicd --> infra
+    cli -> engine
+    web -> engine
+    engine -> render
 }
 ```
 
@@ -1885,39 +1348,12 @@ block "<name>" as <id> {
 
 ```
 diagram timeline "Company History" {
+    q1 [Q1: MVP]
+    q2 [Q2: Beta]
+    q3 [Q3: GA]
 
-    title: "Acme Corp — Milestones"
-
-    section "Foundation" {
-        event 2018-03: "Company founded" {
-            description: "Alice and Bob start Acme Corp\nin a garage in San Francisco"
-        }
-        event 2018-06: "Seed funding — $500K"
-        event 2019-01: "First product launch — Acme v1.0"
-    }
-
-    section "Growth" {
-        event 2020-03: "Series A — $5M" {
-            description: "Led by VentureXYZ"
-        }
-        event 2020-09: "50 employees milestone"
-        event 2021-06: "Acme v2.0 — Major redesign"
-        event 2022-01: "Series B — $20M"
-    }
-
-    section "Expansion" {
-        event 2022-09: "European office opens — London"
-        event 2023-03: "200 employees milestone"
-        event 2023-11: "Acme v3.0 — AI features"
-        event 2024-06: "Series C — $50M"
-    }
-
-    section "Today" {
-        event 2025-01: "500 employees"
-        event 2025-06: "IPO on NASDAQ" {
-            description: "Ticker: ACME\nValuation: $2B"
-        }
-    }
+    q1 -> q2
+    q2 -> q3
 }
 ```
 

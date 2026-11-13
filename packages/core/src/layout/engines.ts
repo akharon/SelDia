@@ -18,6 +18,7 @@ import type { Point, Rect } from '../types/common.js';
 import { Direction } from '../types/common.js';
 import { centerOf } from '../render/edge-routing.js';
 import dagre from 'dagre';
+import { EDGE_LABEL_FONT } from '../render/edge-label-placement.js';
 import { layoutSync as layoutElkGraph } from './elk-sync.js';
 import { measureLabel } from './text-measure.js';
 
@@ -144,10 +145,13 @@ function applyClusters(g: any, ir: DiagramIR): boolean {
   return true;
 }
 
+/** Extra px reserved beside a node that carries a self-loop. */
+export const SELF_LOOP_RESERVE = 30;
+
 /** Synchronous hierarchical layout via dagre. Always available. */
 export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLayoutResult {
   const compound = !!ir.groups?.length;
-  const g = new dagre.graphlib!.Graph({ directed: true, multigraph: false, compound });
+  const g = new dagre.graphlib!.Graph({ directed: true, multigraph: true, compound });
   g.setGraph({
     rankdir: dirToDagre(opts.direction),
     nodesep: opts.nodeSpacing,
@@ -159,10 +163,15 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
   });
   g.setDefaultEdgeLabel(() => ({}));
 
+  const horizontalFlow = opts.direction === Direction.LEFT_TO_RIGHT || opts.direction === Direction.RIGHT_TO_LEFT;
+  const looped = new Set(ir.edges.filter((e) => e.sourceId === e.targetId).map((e) => e.sourceId));
+  // A self-loop sits on the node's lateral side: widen dagre's box there
+  // (TB: right, LR: bottom) so neighbours leave room for it.
+  const loopPad = (n: { id: string }) => (looped.has(n.id) ? SELF_LOOP_RESERVE : 0);
   for (const n of ir.nodes) {
     const w = Math.max(n.size.width || 140, 60);
     const h = Math.max(n.size.height || 60, 40);
-    g.setNode(n.id, { width: w, height: h });
+    g.setNode(n.id, { width: w + (horizontalFlow ? 0 : loopPad(n)), height: h + (horizontalFlow ? loopPad(n) : 0) });
   }
   for (const e of ir.edges) {
     if (!g.hasNode(e.sourceId) || !g.hasNode(e.targetId)) continue;
@@ -171,8 +180,9 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     // labeled edges (Yes/No, multiplicities) don't collide with other
     // geometry — previously the layout stage had no idea labels existed at
     // all (docs/improvement_request.md item 6).
-    const labelSize = e.label ? { width: Math.max(20, e.label.length * 7), height: 20 } : {};
-    g.setEdge(e.sourceId, e.targetId, { id: e.id, labelpos: 'c', ...labelSize });
+    const lm = e.label ? measureLabel(e.label, EDGE_LABEL_FONT) : undefined;
+    const labelSize = lm ? { width: Math.max(20, Math.ceil(lm.width) + 8), height: Math.max(20, lm.height + 4) } : {};
+    g.setEdge(e.sourceId, e.targetId, { id: e.id, labelpos: 'c', ...labelSize }, e.id);
   }
 
   if (compound) applyClusters(g, ir);
@@ -184,13 +194,16 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
     const w = Math.max(n.size.width || 140, 60);
     const h = Math.max(n.size.height || 60, 40);
     if (gn && gn.x !== undefined && gn.y !== undefined) {
-      return { ...n, position: { x: gn.x - w / 2, y: gn.y - h / 2 }, size: { width: w, height: h } };
+      const px = horizontalFlow ? 0 : loopPad(n), py = horizontalFlow ? loopPad(n) : 0;
+      return { ...n, position: { x: gn.x - (w + px) / 2, y: gn.y - (h + py) / 2 }, size: { width: w, height: h } };
     }
     return { ...n, size: { width: w, height: h } };
   });
 
+  const loopData = (e: IREdge) =>
+    e.sourceId === e.targetId ? { data: { ...e.data, loopSide: horizontalFlow ? 'bottom' : 'right' } } : {};
   const edges = ir.edges.map((e) => {
-    const ep = g.edge(e.sourceId, e.targetId);
+    const ep = g.edge({ v: e.sourceId, w: e.targetId, name: e.id });
     const src = nodes.find((n) => n.id === e.sourceId);
     const tgt = nodes.find((n) => n.id === e.targetId);
     if (ep && ep.points && ep.points.length >= 2) {
@@ -200,9 +213,9 @@ export function layoutWithDagre(ir: DiagramIR, opts: AutoLayoutOptions): AutoLay
       // discards (<2 waypoints ⇒ no line, no arrowhead) — that was the cause
       // of missing arrows between nodes.
       const wps: Point[] = ep.points.map((p: any) => ({ x: p.x, y: p.y }));
-      return { ...e, waypoints: wps };
+      return { ...e, waypoints: wps, ...loopData(e) };
     }
-    return { ...e, waypoints: fallbackRoute(src, tgt) };
+    return { ...e, waypoints: fallbackRoute(src, tgt), ...loopData(e) };
   });
 
   return { nodes, edges, bounds: computeBounds(nodes, edges) };
@@ -323,10 +336,14 @@ export function layoutWithElkSync(ir: DiagramIR, opts: AutoLayoutOptions): AutoL
   const groupById = new Map((ir.groups ?? []).map((g) => [g.id, g]));
   const nodeIds = new Set(ir.nodes.map((n) => n.id));
 
+  const hFlow = opts.direction === Direction.LEFT_TO_RIGHT || opts.direction === Direction.RIGHT_TO_LEFT;
+  const looped = new Set(ir.edges.filter((e) => e.sourceId === e.targetId).map((e) => e.sourceId));
+  const padW = (n: IRNode) => (looped.has(n.id) && !hFlow ? SELF_LOOP_RESERVE : 0);
+  const padH = (n: IRNode) => (looped.has(n.id) && hFlow ? SELF_LOOP_RESERVE : 0);
   const elkNode = (n: IRNode) => ({
     id: n.id,
-    width: Math.max(n.size.width || 140, 60),
-    height: Math.max(n.size.height || 60, 40),
+    width: Math.max(n.size.width || 140, 60) + padW(n),
+    height: Math.max(n.size.height || 60, 40) + padH(n),
   });
   const groupNode = (gid: string): any => {
     const g = groupById.get(gid)!;
@@ -394,7 +411,7 @@ export function layoutWithElkSync(ir: DiagramIR, opts: AutoLayoutOptions): AutoL
 
   const nodes = ir.nodes.map((n) => {
     const r = rects.get(n.id);
-    return r ? { ...n, position: { x: r.x, y: r.y }, size: { width: r.width, height: r.height } } : n;
+    return r ? { ...n, position: { x: r.x, y: r.y }, size: { width: r.width - padW(n), height: r.height - padH(n) } } : n;
   });
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
@@ -411,7 +428,8 @@ export function layoutWithElkSync(ir: DiagramIR, opts: AutoLayoutOptions): AutoL
   };
   collect(result, undefined);
 
-  const edges = ir.edges.map((e) => {
+  const edges = ir.edges.map((e0) => {
+    const e = e0.sourceId === e0.targetId ? { ...e0, data: { ...e0.data, loopSide: hFlow ? 'bottom' : 'right' } } : e0;
     const r = routed.get(e.id);
     const src = nodeById.get(e.sourceId), tgt = nodeById.get(e.targetId);
     if (r && r.pts.length >= 2) {

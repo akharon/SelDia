@@ -9,18 +9,18 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",
   "author": "SelDiA",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/seldia/seldia.git"
+    "url": "git+https://github.com/akharon/SelDia.git"
   },
   "bugs": {
-    "url": "https://github.com/seldia/seldia/issues"
+    "url": "https://github.com/akharon/SelDia/issues"
   },
-  "homepage": "https://seldia.dev",
+  "homepage": "https://github.com/akharon/SelDia#readme",
   "publishConfig": {
     "access": "public"
   },

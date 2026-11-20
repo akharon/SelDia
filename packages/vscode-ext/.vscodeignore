@@ -11,3 +11,11 @@ node_modules/**
 **/node_modules/**
 !dist/node_modules/**
 ../**
+test/**
+# Re-applied after the dist/node_modules negation above: Node never loads
+# these, and they were most of the old 27 MB package.
+dist/node_modules/**/*.ts
+dist/node_modules/**/*.mts
+dist/node_modules/**/*.cts
+dist/node_modules/**/*.map
+dist/node_modules/**/*.md

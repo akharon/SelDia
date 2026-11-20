@@ -16,6 +16,7 @@ WATCH=false
 COVERAGE=false
 SCOPE=""
 VITEST_ARGS=()
+TEST_EXIT=0
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -63,14 +64,13 @@ if [ -n "$SCOPE" ]; then
   # Run tests for a specific package
   echo "   Scope: $SCOPE"
   cd "$ROOT_DIR/packages/${SCOPE#@seldia/}" 2>/dev/null || cd "$ROOT_DIR"
-  $VITEST_CMD "${VITEST_ARGS[@]}" || true
+  $VITEST_CMD ${VITEST_ARGS[@]+"${VITEST_ARGS[@]}"} && TEST_EXIT=0 || TEST_EXIT=$?
 else
   # Run all tests
   echo "   All packages"
-  $VITEST_CMD "${VITEST_ARGS[@]}" || true
+  $VITEST_CMD ${VITEST_ARGS[@]+"${VITEST_ARGS[@]}"} && TEST_EXIT=0 || TEST_EXIT=$?
 fi
 
-TEST_EXIT=$?
 
 echo ""
 echo "═══════════════════════════════════════════"

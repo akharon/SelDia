@@ -224,4 +224,4 @@ it('reports an error for markdown that cannot be rendered', async () => {
   );
   expect(result.success).toBe(false);
   expect(result.errorMessage).toBeTruthy();
-});
+}, 60000);

@@ -9,12 +9,12 @@
   "author": "SelDiA",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/seldia/seldia.git"
+    "url": "git+https://github.com/akharon/SelDia.git"
   },
   "bugs": {
-    "url": "https://github.com/seldia/seldia/issues"
+    "url": "https://github.com/akharon/SelDia/issues"
   },
-  "homepage": "https://seldia.dev",
+  "homepage": "https://github.com/akharon/SelDia#readme",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -48,7 +48,7 @@
     "build": "node scripts/build.mjs && node scripts/vendor-external-deps.mjs",
     "dev": "node scripts/build.mjs --watch",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@marp-team/marp-core": "^4.4.0",

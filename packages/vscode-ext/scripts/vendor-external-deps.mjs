@@ -115,6 +115,15 @@ function collectClosure() {
   return out;
 }
 
+/**
+ * Files Node never loads at runtime: TypeScript sources and declarations,
+ * source maps, and docs. They were ~24 MB of the ~31 MB vendored tree (mostly
+ * mathjax-full/ts and .d.ts files) and inflated the .vsix for nothing.
+ * Directories are always kept so cpSync can descend into them.
+ */
+const NON_RUNTIME_RE = /\.([cm]?tsx?|map|md|markdown)$/i;
+const isNonRuntimeFile = (rel) => NON_RUNTIME_RE.test(rel);
+
 const closure = collectClosure();
 console.log(`[vendor-deps] Vendoring ${closure.size} package(s) rooted at ${roots.join(', ')}`);
 
@@ -130,7 +139,10 @@ for (const [destRel, src] of closure) {
   cpSync(src, dest, {
     recursive: true,
     dereference: true,
-    filter: (srcPath) => !srcPath.slice(src.length).includes('node_modules'),
+    filter: (srcPath) => {
+      const rel = srcPath.slice(src.length);
+      return !rel.includes('node_modules') && !isNonRuntimeFile(rel);
+    },
   });
 }
 

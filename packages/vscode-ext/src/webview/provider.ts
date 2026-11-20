@@ -275,6 +275,7 @@ export class SelDiAInteractiveProvider {
     const key = SelDiAInteractiveProvider.keyFor(sourceUri);
     const existing = SelDiAInteractiveProvider.panels.get(key);
     if (existing) existing.dispose();
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'icon.png');
     const provider = new SelDiAInteractiveProvider(panel, extensionUri, engine, source, sourceUri);
     SelDiAInteractiveProvider.panels.set(key, provider);
     return provider;
@@ -308,6 +309,8 @@ export class SelDiAInteractiveProvider {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
       }
     );
+
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'icon.png');
 
     const provider = new SelDiAInteractiveProvider(panel, extensionUri, engine, source, sourceUri);
     SelDiAInteractiveProvider.panels.set(key, provider);
@@ -352,6 +355,7 @@ export class SelDiAInteractiveProvider {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
       }
     );
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'icon.png');
     const provider = new SelDiAInteractiveProvider(
       panel, extensionUri, engine, block.source, docUri, block.blockId
     );
@@ -693,17 +697,17 @@ export class SelDiAInteractiveProvider {
     <span class="stats">${stats}</span>
 
     <span class="sep"></span>
-    <button class="icon-btn" id="btnSave" onclick="handleSave()" title="Save (Ctrl+S)" aria-label="Save">${icon('save')}</button>
+    <button class="icon-btn" id="btnSave" data-action="handleSave" title="Save (Ctrl+S)" aria-label="Save">${icon('save')}</button>
 
     <span class="sep"></span>
-    <button class="icon-btn" id="btnUndo" onclick="handleUndo()" disabled title="Undo (Ctrl+Z)" aria-label="Undo">${icon('undo')}</button>
-    <button class="icon-btn" id="btnRedo" onclick="handleRedo()" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${icon('redo')}</button>
+    <button class="icon-btn" id="btnUndo" data-action="handleUndo" disabled title="Undo (Ctrl+Z)" aria-label="Undo">${icon('undo')}</button>
+    <button class="icon-btn" id="btnRedo" data-action="handleRedo" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${icon('redo')}</button>
 
     <span class="sep"></span>
-    <button class="icon-btn" onclick="zoomIn()" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
-    <button class="icon-btn" onclick="zoomOut()" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
-    <button class="icon-btn" onclick="fitToScreen()" title="Fit to screen" aria-label="Fit to screen">${icon('fit-screen')}</button>
-    <button class="icon-btn" onclick="resetZoom()" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
+    <button class="icon-btn" data-action="zoomIn" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
+    <button class="icon-btn" data-action="zoomOut" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
+    <button class="icon-btn" data-action="fitToScreen" title="Fit to screen" aria-label="Fit to screen">${icon('fit-screen')}</button>
+    <button class="icon-btn" data-action="resetZoom" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
     <!-- Custom dropdown, NOT a native <select>: native popup surfaces spawned
@@ -726,16 +730,16 @@ export class SelDiAInteractiveProvider {
 
     <span class="sep"></span>
     <span id="nodePaletteWrap" style="position:relative">
-      <button class="icon-btn" id="btnAddNode" onclick="handleAddNode()" title="Add node" aria-haspopup="listbox" aria-expanded="false" aria-label="Add node">${icon('add-node')}</button>
+      <button class="icon-btn" id="btnAddNode" data-action="handleAddNode" title="Add node" aria-haspopup="listbox" aria-expanded="false" aria-label="Add node">${icon('add-node')}</button>
       <div id="nodePalette" role="listbox"></div>
     </span>
     <span id="edgePaletteWrap" style="position:relative">
-      <button class="icon-btn" id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)" aria-haspopup="listbox" aria-expanded="false" aria-label="Draw edge">${icon('add-edge')}</button>
+      <button class="icon-btn" id="btnAddEdge" data-action="handleAddEdge" title="Draw edge (click source, then target)" aria-haspopup="listbox" aria-expanded="false" aria-label="Draw edge">${icon('add-edge')}</button>
       <div id="edgePalette" role="listbox"></div>
     </span>
 
     <span class="sep"></span>
-    <button class="icon-btn" onclick="exportSvg()" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
+    <button class="icon-btn" data-action="exportSvg" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
   </div>
 
   <div id="container">
@@ -826,7 +830,7 @@ export class SelDiAInteractiveProvider {
         break;
 
       case 'exportRequested':
-        // Handled via the export SVG button in webview
+        if (typeof msg.svg === 'string') void this.exportSvg(msg.svg);
         break;
 
       case 'changeTheme':
@@ -997,6 +1001,30 @@ export class SelDiAInteractiveProvider {
     }
     this.syncDirty();
     void this.autoSaveIfEnabled();
+  }
+
+  /** Webviews can't trigger downloads, so the SVG markup is posted here and
+   *  written through a native save dialog, with a notification that offers
+   *  to reveal the written file. */
+  private async exportSvg(svg: string): Promise<void> {
+    const base = this._sourceUri
+      ? vscode.Uri.joinPath(this._sourceUri, '..', this._sourceUri.path.split('/').pop()!.replace(/\.[^.]+$/, '') + '.svg')
+      : undefined;
+    const target = await vscode.window.showSaveDialog({
+      defaultUri: base,
+      filters: { 'SVG image': ['svg'] },
+      saveLabel: 'Export SVG',
+    });
+    if (!target) return;
+    try {
+      await vscode.workspace.fs.writeFile(target, Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n' + svg, 'utf8'));
+    } catch (err) {
+      void vscode.window.showErrorMessage(`SelDiA: SVG export failed — ${(err as Error).message}`);
+      return;
+    }
+    const choice = await vscode.window.showInformationMessage(`SelDiA: exported ${target.fsPath}`, 'Reveal', 'Open');
+    if (choice === 'Reveal') void vscode.commands.executeCommand('revealFileInOS', target);
+    if (choice === 'Open') void vscode.commands.executeCommand('vscode.open', target);
   }
 
   private async undo(): Promise<void> {

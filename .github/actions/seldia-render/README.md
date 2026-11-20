@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: seldia/seldia/.github/actions/seldia-render@main
+      - uses: akharon/SelDia/.github/actions/seldia-render@main
 ```
 
 ## What's tested vs. not

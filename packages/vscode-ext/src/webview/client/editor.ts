@@ -379,17 +379,18 @@ window.resetZoom = () => {
   applyTransform();
 };
 window.fitToScreen = () => {
-  const svg = container.querySelector('svg');
+  const svg = container.querySelector('svg') as SVGSVGElement | null;
   if (!svg) return;
-  const vb = svg.getAttribute('viewBox') || '0 0 800 600';
-  const parts = vb.split(' ');
+  // Use the SVG's untransformed layout box (CSS already constrains it with
+  // max-width), not raw viewBox units — mixing the two made fit a no-op.
+  const w = svg.clientWidth || svg.getBoundingClientRect().width / scale;
+  const h = svg.clientHeight || svg.getBoundingClientRect().height / scale;
+  if (!w || !h) return;
   const cw = container.clientWidth;
   const ch = container.clientHeight;
-  const sx = cw / parseFloat(parts[2]);
-  const sy = ch / parseFloat(parts[3]);
-  scale = Math.min(sx, sy) * 0.9;
-  offsetX = (cw - parseFloat(parts[2]) * scale) / 2;
-  offsetY = (ch - parseFloat(parts[3]) * scale) / 2;
+  scale = Math.min(cw / w, ch / h) * 0.95;
+  offsetX = (cw - w * scale) / 2;
+  offsetY = (ch - h * scale) / 2;
   applyTransform();
 };
 
@@ -581,11 +582,26 @@ let editTargetId: string | null = null;
 let editTargetType: string | null = null;
 let editOldLabel = '';
 
+let hiddenLabelEls: SVGElement[] = [];
+function restoreHiddenLabels() {
+  for (const el of hiddenLabelEls) el.style.visibility = '';
+  hiddenLabelEls = [];
+}
+
 function openLabelEditor(relativeTo: Element, currentLabel: string, id: string, type: string) {
-  const rect = relativeTo.getBoundingClientRect();
+  restoreHiddenLabels();
+  const textEls = Array.from(relativeTo.querySelectorAll('text')) as SVGElement[];
+  // Centre the editor over the label (or the shape when there is none) and
+  // hide the SVG text so the old label doesn't bleed through behind it.
+  const anchor = textEls.length ? textEls[0] : relativeTo;
+  const rect = anchor.getBoundingClientRect();
+  for (const el of textEls) el.style.visibility = 'hidden';
+  hiddenLabelEls = textEls;
   labelEditor.style.display = 'block';
-  labelEditor.style.left = rect.left + 10 + 'px';
-  labelEditor.style.top = rect.top + 10 + 'px';
+  labelEditor.style.minWidth = Math.max(80, rect.width + 16) + 'px';
+  labelEditor.style.left = rect.left + rect.width / 2 + 'px';
+  labelEditor.style.top = rect.top + rect.height / 2 + 'px';
+  labelEditor.style.transform = 'translate(-50%, -50%)';
   labelEditor.textContent = currentLabel;
   editTargetId = id;
   editTargetType = type;
@@ -607,13 +623,15 @@ labelEditor.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     e.preventDefault();
-    labelEditor.style.display = 'none';
+    editTargetId = null; // cancel: the blur below must not commit
+    (labelEditor as HTMLElement).blur();
   }
 });
 
 function finishLabelEdit() {
   const newLabel = labelEditor.textContent!.trim();
   labelEditor.style.display = 'none';
+  restoreHiddenLabels();
   if (editTargetId && newLabel && newLabel !== editOldLabel) {
     if (editTargetType === 'node') {
       vscode.postMessage({
@@ -860,6 +878,11 @@ let currentTheme = window.__seldiaInit.theme;
 function setThemeUI(t: string) {
   currentTheme = t;
   themeBtn.textContent = (THEME_LABELS[t] || t) + ' ▾';
+  // Theme switches only swap the SVG over postMessage, so the page
+  // background baked into the initial HTML must be updated here too.
+  const dark = t.includes('dark');
+  document.documentElement.style.setProperty('--bg-color', dark ? '#1e1e1e' : '#ffffff');
+  document.documentElement.style.setProperty('--fg-color', dark ? '#d4d4d4' : '#333333');
   themeMenu.querySelectorAll('[data-theme-value]').forEach((i) => {
     i.classList.toggle('selected', i.getAttribute('data-theme-value') === t);
   });
@@ -884,17 +907,44 @@ themeMenu.querySelectorAll('[data-theme-value]').forEach((item) => {
 });
 
 // ── Export ─────────────────────────────────────────────────────────
+// Blob + <a download> is silently ignored inside VS Code webviews, so the
+// host shows a native save dialog and writes the file.
 window.exportSvg = () => {
   const svgEl = container.querySelector('svg');
   if (!svgEl) return;
-  const s = new XMLSerializer().serializeToString(svgEl);
-  const b = new Blob([s], { type: 'image/svg+xml' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(b);
-  a.download = 'diagram.svg';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const clone = svgEl.cloneNode(true) as SVGSVGElement;
+  // Strip view-only state (pan/zoom transform, selection) from the export.
+  clone.style.transform = '';
+  clone.style.transformOrigin = '';
+  clone.querySelectorAll('[data-selected]').forEach((el) => el.removeAttribute('data-selected'));
+  if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  vscode.postMessage({ type: 'exportRequested', svg: new XMLSerializer().serializeToString(clone) });
 };
+
+// ── Toolbar wiring ─────────────────────────────────────────────────
+// The webview CSP (script-src 'nonce-…') blocks inline onclick="…"
+// attributes — that is why every toolbar button was dead. Buttons carry
+// data-action instead and are dispatched from here.
+const TOOLBAR_ACTIONS: Record<string, () => void> = {
+  handleSave: () => handleSave(),
+  handleUndo: () => window.handleUndo(),
+  handleRedo: () => window.handleRedo(),
+  zoomIn: () => window.zoomIn(),
+  zoomOut: () => window.zoomOut(),
+  fitToScreen: () => window.fitToScreen(),
+  resetZoom: () => window.resetZoom(),
+  handleAddNode: () => window.handleAddNode(),
+  handleAddEdge: () => window.handleAddEdge(),
+  exportSvg: () => window.exportSvg(),
+};
+document.querySelectorAll<HTMLElement>('[data-action]').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    const fn = TOOLBAR_ACTIONS[btn.dataset.action || ''];
+    if (!fn) return;
+    e.preventDefault();
+    fn();
+  });
+});
 
 // ── Save ───────────────────────────────────────────────────────────
 // Visual edits land in the document as WorkspaceEdits, which leaves it

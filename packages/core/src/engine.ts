@@ -1203,8 +1203,12 @@ class SelDiAEngine implements CoreEngine {
     const fanned = !!fan && (fan.srcCount > 1 || fan.tgtCount > 1);
     const fanSlot = fanned && fan ? (fan.srcCount > 1 ? fan.srcIndex : fan.tgtIndex) : 0;
     const stroke = (s.stroke as string) || (fanned ? seriesColor(fanSlot) : DS.neutral.edge);
-    const sw = (s.strokeWidth as number) || DS.stroke.edge;
-    const dash = (s.strokeStyle as string) === 'dashed' ? DS.dash.edge : undefined;
+    // `strokeStyle` (or the shorter `style` alias) picks solid | dashed |
+    // dotted | thick. Thick uses the emphasis stroke token, not a free width,
+    // so the stroke-width tokens lint still holds.
+    const kind = String(s.strokeStyle ?? (s as any).style ?? '');
+    const sw = (s.strokeWidth as number) || (kind === 'thick' ? DS.stroke.emphasis : DS.stroke.edge);
+    const dash = kind === 'dashed' ? DS.dash.edge : kind === 'dotted' ? DS.dash.dot : undefined;
     const rawWps = edge.waypoints || [];
     if (rawWps.length < 2) return only('');
     let wps: Point[];
@@ -1215,7 +1219,7 @@ class SelDiAEngine implements CoreEngine {
       wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan, allNodes);
     }
     const clean = style?.clean ?? true;
-    const dashAttr = dash ? ` stroke-dasharray="${dash}"` : '';
+    const dashAttr = dash ? ` stroke-dasharray="${dash}"${kind === 'dotted' ? ' stroke-linecap="round"' : ''}` : '';
     const polyPts = wps.map(p => `${p.x + pad},${p.y + pad}`).join(' ');
     let el: string;
     if (!clean && sketchy) {

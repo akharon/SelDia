@@ -122,7 +122,7 @@ export const DS = {
   stroke: { hairline: 1, divider: 1, edge: 1.5, node: 1.75, emphasis: 2.5, halo: 4 },
 
   /** Dash patterns (stroke-dasharray). `edge` = dashed edges, `leader` = label leader lines. */
-  dash: { edge: '6 4', leader: '3 3' },
+  dash: { edge: '6 4', leader: '3 3', dot: '0.5 4' },
 
   /** Arrowhead length as a multiple of the edge stroke width. */
   arrowScale: 4.5,
@@ -333,6 +333,32 @@ export const BUILTIN_PALETTES: Record<string, PaletteOverride> = {
     neutralText: '#000000',
     neutralMuted: '#000000',
     neutralFill: '#ffffff',
+    neutralSurface: '#ffffff',
+  },
+  /** Technical-drawing look: white linework on blueprint blue. Node fill
+   *  matches the page so boxes read as outlines, not cards. */
+  blueprint: {
+    nodeStroke: '#ffffff',
+    nodeFill: '#1d4e89',
+    nodeText: '#ffffff',
+    edgeStroke: '#dbe8ff',
+    background: '#1d4e89',
+    neutralText: '#ffffff',
+    neutralMuted: '#bcd3f5',
+    neutralFill: '#245a9a',
+    neutralSurface: '#1d4e89',
+  },
+  /** Cartoon look: heavy black ink on saturated yellow; paired with sketchy
+   *  (Rough.js) rendering for wobbly outlines. */
+  comic: {
+    nodeStroke: '#111111',
+    nodeFill: '#fde047',
+    nodeText: '#111111',
+    edgeStroke: '#111111',
+    background: '#fffbeb',
+    neutralText: '#111111',
+    neutralMuted: '#44403c',
+    neutralFill: '#fef3c7',
     neutralSurface: '#ffffff',
   },
 };

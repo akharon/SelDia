@@ -32,7 +32,15 @@ const THEME_RENDER_CONFIG: Record<string, { sketchy: boolean; theme?: string }> 
   'clean-light': { sketchy: false },
   'clean-dark': { sketchy: false, theme: 'dark' },
   'mono': { sketchy: false, theme: 'high-contrast' },
+  'blueprint': { sketchy: false, theme: 'blueprint' },
+  'comic': { sketchy: true, theme: 'comic' },
 };
+
+/** Canvas backdrop per diagram theme (the toolbar/menus follow VS Code's theme). */
+const CANVAS_BG: Record<string, string> = {
+  'sketchy-dark': '#1e1e1e', 'clean-dark': '#1e1e1e', 'blueprint': '#1d4e89', 'comic': '#fffbeb',
+};
+const canvasBg = (t: string): string => CANVAS_BG[t] ?? '#ffffff';
 
 /** CSP nonce for the webview's script tags — a fresh one per render so the
  *  policy can pin `script-src` to exactly the tags we emit instead of
@@ -503,7 +511,6 @@ export class SelDiAInteractiveProvider {
 
   private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }>; fpScale?: number; vocabulary?: ReturnType<typeof getEditVocabulary> }): string {
     const theme = this._currentTheme;
-    const isDark = theme.includes('dark');
 
     // Node id → laid-out position, for drag write-back in the webview.
     const initJson = JSON.stringify({ ir: irPayload, theme }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
@@ -518,11 +525,23 @@ export class SelDiAInteractiveProvider {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data:;">
   <title>SelDiA Interactive</title>
   <style>
-    :root { --bg-color: ${isDark ? '#1e1e1e' : '#ffffff'}; --fg-color: ${isDark ? '#d4d4d4' : '#333333'}; }
+    /* Chrome follows the active VS Code theme via --vscode-* variables; only the
+       diagram canvas (--canvas-bg) follows the selected diagram theme. */
+    :root {
+      --canvas-bg: ${canvasBg(theme)};
+      --fg-color: var(--vscode-foreground);
+      --accent: var(--vscode-focusBorder, #0078d4);
+      --panel-bg: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+      --panel-border: var(--vscode-editorWidget-border, var(--vscode-widget-border, rgba(128,128,128,.35)));
+      --hover-bg: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.18));
+      --active-bg: var(--vscode-toolbar-activeBackground, rgba(128,128,128,.28));
+      --shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0,0,0,.3));
+    }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg-color);
+      font-family: var(--vscode-font-family, system-ui, sans-serif);
+      font-size: var(--vscode-font-size, 13px);
+      background: var(--vscode-editor-background);
       color: var(--fg-color);
       overflow: hidden;
       height: 100vh;
@@ -530,156 +549,166 @@ export class SelDiAInteractiveProvider {
       flex-direction: column;
     }
     .toolbar {
-      display: flex; align-items: center; gap: 6px;
-      padding: 6px 12px;
-      background: ${isDark ? '#252526' : '#f3f3f3'};
-      border-bottom: 1px solid ${isDark ? '#3c3c3c' : '#e0e0e0'};
-      font-size: 12px;
-      flex-wrap: wrap;
+      display: flex; align-items: center; gap: 2px;
+      min-height: 35px; padding: 0 8px;
+      background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
+      border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--panel-border));
       flex-shrink: 0;
+      flex-wrap: wrap;
       user-select: none;
     }
-    .toolbar .title { font-weight: 600; margin-right: auto; }
-    .toolbar .stats { color: #888; font-size: 11px; margin-right: 12px; }
-    .toolbar .sep { width: 1px; height: 20px; background: ${isDark ? '#3c3c3c' : '#ccc'}; margin: 0 4px; }
-    .toolbar button, .toolbar select {
-      padding: 3px 8px;
-      border: 1px solid ${isDark ? '#555' : '#ccc'};
-      background: ${isDark ? '#333' : '#fff'};
-      color: var(--fg-color);
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 11px;
+    .toolbar .title {
+      font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--vscode-sideBarTitle-foreground, var(--fg-color)); opacity: .85;
+      padding: 0 6px; white-space: nowrap;
     }
-    .toolbar button:hover { background: ${isDark ? '#444' : '#e8e8e8'}; }
-    .toolbar button:disabled { opacity: 0.4; cursor: default; }
-    .toolbar button.active { background: #0e639c; color: #fff; border-color: #0e639c; }
+    .toolbar .stats {
+      color: var(--vscode-descriptionForeground); font-size: 11px;
+      margin-right: auto; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .toolbar .sep { width: 1px; height: 16px; background: var(--panel-border); margin: 0 6px; flex-shrink: 0; }
+    .toolbar button {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 24px; padding: 0 8px;
+      border: 1px solid transparent; border-radius: 5px;
+      background: transparent;
+      color: var(--vscode-icon-foreground, var(--fg-color));
+      font: inherit; font-size: 12px;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .toolbar button:hover { background: var(--hover-bg); }
+    .toolbar button:active { background: var(--active-bg); }
+    .toolbar button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+    .toolbar button:disabled { opacity: 0.4; cursor: default; background: transparent; }
+    .toolbar button.active, .icon-btn.active {
+      background: var(--vscode-inputOption-activeBackground, var(--active-bg));
+      border-color: var(--vscode-inputOption-activeBorder, var(--accent));
+      color: var(--vscode-inputOption-activeForeground, var(--fg-color));
+    }
     /* Unsaved visual edits: the Save button is the only place the panel can
        show that the document is dirty (a webview has no editor tab badge). */
-    .toolbar button#btnSave.dirty { color: #e2b93d; border-color: #e2b93d; }
-    .toolbar button#btnSave.dirty::after { content: '\\2022'; margin-left: 2px; font-size: 14px; line-height: 0; }
-    /* Icon-only buttons: square hit target, glyph centered, no label gap. */
-    .toolbar button.icon-btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 26px; height: 24px; padding: 0;
+    .toolbar button#btnSave { position: relative; }
+    .toolbar button#btnSave.dirty { color: var(--vscode-editorWarning-foreground, #e2b93d); }
+    .toolbar button#btnSave.dirty::after {
+      content: ''; position: absolute; top: 3px; right: 3px;
+      width: 6px; height: 6px; border-radius: 50%; background: currentColor;
     }
-    .toolbar button.icon-btn .seldia-icon { margin-right: 0; vertical-align: 0; }
+    .toolbar button.icon-btn { justify-content: center; width: 28px; padding: 0; }
+    .toolbar button.icon-btn .seldia-icon { margin-right: 0; vertical-align: 0; width: 16px; height: 16px; }
+    .toolbar #themeBtn {
+      border-color: var(--vscode-dropdown-border, var(--panel-border));
+      background: var(--vscode-dropdown-background);
+      color: var(--vscode-dropdown-foreground, var(--fg-color));
+      padding: 0 8px;
+    }
+    .toolbar #themeBtn::before {
+      content: ''; width: 10px; height: 10px; border-radius: 3px;
+      background: var(--canvas-bg); border: 1px solid var(--panel-border);
+    }
     #container {
       flex: 1;
       overflow: hidden;
       position: relative;
+      background-color: var(--canvas-bg);
+      background-image: radial-gradient(circle, rgba(128,128,128,.22) 1px, transparent 1.2px);
+      background-size: 20px 20px;
     }
-    #container svg {
-      max-width: 100%;
-      height: auto;
-      display: block;
-    }
-    /* Label editor overlay */
+    #container svg { max-width: 100%; height: auto; display: block; }
+    /* Popovers: label editor, context menu, theme + palettes share VS Code's menu look. */
     #labelEditor {
       display: none;
       position: absolute;
       z-index: 1000;
-      background: ${isDark ? '#1e1e1e' : '#fff'};
-      border: 2px solid #0e639c;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground, var(--fg-color));
+      border: 1px solid var(--accent);
       border-radius: 4px;
       padding: 4px 8px;
-      font-size: 13px;
-      font-family: 'Caveat', 'Comic Sans MS', cursive;
-      color: var(--fg-color);
+      font: inherit;
       outline: none;
       min-width: 80px;
-      box-shadow: 0 4px 12px rgba(0,0,0,.2);
+      box-shadow: var(--shadow);
     }
-    /* Context menu */
-    #contextMenu {
+    #contextMenu, #themeMenu, #nodePalette, #edgePalette {
       display: none;
       position: absolute;
       z-index: 1001;
-      background: ${isDark ? '#252526' : '#fff'};
-      border: 1px solid ${isDark ? '#3c3c3c' : '#ccc'};
-      border-radius: 4px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.25);
-      min-width: 160px;
-      padding: 4px 0;
+      background: var(--vscode-menu-background, var(--panel-bg));
+      color: var(--vscode-menu-foreground, var(--fg-color));
+      border: 1px solid var(--vscode-menu-border, var(--panel-border));
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+      min-width: 170px;
+      padding: 4px;
     }
-    #contextMenu .menu-item {
-      padding: 6px 16px;
-      cursor: pointer;
-      font-size: 12px;
-      color: var(--fg-color);
+    #themeMenu, #nodePalette, #edgePalette { top: calc(100% + 4px); left: 0; z-index: 1002; }
+    #themeMenu { min-width: 160px; }
+    .menu-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 10px; border-radius: 4px;
+      cursor: pointer; font-size: 12px; line-height: 18px; white-space: nowrap;
+      color: inherit;
     }
-    #contextMenu .menu-item:hover { background: #0e639c; color: #fff; }
-    #contextMenu .menu-sep { height: 1px; background: ${isDark ? '#3c3c3c' : '#e0e0e0'}; margin: 4px 8px; }
-    /* Theme dropdown (custom, same visual family as the context menu) */
-    #themeMenu {
-      display: none;
-      position: absolute;
-      top: 100%; left: 0;
-      z-index: 1002;
-      background: ${isDark ? '#252526' : '#fff'};
-      border: 1px solid ${isDark ? '#3c3c3c' : '#ccc'};
-      border-radius: 4px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.25);
-      min-width: 120px;
-      padding: 4px 0;
+    .menu-item:hover {
+      background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground));
+      color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground, inherit));
     }
-    #themeMenu .menu-item { padding: 5px 14px; cursor: pointer; font-size: 12px; color: var(--fg-color); white-space: nowrap; }
-    #themeMenu .menu-item:hover { background: #0e639c; color: #fff; }
+    .menu-item .seldia-icon { margin-right: 0; opacity: .85; }
+    .menu-sep { height: 1px; background: var(--vscode-menu-separatorBackground, var(--panel-border)); margin: 4px 6px; }
+    #themeMenu .menu-item::before {
+      content: ''; width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0;
+      border: 1px solid var(--panel-border); background: var(--swatch, transparent);
+    }
     #themeMenu .menu-item.selected { font-weight: 600; }
-    /* Add-node / add-edge kind palettes: same popover family as #themeMenu,
-       listing the current diagram type's edit vocabulary so "add node" and
-       "draw edge" are an explicit choice instead of one generic template. */
-    #nodePalette, #edgePalette {
-      display: none;
-      position: absolute;
-      top: 100%; left: 0;
-      z-index: 1002;
-      background: ${isDark ? '#252526' : '#fff'};
-      border: 1px solid ${isDark ? '#3c3c3c' : '#ccc'};
-      border-radius: 4px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.25);
-      min-width: 160px;
-      padding: 4px 0;
-    }
-    #nodePalette .menu-item, #edgePalette .menu-item { padding: 5px 14px; cursor: pointer; font-size: 12px; color: var(--fg-color); white-space: nowrap; }
-    #nodePalette .menu-item:hover, #edgePalette .menu-item:hover { background: #0e639c; color: #fff; }
-    /* Edge-draw mode banner: visible confirmation of which
-       mode is active, since the toolbar button alone easily goes unnoticed. */
+    #themeMenu .menu-item.selected::after { content: '\\2713'; margin-left: auto; padding-left: 12px; }
+    #themeMenu [data-theme-value="sketchy-light"] { --swatch: #ffffff; }
+    #themeMenu [data-theme-value="sketchy-dark"] { --swatch: #1e1e1e; }
+    #themeMenu [data-theme-value="clean-light"] { --swatch: #f8fafc; }
+    #themeMenu [data-theme-value="clean-dark"] { --swatch: #0f172a; }
+    #themeMenu [data-theme-value="mono"] { --swatch: linear-gradient(135deg,#fff 50%,#111 50%); }
+    #themeMenu [data-theme-value="blueprint"] { --swatch: #1d4e89; }
+    #themeMenu [data-theme-value="comic"] { --swatch: #fde047; }
+    /* Mode banner: floating pill so the active mode is obvious. */
     #modeBanner {
       display: none;
       position: absolute;
-      top: 8px; left: 50%;
+      top: 12px; left: 50%;
       transform: translateX(-50%);
       z-index: 1003;
-      background: #0e639c;
-      color: #fff;
+      background: var(--vscode-badge-background, var(--accent));
+      color: var(--vscode-badge-foreground, #fff);
       font-size: 12px;
-      padding: 5px 12px;
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      padding: 5px 14px;
+      border-radius: 999px;
+      box-shadow: var(--shadow);
       pointer-events: none;
     }
     #container.seldia-stale > :not(#modeBanner):not(#staleBanner) { opacity: .4; pointer-events: none; }
-    #staleBanner { display: none; position: sticky; top: 0; z-index: 20; background: #e53e3e; color: #fff; padding: 6px 12px; font: 13px monospace; }
+    #staleBanner {
+      display: none; position: sticky; top: 0; z-index: 20;
+      background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+      border-bottom: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+      color: var(--vscode-foreground); padding: 6px 12px;
+      font-family: var(--vscode-editor-font-family, monospace); font-size: 12px;
+    }
     #container.seldia-stale #staleBanner { display: block; }
-    .error { color: #e53e3e; padding: 24px; font-family: monospace; font-size: 14px; }
+    .error {
+      margin: 24px; padding: 12px 16px; border-radius: 6px;
+      color: var(--vscode-errorForeground, #f48771);
+      background: var(--vscode-inputValidation-errorBackground, transparent);
+      border: 1px solid var(--vscode-inputValidation-errorBorder, currentColor);
+      font-family: var(--vscode-editor-font-family, monospace); font-size: 13px; white-space: pre-wrap;
+    }
     /* Selection highlight */
-    .seldia-selected { outline: 2px solid #0e639c; outline-offset: 2px; }
-    [data-selected="true"] { filter: drop-shadow(0 0 3px #0e639c); }
+    .seldia-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+    [data-selected="true"] { filter: drop-shadow(0 0 3px var(--accent)); }
     [data-type="node"], [data-type="edge"] { cursor: pointer; }
-    /* Edge draw mode */
-    .edge-draw-line { stroke: #0e639c; stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
-    /* Marks the source node while drawing a new edge (Edit mode). */
-    .seldia-edge-source { outline: 2px dashed #0e639c; outline-offset: 3px; }
-    /* Drawing-edge mode: crosshair over the canvas,
-       and the node under the cursor highlights as the drop target. */
+    .edge-draw-line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
+    .seldia-edge-source { outline: 2px dashed var(--accent); outline-offset: 3px; }
     #container.seldia-drawing-edge { cursor: crosshair; }
-    .seldia-edge-target { outline: 2px solid #4ec9b0; outline-offset: 3px; }
+    .seldia-edge-target { outline: 2px solid var(--vscode-terminal-ansiGreen, #4ec9b0); outline-offset: 3px; }
     .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
-    /* Floorplan drag guides: live horizontal/vertical distance lines from the
-       dragged item to the nearest wall or object sharing its x/y, drawn in the
-       same dashed-blue language as the static dimension strings so they read
-       as "more of the same system" rather than a different overlay. */
+    /* Floorplan drag guides: dashed-blue language matching the dimension strings. */
     #fpDragGuides { pointer-events: none; }
     #fpDragGuides .fp-guide-line { stroke: #2563eb; stroke-width: 1; stroke-dasharray: 4,3; }
     #fpDragGuides .fp-guide-tick { stroke: #2563eb; stroke-width: 1.2; }
@@ -687,7 +716,7 @@ export class SelDiAInteractiveProvider {
       font-size: 10.5px; font-weight: 600; fill: #2563eb;
       font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif;
     }
-    #fpDragGuides .fp-guide-pill { fill: ${isDark ? '#1e1e1e' : '#ffffff'}; opacity: 0.94; }
+    #fpDragGuides .fp-guide-pill { fill: var(--canvas-bg); opacity: 0.94; }
   </style>
 </head>
 <body>
@@ -707,6 +736,7 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" data-cmd="zoomIn" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="icon-btn" data-cmd="zoomOut" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
     <button class="icon-btn" data-cmd="fit" title="Fit to screen" aria-label="Fit to screen">${icon('fit-screen')}</button>
+    <button class="icon-btn" id="btnPan" data-cmd="pan" title="Pan tool (H) — or drag empty canvas" aria-label="Pan tool">${icon('hand')}</button>
     <button class="icon-btn" data-cmd="resetZoom" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
@@ -717,7 +747,7 @@ export class SelDiAInteractiveProvider {
          the webview's own compositor surface. -->
     <span id="themeWrap" style="position:relative">
       <button id="themeBtn" title="Theme" aria-haspopup="listbox" aria-expanded="false">${
-        ({ 'sketchy-light': 'Sketchy Light', 'sketchy-dark': 'Sketchy Dark', 'clean-light': 'Clean Light', 'clean-dark': 'Clean Dark', 'mono': 'Mono' } as Record<string, string>)[theme] ?? theme
+        ({ 'sketchy-light': 'Sketchy Light', 'sketchy-dark': 'Sketchy Dark', 'clean-light': 'Clean Light', 'clean-dark': 'Clean Dark', 'mono': 'Mono', 'blueprint': 'Blueprint', 'comic': 'Comic' } as Record<string, string>)[theme] ?? theme
       } ▾</button>
       <div id="themeMenu" role="listbox">
         <div class="menu-item" role="option" data-theme-value="sketchy-light">Sketchy Light</div>
@@ -725,6 +755,8 @@ export class SelDiAInteractiveProvider {
         <div class="menu-item" role="option" data-theme-value="clean-light">Clean Light</div>
         <div class="menu-item" role="option" data-theme-value="clean-dark">Clean Dark</div>
         <div class="menu-item" role="option" data-theme-value="mono">Mono</div>
+        <div class="menu-item" role="option" data-theme-value="blueprint">Blueprint</div>
+        <div class="menu-item" role="option" data-theme-value="comic">Comic</div>
       </div>
     </span>
 

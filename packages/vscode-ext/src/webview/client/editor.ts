@@ -22,6 +22,7 @@ declare global {
     __seldiaInit: SeldiaInit;
     zoomIn: () => void;
     zoomOut: () => void;
+    togglePanTool: () => void;
     resetZoom: () => void;
     fitToScreen: () => void;
     handleUndo: () => void;
@@ -342,12 +343,29 @@ function zoomAt(cx: number, cy: number, factor: number) {
 container.addEventListener('wheel', (e) => {
   e.preventDefault();
   const rect = container.getBoundingClientRect();
-  zoomAt(e.clientX - rect.left, e.clientY - rect.top, e.deltaY > 0 ? 0.9 : 1.1);
-});
+  // Proportional to the wheel delta (trackpads emit many small deltas,
+  // mice ~100 per notch) and clamped, so one notch is a gentle ~10% step.
+  const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+  const step = Math.max(-0.1, Math.min(0.1, dy * 0.0015));
+  zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-step));
+}, { passive: false });
+
+// Hand (pan) tool: when on, left-drag anywhere pans. When off, left-drag on
+// empty canvas still pans; middle button or Shift+drag always pan.
+let panTool = false;
+function setPanTool(on: boolean) {
+  panTool = on;
+  document.getElementById('btnPan')?.classList.toggle('active', on);
+  container.style.cursor = on ? 'grab' : '';
+}
+window.togglePanTool = () => setPanTool(!panTool);
 
 container.addEventListener('mousedown', (e) => {
-  if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+  const onElement = !!(e.target as Element).closest('[data-id]');
+  const emptyDrag = e.button === 0 && !onElement && editMode !== 'drawing-edge';
+  if (e.button === 1 || (e.button === 0 && (e.shiftKey || panTool)) || emptyDrag) {
     isPanning = true;
+    container.style.cursor = 'grabbing';
     panStartX = e.clientX - offsetX;
     panStartY = e.clientY - offsetY;
     e.preventDefault();
@@ -365,6 +383,7 @@ document.addEventListener('mousemove', (e) => {
 });
 
 document.addEventListener('mouseup', () => {
+  if (isPanning) container.style.cursor = panTool ? 'grab' : '';
   isPanning = false;
 });
 
@@ -378,8 +397,8 @@ function applyTransform() {
 
 // Button zoom pivots on the container centre, not the origin — zooming
 // around (0,0) walked the diagram off-screen with every click.
-window.zoomIn = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1.3);
-window.zoomOut = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1 / 1.3);
+window.zoomIn = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1.2);
+window.zoomOut = () => zoomAt(container.clientWidth / 2, container.clientHeight / 2, 1 / 1.2);
 window.resetZoom = () => {
   scale = 1;
   offsetX = 0;
@@ -875,11 +894,11 @@ function renderPalettes() {
 renderPalettes();
 
 document.addEventListener('click', (e) => {
-  if (!nodePalette.contains(e.target as Node) && e.target !== btnAddNode) {
+  if (!nodePalette.contains(e.target as Node) && !btnAddNode.contains(e.target as Node)) {
     nodePalette.style.display = 'none';
     btnAddNode.setAttribute('aria-expanded', 'false');
   }
-  if (!edgePalette.contains(e.target as Node) && e.target !== btnAddEdge) {
+  if (!edgePalette.contains(e.target as Node) && !btnAddEdge.contains(e.target as Node)) {
     edgePalette.style.display = 'none';
     btnAddEdge.setAttribute('aria-expanded', 'false');
   }
@@ -901,15 +920,17 @@ const THEME_LABELS: Record<string, string> = {
   'clean-light': 'Clean Light',
   'clean-dark': 'Clean Dark',
   mono: 'Mono',
+  blueprint: 'Blueprint',
+  comic: 'Comic',
 };
 let currentTheme = window.__seldiaInit.theme;
 /** The page CSS is baked at panel creation; incremental re-renders only
  *  swap the SVG, so the canvas background must follow the theme here. */
 function applyThemeChrome(t: string) {
-  const dark = /dark/.test(t);
-  const root = document.documentElement.style;
-  root.setProperty('--bg-color', dark ? '#1e1e1e' : '#ffffff');
-  root.setProperty('--fg-color', dark ? '#d4d4d4' : '#333333');
+  const bg: Record<string, string> = {
+    'sketchy-dark': '#1e1e1e', 'clean-dark': '#1e1e1e', blueprint: '#1d4e89', comic: '#fffbeb',
+  };
+  document.documentElement.style.setProperty('--canvas-bg', bg[t] ?? '#ffffff');
 }
 
 function setThemeUI(t: string) {
@@ -965,6 +986,7 @@ const TOOLBAR_COMMANDS: Record<string, () => void> = {
   redo: () => window.handleRedo(),
   zoomIn: () => window.zoomIn(),
   zoomOut: () => window.zoomOut(),
+  pan: () => window.togglePanTool(),
   fit: () => window.fitToScreen(),
   resetZoom: () => window.resetZoom(),
   addNode: () => window.handleAddNode(),
@@ -999,6 +1021,10 @@ document.addEventListener('keydown', (e) => {
   // the text field — without this guard, a Backspace while renaming a
   // selected node deleted the node out from under the editor.
   if (document.activeElement === labelEditor) return;
+  if ((e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    window.togglePanTool();
+    return;
+  }
   if (e.key === 'Escape') {
     dispatchInteraction({ type: 'ESCAPE' });
   }

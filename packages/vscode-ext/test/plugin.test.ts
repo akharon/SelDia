@@ -347,9 +347,7 @@ describe('createSelDiAMarkdownItPlugin (fence rule)', () => {
 describe('gallery fences through the preview fence rule', () => {
   const { readFileSync } = require('node:fs') as typeof import('node:fs');
   const { fileURLToPath } = require('node:url') as typeof import('node:url');
-  const doc = (n: string) => readFileSync(fileURLToPath(new URL(`../../../docs/examples/${n}`, import.meta.url)), 'utf8').replace(/
-/g, '
-');
+  const doc = (n: string) => readFileSync(fileURLToPath(new URL(`../../../docs/examples/${n}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
   const fences = (n: string) => [...doc(n).matchAll(/```(\w+)\n([\s\S]*?)```/g)].map((m) => ({ info: m[1], content: m[2] }));
   const rule = () => {
     const md: any = { renderer: { rules: {} }, core: { ruler: { before: () => {} } } };

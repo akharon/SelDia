@@ -18,21 +18,25 @@ floorplan "Garden House — Ground Floor" {
   sofa  "sofa"  { type: "furniture", item: "sofa", in: "Living", at: "0.4,0.4" }
   tv    "tv"    { type: "furniture", item: "tv", in: "Living", at: "1.2,3.9" }
   rug   "rug"   { type: "furniture", item: "carpet-large", in: "Living", at: "1.3,1.6" }
-  ct    "table" { type: "furniture", item: "coffee-table", in: "Living", at: "1.9,2.3" }
+  ct    "table" { type: "furniture", item: "coffee-table", in: "Living", at: "1.88,2.47" }
 
   ksink "sink"    { type: "furniture", item: "sink", in: "Kitchen", at: "0.3,0.3" }
   kst   "stove"   { type: "furniture", item: "stove", in: "Kitchen", at: "1.1,0.3" }
   kfr   "fridge"  { type: "furniture", item: "fridge", in: "Kitchen", at: "2.7,0.3" }
   kco   "counter" { type: "furniture", item: "counter", in: "Kitchen", at: "0.3,1.2" }
-  ktb   "table"   { type: "furniture", item: "dining-table", in: "Kitchen", at: "1.0,2.6" }
+  ktb   "table"   { type: "furniture", item: "dining-table", in: "Kitchen", at: "0.88,2.56" }
 
-  wc  "wc"     { type: "furniture", item: "toilet", in: "Bath", at: "0.3,0.3" }
-  bsk "sink"   { type: "furniture", item: "sink-bath", in: "Bath", at: "1.4,0.3" }
+  wc  "wc"     { type: "furniture", item: "toilet", in: "Bath", at: "0.18,1.01" }
+  bsk "sink"   { type: "furniture", item: "sink-bath", in: "Bath", at: "0.27,2.1" }
   bsh "shower" { type: "furniture", item: "shower-cabin", in: "Bath", at: "1.3,1.5" }
 
-  bd  "bed"      { type: "furniture", item: "bed-double", in: "Bed", at: "0.5,0.5" }
-  wr  "wardrobe" { type: "furniture", item: "wardrobe", in: "Bed", at: "2.6,0.4" }
+  bd  "bed"      { type: "furniture", item: "bed-double", in: "Bed", at: "1.3,0.4" }
+  wr  "wardrobe" { type: "furniture", item: "wardrobe", in: "Bed", at: "2.85,0.23" }
 
   m1 "clear" { type: "measure", from: "sofa", to: "ct" }
   m2 "walk"  { type: "measure", from: "ktb", to: "Kitchen.east" }
+  node27: [New Node 27] { x: 497, y: 438 }
+  node27: {New Node 27} { x: 497, y: 438 }
+  node27: [New Node 27] { x: 497, y: 438 }
+  node27: [New Node 27] { x: 497, y: 438 }
 }

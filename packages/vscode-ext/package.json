@@ -16,7 +16,7 @@
   },
   "homepage": "https://github.com/akharon/SelDia#readme",
   "engines": {
-    "vscode": "^1.96.0"
+    "vscode": "^1.95.0"
   },
   "icon": "./media/icon.png",
   "categories": [
@@ -60,7 +60,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/vscode": "^1.96.0",
+    "@types/vscode": "~1.95.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.1",
     "typescript": "^5.7.0",
@@ -328,6 +328,7 @@
         "seldia.defaultTheme": {
           "type": "string",
           "default": "sketchy-light",
+          "enum": ["sketchy-light", "sketchy-dark", "clean-light", "clean-dark", "mono", "blueprint", "comic"],
           "description": "Default theme for rendered diagrams"
         },
         "seldia.markdown.enabled": {

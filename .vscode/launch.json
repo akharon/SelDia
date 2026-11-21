@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Build VSIX Package",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "C:/Program Files/Git/bin/bash.exe",
+      "runtimeArgs": ["scripts/package-vsix.sh"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PUPPETEER_SKIP_DOWNLOAD": "1",
+        "PATH": "${workspaceFolder}/.tools/node-v24.22.3-win-x64;${env:PATH}"
+      }
+    }
+  ]
+}

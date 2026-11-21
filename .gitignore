@@ -12,3 +12,4 @@ test_seldia.mjs
 
 .pairs/
 *.tsbuildinfo
+.tools/

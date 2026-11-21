@@ -499,22 +499,28 @@ export function renderC4Node(node: IRNode, pad: number, sketchy: boolean, swatch
   const cx = x + w / 2;
   const seed = seedFor(node.id);
   const isExternal = kind === 'systemExt' || kind === 'containerExt';
-  const fill = isExternal ? DS.neutral.surface : swatch.fill;
-  const stroke = isExternal ? DS.neutral.muted : swatch.stroke;
-  const textColor = isExternal ? DS.neutral.text : swatch.text;
+  // An explicit author style always wins — external systems are only
+  // greyed by default, and a person's figure is painted with its fill.
+  const st = (node.style || {}) as Record<string, unknown>;
+  const fill = st.fill ? swatch.fill : isExternal ? DS.neutral.surface : swatch.fill;
+  const stroke = st.stroke ? swatch.stroke : isExternal ? DS.neutral.muted : swatch.stroke;
+  const textColor = st.textColor || st.fill ? swatch.text : isExternal ? DS.neutral.text : swatch.text;
+  const figure = st.fill ? swatch.fill : swatch.stroke;
 
   if (kind === 'person') {
     const cyHead = y + 22, r = 16;
-    const style: RoughStyle = { stroke, strokeWidth: DS.stroke.node, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed };
+    const style: RoughStyle = { stroke, strokeWidth: DS.stroke.node, fill: figure, roughness: DS.roughness, fillStyle: 'solid', seed };
     let el = sketchy
       ? roughEllipse(cx, cyHead, r * 2, r * 2, style)
-      : `    <circle cx="${cx}" cy="${cyHead}" r="${r}" fill="${swatch.stroke}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+      : `    <circle cx="${cx}" cy="${cyHead}" r="${r}" fill="${figure}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n`;
     const bodyY = cyHead + r + 4, bodyW = w * 0.7, bodyH = h - (bodyY - y) - 28;
-    const bodyStyle: RoughStyle = { stroke, strokeWidth: DS.stroke.node, fill: swatch.stroke, roughness: DS.roughness, fillStyle: 'solid', seed: seed + 1 };
+    const bodyStyle: RoughStyle = { stroke, strokeWidth: DS.stroke.node, fill: figure, roughness: DS.roughness, fillStyle: 'solid', seed: seed + 1 };
     el += sketchy
       ? roughRect(cx - bodyW / 2, bodyY, bodyW, bodyH, { ...bodyStyle })
-      : `    <path d="M ${cx - bodyW / 2} ${bodyY + bodyH} Q ${cx - bodyW / 2} ${bodyY} ${cx} ${bodyY} Q ${cx + bodyW / 2} ${bodyY} ${cx + bodyW / 2} ${bodyY + bodyH} Z" fill="${swatch.stroke}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n`;
-    el += textBlock(cx, bodyY + bodyH + 16, 15, DS.fontSize.label, DS.fontFamily, textColor, node.label, 'middle', '600');
+      : `    <path d="M ${cx - bodyW / 2} ${bodyY + bodyH} Q ${cx - bodyW / 2} ${bodyY} ${cx} ${bodyY} Q ${cx + bodyW / 2} ${bodyY} ${cx + bodyW / 2} ${bodyY + bodyH} Z" fill="${figure}" stroke="${stroke}" stroke-width="${DS.stroke.node}"/>\n`;
+    // The label sits on the canvas under the figure, not on the fill.
+    const personText = st.textColor ? String(st.textColor) : st.fill ? DS.neutral.text : swatch.text;
+    el += textBlock(cx, bodyY + bodyH + 16, 15, DS.fontSize.label, DS.fontFamily, personText, node.label, 'middle', '600');
     el += textBlock(cx, bodyY + bodyH + 32, 12, DS.fontSize.small, DS.fontFamily, DS.neutral.muted, `[${C4_TAG[kind]}]`, 'middle', '400');
     return el;
   }

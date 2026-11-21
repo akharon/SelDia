@@ -15,7 +15,7 @@ import {
   computeAttrEdit, computeLabelEdit, computeEdgeLabelEdit,
   computeEdgeDeleteEdit, computeEdgeReconnectEdit, computeNodeDeleteEdits, computeAppendStatementEdit,
   buildNodeStatement, buildEdgeStatement,
-  type TextEdit,
+  type TextEdit, type AttrPatch,
 } from '../edit/position-patch.js';
 import { findBlockById, findSelDiABlocks, type SelDiABlockLoc } from '../edit/blocks.js';
 import { computeFloorplanDragPatch } from '../edit/floorplan-drag.js';
@@ -741,7 +741,11 @@ export class SelDiAInteractiveProvider {
     #edgeHandles .ghost { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 3; pointer-events: none; vector-effect: non-scaling-stroke; }
     /* Selection highlight */
     .seldia-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
-    [data-selected="true"] { filter: drop-shadow(0 0 3px var(--accent)); }
+    [data-type="edge"][data-selected="true"] { filter: drop-shadow(0 0 3px var(--accent)); }
+    /* Selected nodes: dashed frame + corner squares (overlay drawn by the client). */
+    #selFrames { pointer-events: none; }
+    #selFrames .sel-frame { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+    #selFrames .sel-corner { fill: var(--vscode-editor-background, #fff); stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
     [data-type="node"], [data-type="edge"] { cursor: pointer; }
     .edge-draw-line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6,3; pointer-events: none; }
     .seldia-edge-source { outline: 2px dashed var(--accent); outline-offset: 3px; }
@@ -749,14 +753,24 @@ export class SelDiAInteractiveProvider {
     .seldia-edge-target { outline: 2px solid var(--vscode-terminal-ansiGreen, #4ec9b0); outline-offset: 3px; }
     .seldia-icon { width: 14px; height: 14px; vertical-align: -2px; color: currentColor; margin-right: 3px; }
     /* Floorplan drag guides: dashed-blue language matching the dimension strings. */
-    #fpDragGuides { pointer-events: none; }
-    #fpDragGuides .fp-guide-line { stroke: #2563eb; stroke-width: 1; stroke-dasharray: 4,3; }
-    #fpDragGuides .fp-guide-tick { stroke: #2563eb; stroke-width: 1.2; }
-    #fpDragGuides .fp-guide-text {
+    #fpDragGuides, #fpSelGuides { pointer-events: none; }
+    #fpSelGuides .fp-guide-edit { pointer-events: all; cursor: text; }
+    #fpSelGuides .fp-guide-edit:hover .fp-guide-pill { fill: var(--accent); opacity: .2; }
+    #fpSelGuides .fp-guide-edit:hover .fp-guide-text { text-decoration: underline; }
+    #fpDimInput {
+      display: none; position: fixed; z-index: 1004; width: 90px; height: 24px; padding: 0 6px; text-align: center;
+      font: inherit; font-size: 12px; border-radius: 4px; outline: none;
+      background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+      border: 1px solid var(--accent); box-shadow: var(--shadow);
+    }
+    #fpDimInput.invalid { border-color: var(--vscode-inputValidation-errorBorder, #be1100); }
+    #fpDragGuides .fp-guide-line, #fpSelGuides .fp-guide-line { stroke: #2563eb; stroke-width: 1; stroke-dasharray: 4,3; }
+    #fpDragGuides .fp-guide-tick, #fpSelGuides .fp-guide-tick { stroke: #2563eb; stroke-width: 1.2; }
+    #fpDragGuides .fp-guide-text, #fpSelGuides .fp-guide-text {
       font-size: 10.5px; font-weight: 600; fill: #2563eb;
       font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif;
     }
-    #fpDragGuides .fp-guide-pill { fill: var(--canvas-bg); opacity: 0.94; }
+    #fpDragGuides .fp-guide-pill, #fpSelGuides .fp-guide-pill { fill: var(--canvas-bg); opacity: 0.94; }
   </style>
 </head>
 <body>
@@ -785,7 +799,7 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" data-cmd="resetZoom" title="Actual size (100%)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
-    <button id="btnAutoLayout" data-cmd="autoLayout" title="Auto-layout: arrange every node and route every edge automatically (Ctrl+Z to undo)">${icon('auto-layout')}<span>Auto-layout</span></button>
+    <button class="icon-btn" id="btnAutoLayout" data-cmd="autoLayout" title="Auto-layout: arrange every node and route every edge automatically (Ctrl+Z to undo)" aria-label="Auto-layout">${icon('auto-layout')}</button>
 
     <span class="sep"></span>
     <!-- Custom dropdown, NOT a native <select>: native popup surfaces spawned
@@ -1256,12 +1270,28 @@ export class SelDiAInteractiveProvider {
       { placeHolder: `Style property for '${nodeId}'` }
     );
     if (!prop) return;
-    const value = await vscode.window.showInputBox({
-      prompt: `${prop.label} for '${nodeId}' (CSS color, e.g. #ff8800 or steelblue)`,
-      validateInput: (v) => (v.trim() ? undefined : 'Enter a color value'),
-    });
-    if (!value) return;
-    await this._editQueue.run(() => this.applyNodeAttrs(nodeId, { [prop.key]: value.trim() }));
+    const PRESETS = ['steelblue', '#ff8800', 'tomato', 'seagreen', 'gold', 'mediumpurple', 'slategray', 'white', 'black'];
+    const pick = await vscode.window.showQuickPick(
+      [
+        { label: '$(edit) Custom color…', key: 'custom' },
+        { label: '$(discard) Reset to theme default', key: 'reset' },
+        { label: '', kind: vscode.QuickPickItemKind.Separator, key: '' },
+        ...PRESETS.map((c) => ({ label: c, key: c })),
+      ],
+      { placeHolder: `${prop.label} for '${nodeId}'` }
+    );
+    if (!pick || !pick.key) return;
+    let value: string | null = pick.key;
+    if (pick.key === 'reset') value = null;
+    else if (pick.key === 'custom') {
+      const v = await vscode.window.showInputBox({
+        prompt: `${prop.label} for '${nodeId}' — any CSS color, e.g. #ff8800, steelblue, rgb(30,120,200)`,
+        validateInput: (s) => (/^(#[0-9a-f]{3,8}|[a-z]+|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(s.trim()) ? undefined : 'Not a CSS color'),
+      });
+      if (!v) return;
+      value = v.trim();
+    }
+    await this._editQueue.run(() => this.applyNodeAttrs(nodeId, { [prop.key]: value }));
   }
 
   /** Write a dragged node's new position back into its declaration.
@@ -1331,7 +1361,7 @@ export class SelDiAInteractiveProvider {
   /** Merge attribute key/values (position, fill/stroke from Edit Style, …)
    *  into the node's declaration via the same ground-truth read +
    *  fence-offset translation + single WorkspaceEdit as drags. */
-  private async applyNodeAttrs(nodeId: string, attrs: Record<string, string | number>): Promise<void> {
+  private async applyNodeAttrs(nodeId: string, attrs: AttrPatch): Promise<void> {
     const gt = await this.groundTruth();
     if (!gt) { this.editSkipped('could not find this diagram in the document'); return; } // fence gone — never guess
     const edit = computeAttrEdit(gt.source, nodeId, attrs);

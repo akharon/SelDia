@@ -219,85 +219,59 @@ function fpLabel(g: Element, x: number, y: number, text: string, vertical: boole
   g.appendChild(t);
 }
 
-/** Draw a dimension-style line from the dragged box's near edge to the
- *  nearest obstacle edge that overlaps it on the perpendicular axis —
- *  i.e. "what's directly above/below/left/right of me right now". */
-function fpGuideToNearest(g: Element, box: FpBox, obstacles: FpBox[], axis: 'x' | 'y') {
-  // axis 'y': measure vertically (up/down) to something overlapping in x.
-  // axis 'x': measure horizontally (left/right) to something overlapping in y.
-  const horiz = axis === 'x';
-  let best: FpBox | null = null,
-    bestGap = Infinity,
-    bestSide: string | null = null;
+type FpSide = 'left' | 'right' | 'up' | 'down';
+const FP_OPPOSITE: Record<FpSide, FpSide> = { left: 'right', right: 'left', up: 'down', down: 'up' };
+interface FpHit { o: FpBox; gap: number }
+
+/** Nearest obstacle on one side of `box` that overlaps it on the
+ *  perpendicular axis — "what's directly left/right/above/below me". */
+function fpNearest(box: FpBox, obstacles: FpBox[], side: FpSide): FpHit | null {
+  const horiz = side === 'left' || side === 'right';
+  let best: FpHit | null = null;
   for (const o of obstacles) {
     const overlaps = horiz ? box.y < o.y + o.h && box.y + box.h > o.y : box.x < o.x + o.w && box.x + box.w > o.x;
     if (!overlaps) continue;
-    if (horiz) {
-      const gapRight = o.x - (box.x + box.w);
-      const gapLeft = box.x - (o.x + o.w);
-      if (gapRight >= 0 && gapRight < bestGap) {
-        bestGap = gapRight;
-        best = o;
-        bestSide = 'right';
-      }
-      if (gapLeft >= 0 && gapLeft < bestGap) {
-        bestGap = gapLeft;
-        best = o;
-        bestSide = 'left';
-      }
-    } else {
-      const gapDown = o.y - (box.y + box.h);
-      const gapUp = box.y - (o.y + o.h);
-      if (gapDown >= 0 && gapDown < bestGap) {
-        bestGap = gapDown;
-        best = o;
-        bestSide = 'down';
-      }
-      if (gapUp >= 0 && gapUp < bestGap) {
-        bestGap = gapUp;
-        best = o;
-        bestSide = 'up';
-      }
-    }
+    const gap = side === 'right' ? o.x - (box.x + box.w)
+      : side === 'left' ? box.x - (o.x + o.w)
+      : side === 'down' ? o.y - (box.y + box.h)
+      : box.y - (o.y + o.h);
+    if (gap >= -0.5 && (!best || gap < best.gap)) best = { o, gap: Math.max(0, gap) };
   }
-  if (!best || !isFinite(bestGap)) return;
+  return best;
+}
+
+/** Dimension line + ticks + value pill from `box` to `hit` on `side`. With
+ *  `editId`, the pill is a click-to-edit control (limits carried in data-*). */
+function fpDrawGuide(g: Element, box: FpBox, hit: FpHit, side: FpSide, editId?: string, opposite?: FpHit | null) {
+  const best = hit.o;
   const midY = Math.max(box.y, best.y) / 2 + Math.min(box.y + box.h, best.y + best.h) / 2;
   const midX = Math.max(box.x, best.x) / 2 + Math.min(box.x + box.w, best.x + best.w) / 2;
   let x1: number, y1: number, x2: number, y2: number;
-  if (bestSide === 'right') {
-    y1 = y2 = midY;
-    x1 = box.x + box.w;
-    x2 = best.x;
-  } else if (bestSide === 'left') {
-    y1 = y2 = midY;
-    x1 = best.x + best.w;
-    x2 = box.x;
-  } else if (bestSide === 'down') {
-    x1 = x2 = midX;
-    y1 = box.y + box.h;
-    y2 = best.y;
-  } else {
-    x1 = x2 = midX;
-    y1 = best.y + best.h;
-    y2 = box.y;
-  }
+  if (side === 'right') { y1 = y2 = midY; x1 = box.x + box.w; x2 = best.x; }
+  else if (side === 'left') { y1 = y2 = midY; x1 = best.x + best.w; x2 = box.x; }
+  else if (side === 'down') { x1 = x2 = midX; y1 = box.y + box.h; y2 = best.y; }
+  else { x1 = x2 = midX; y1 = best.y + best.h; y2 = box.y; }
   fpLine(g, x1, y1, x2, y2, 'fp-guide-line');
-  const vertical = bestSide === 'up' || bestSide === 'down';
-  for (const [tx, ty] of [
-    [x1, y1],
-    [x2, y2],
-  ]) {
-    fpLine(
-      g,
-      tx - (vertical ? FP_TICK : 0),
-      ty - (vertical ? 0 : FP_TICK),
-      tx + (vertical ? FP_TICK : 0),
-      ty + (vertical ? 0 : FP_TICK),
-      'fp-guide-tick'
-    );
+  const vertical = side === 'up' || side === 'down';
+  for (const [tx, ty] of [[x1, y1], [x2, y2]]) {
+    fpLine(g, tx - (vertical ? FP_TICK : 0), ty - (vertical ? 0 : FP_TICK), tx + (vertical ? FP_TICK : 0), ty + (vertical ? 0 : FP_TICK), 'fp-guide-tick');
   }
-  const gap = Math.hypot(x2 - x1, y2 - y1);
-  fpLabel(g, (x1 + x2) / 2, (y1 + y2) / 2, fpFormatLen(gap), vertical);
+  const before = g.childNodes.length;
+  fpLabel(g, (x1 + x2) / 2, (y1 + y2) / 2, fpFormatLen(hit.gap), vertical);
+  if (!editId) return;
+  // Wrap the pill + text so the whole label is one click target.
+  const wrap = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  wrap.setAttribute('class', 'fp-guide-edit');
+  wrap.setAttribute('data-node', editId);
+  wrap.setAttribute('data-side', side);
+  wrap.setAttribute('data-gap', String(hit.gap));
+  // Max: slide all the way to the opposite obstacle (or a generous 50 m).
+  wrap.setAttribute('data-max', String(hit.gap + (opposite ? opposite.gap : 3000)));
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+  t.textContent = 'Click to set this distance';
+  wrap.appendChild(t);
+  while (g.childNodes.length > before) wrap.appendChild(g.childNodes[before]);
+  g.appendChild(wrap);
 }
 
 function updateFpDragGuides(svg: SVGSVGElement, el: Element, tx: number, ty: number) {
@@ -306,8 +280,16 @@ function updateFpDragGuides(svg: SVGSVGElement, el: Element, tx: number, ty: num
   const obstacles = fpObstacles(svg, el.getAttribute('data-id'));
   const g = fpGuideGroup(svg);
   g.textContent = '';
-  fpGuideToNearest(g, box, obstacles, 'y'); // vertical line: nearest above/below
-  fpGuideToNearest(g, box, obstacles, 'x'); // horizontal line: nearest left/right
+  for (const pair of [['up', 'down'], ['left', 'right']] as FpSide[][]) {
+    const hits = pair.map((s) => [s, fpNearest(box, obstacles, s)] as const).filter(([, h]) => h);
+    hits.sort((a, b) => a[1]!.gap - b[1]!.gap);
+    if (hits[0]) fpDrawGuide(g, box, hits[0][1]!, hits[0][0]);
+  }
+}
+
+/** Would `box` overlap a wall? (Touching is fine: walls are shrunk 1 unit.) */
+function fpHitsWall(box: FpBox, walls: FpBox[]): boolean {
+  return walls.some((w) => box.x < w.x + w.w - 1 && box.x + box.w > w.x + 1 && box.y < w.y + w.h - 1 && box.y + box.h > w.y + 1);
 }
 
 function clearFpDragGuides() {
@@ -688,9 +670,27 @@ function boxRect(e: MouseEvent) {
 }
 
 // ── Node drag state ────────────────────────────────────────────────
+/** Applied ghost offset (may lag the cursor when a wall blocks the move). */
+let ghostTx = 0, ghostTy = 0;
+let fpWalls: FpBox[] | null = null;
+let fpDragBox: FpBox | null = null;
 function dragGhost(tx: number, ty: number) {
   const svg = svgEl();
   if (!svg) return;
+  // Floorplan furniture never straddles a wall: try the move, else slide
+  // along the wall on one axis, else hold the last valid spot. Only the
+  // drop spot is checked, so a piece can still be carried into the next
+  // room — it jumps there once it fully fits.
+  if (dragIsFloorplan && fpDragBox) {
+    if (!fpWalls) fpWalls = fpObstacles(svg, null).filter((o) => o.kind === 'wall');
+    const at = (x: number, y: number) => ({ ...fpDragBox!, x: fpDragBox!.x + x, y: fpDragBox!.y + y });
+    if (!fpHitsWall(at(tx, ty), fpWalls)) { /* free */ }
+    else if (!fpHitsWall(at(tx, ghostTy), fpWalls)) ty = ghostTy;
+    else if (!fpHitsWall(at(ghostTx, ty), fpWalls)) tx = ghostTx;
+    else { tx = ghostTx; ty = ghostTy; }
+  }
+  ghostTx = tx;
+  ghostTy = ty;
   for (const id of dragIds) {
     const el = svg.querySelector('[data-id="' + cssEsc(id) + '"][data-type="node"]');
     if (!el) continue;
@@ -700,6 +700,7 @@ function dragGhost(tx: number, ty: number) {
     el.classList.add('seldia-moving');
     if (dragIsFloorplan && dragIds.length === 1) updateFpDragGuides(svg, el, tx, ty);
   }
+  scheduleSelectionDecor(); // frames follow the ghost
 }
 /** Edges touching a moved node will be re-routed: show them dashed while dragging. */
 function markRerouting(on: boolean) {
@@ -725,6 +726,7 @@ function endNodeDrag(cancel: boolean) {
   dragIds = [];
   isDragging = false;
   clearFpDragGuides();
+  scheduleSelectionDecor();
 }
 
 // ── Edge drag state ────────────────────────────────────────────────
@@ -875,6 +877,16 @@ container.addEventListener('mousedown', (e) => {
     isDragging = false;
     const svg = svgEl();
     dragIsFloorplan = !!(svg && svg.querySelector('.seldia-floorplan-walls'));
+    ghostTx = ghostTy = 0;
+    fpWalls = null;
+    fpDragBox = null;
+    if (dragIsFloorplan && dragIds.length === 1 && node.getAttribute('data-fp-kind') === 'furniture') {
+      const bb = (node as SVGGraphicsElement).getBBox();
+      const startBox: FpBox = { x: bb.x, y: bb.y, w: bb.width, h: bb.height, kind: 'drag' };
+      // A piece that already overlaps a wall (hand-written source) isn't
+      // trapped by the check — it's simply not enforced for it.
+      if (!fpHitsWall(startBox, fpObstacles(svg!, null).filter((o) => o.kind === 'wall'))) fpDragBox = startBox;
+    }
     return;
   }
 
@@ -958,8 +970,7 @@ document.addEventListener('mouseup', (e) => {
   }
 
   if (dragNodeId && isDragging) {
-    const ddx = (e.clientX - dragStartX) * dragUnitsPerPx;
-    const ddy = (e.clientY - dragStartY) * dragUnitsPerPx;
+    const ddx = ghostTx, ddy = ghostTy;
     const moved: Record<string, Pt> = {};
     for (const id of dragIds) {
       const p = nodePositions[id];
@@ -986,6 +997,176 @@ function cancelGesture(): boolean {
   if (boxStart) { marquee.style.display = 'none'; boxStart = null; boxActive = false; return true; }
   return false;
 }
+
+// ── Selection decor: frames for selected nodes + floorplan dimensions ──
+// Nodes have no built-in "selected" look (an SVG <g> can't take an outline),
+// so selected nodes get a dashed frame with corner handles drawn in an
+// overlay layer, recomputed whenever selection or the SVG changes.
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function overlayLayer(id: string): SVGGElement | null {
+  const svg = container.querySelector('svg') as SVGSVGElement | null;
+  if (!svg) return null;
+  let g = svg.querySelector('#' + id) as SVGGElement | null;
+  if (!g) {
+    g = document.createElementNS(SVGNS, 'g') as SVGGElement;
+    g.setAttribute('id', id);
+    svg.appendChild(g);
+  }
+  return g;
+}
+
+/** Element bbox in the root SVG's user units, including its own transform (drag ghost). */
+function bboxInSvg(el: SVGGraphicsElement): { x: number; y: number; w: number; h: number } | null {
+  const svg = container.querySelector('svg') as SVGSVGElement | null;
+  if (!svg || !el.getBBox) return null;
+  const b = el.getBBox();
+  if (!b.width && !b.height) return null;
+  const rootM = svg.getScreenCTM(), elM = el.getScreenCTM();
+  if (!rootM || !elM) return { x: b.x, y: b.y, w: b.width, h: b.height };
+  const m = rootM.inverse().multiply(elM);
+  const p = (x: number, y: number) => new DOMPoint(x, y).matrixTransform(m);
+  const a = p(b.x, b.y), c = p(b.x + b.width, b.y + b.height);
+  return { x: Math.min(a.x, c.x), y: Math.min(a.y, c.y), w: Math.abs(c.x - a.x), h: Math.abs(c.y - a.y) };
+}
+
+let decorQueued = false;
+function scheduleSelectionDecor() {
+  if (decorQueued) return;
+  decorQueued = true;
+  requestAnimationFrame(() => {
+    decorQueued = false;
+    drawSelectionDecor();
+  });
+}
+
+function drawSelectionDecor() {
+  const layer = overlayLayer('selFrames');
+  if (!layer) return;
+  layer.textContent = '';
+  const upp = svgUnitsPerPixel();
+  const selected = Array.from(container.querySelectorAll('[data-type="node"][data-selected="true"]')) as SVGGraphicsElement[];
+  for (const el of selected) {
+    const b = bboxInSvg(el);
+    if (!b) continue;
+    const pad = 4 * upp, hs = 6 * upp;
+    const r = document.createElementNS(SVGNS, 'rect');
+    r.setAttribute('class', 'sel-frame');
+    r.setAttribute('x', String(b.x - pad));
+    r.setAttribute('y', String(b.y - pad));
+    r.setAttribute('width', String(b.w + pad * 2));
+    r.setAttribute('height', String(b.h + pad * 2));
+    layer.appendChild(r);
+    for (const [cx, cy] of [[b.x - pad, b.y - pad], [b.x + b.w + pad, b.y - pad], [b.x - pad, b.y + b.h + pad], [b.x + b.w + pad, b.y + b.h + pad]]) {
+      const h = document.createElementNS(SVGNS, 'rect');
+      h.setAttribute('class', 'sel-corner');
+      h.setAttribute('x', String(cx - hs / 2));
+      h.setAttribute('y', String(cy - hs / 2));
+      h.setAttribute('width', String(hs));
+      h.setAttribute('height', String(hs));
+      layer.appendChild(h);
+    }
+  }
+  // Floorplan: a single selected piece of furniture shows its clearances,
+  // and each one is click-to-edit.
+  const fp = overlayLayer('fpSelGuides');
+  if (fp) fp.textContent = '';
+  const dragging = !!dragNodeId && isDragging;
+  if (fp && !dragging && selected.length === 1 && selected[0].getAttribute('data-fp-kind') === 'furniture') {
+    const svg = container.querySelector('svg') as SVGSVGElement;
+    const id = selected[0].getAttribute('data-id')!;
+    const b = bboxInSvg(selected[0]);
+    if (b) {
+      const box: FpBox = { ...b, kind: 'sel' };
+      const obstacles = fpObstacles(svg, id);
+      for (const side of ['left', 'right', 'up', 'down'] as FpSide[]) {
+        const hit = fpNearest(box, obstacles, side);
+        if (hit) fpDrawGuide(fp, box, hit, side, id, fpNearest(box, obstacles, FP_OPPOSITE[side]));
+      }
+    }
+  }
+}
+
+new MutationObserver((recs) => {
+  // Only real changes: a selection flip or a re-installed SVG. Our own
+  // overlay redraws are childList changes deeper down — ignoring them is
+  // what keeps this from re-triggering itself every frame.
+  if (recs.some((r) => r.type === 'attributes' || r.target === container)) scheduleSelectionDecor();
+}).observe(container, {
+  childList: true,              // SVG re-installed
+  subtree: true,
+  attributes: true,
+  attributeFilter: ['data-selected'],
+});
+
+// ── Editable floorplan dimension ───────────────────────────────────
+const fpDimInput = document.createElement('input');
+fpDimInput.id = 'fpDimInput';
+fpDimInput.type = 'text';
+fpDimInput.spellcheck = false;
+document.body.appendChild(fpDimInput);
+let fpDimEdit: { id: string; side: FpSide; gap: number; max: number } | null = null;
+
+/** "1.2", "1.2 m", "120cm", "1,2" → metres; undefined if unreadable. */
+function parseMetres(s: string): number | undefined {
+  const m = /^\s*(-?\d+(?:[.,]\d+)?)\s*(cm|mm|m)?\s*$/i.exec(s);
+  if (!m) return undefined;
+  const v = parseFloat(m[1].replace(',', '.'));
+  const unit = (m[2] || 'm').toLowerCase();
+  return unit === 'cm' ? v / 100 : unit === 'mm' ? v / 1000 : v;
+}
+
+function openFpDimEditor(label: Element, id: string, side: FpSide, gap: number, max: number) {
+  const r = label.getBoundingClientRect();
+  fpDimEdit = { id, side, gap, max };
+  fpDimInput.value = fpFormatLen(gap);
+  fpDimInput.title = 'Distance in m or cm — up to ' + fpFormatLen(max) + '. Enter to apply, Esc to cancel';
+  fpDimInput.style.display = 'block';
+  fpDimInput.style.left = Math.round(r.left + r.width / 2 - 45) + 'px';
+  fpDimInput.style.top = Math.round(r.top + r.height / 2 - 12) + 'px';
+  fpDimInput.classList.remove('invalid');
+  fpDimInput.focus();
+  fpDimInput.select();
+}
+function closeFpDimEditor() {
+  fpDimEdit = null;
+  fpDimInput.style.display = 'none';
+}
+function commitFpDimEditor() {
+  const ed = fpDimEdit;
+  if (!ed) return;
+  const metres = parseMetres(fpDimInput.value);
+  const scalePx = (irData && irData.fpScale) || 60;
+  if (metres === undefined) { fpDimInput.classList.add('invalid'); return; }
+  // Limits: can't go below zero (touching) or past the obstacle on the
+  // opposite side (that would push it into a wall / another piece).
+  const want = Math.max(0, Math.min(ed.max, metres * scalePx));
+  const d = want - ed.gap;
+  const delta = ed.side === 'right' ? { x: -d, y: 0 } : ed.side === 'left' ? { x: d, y: 0 } : ed.side === 'down' ? { x: 0, y: -d } : { x: 0, y: d };
+  const op = nodePositions[ed.id];
+  closeFpDimEditor();
+  if (!op || Math.abs(d) < 0.5) return;
+  const np = { x: op.x + delta.x, y: op.y + delta.y };
+  vscode.postMessage({ type: 'nodeDragged', nodeId: ed.id, oldPosition: { x: op.x, y: op.y }, newPosition: np });
+  nodePositions[ed.id] = np;
+}
+fpDimInput.addEventListener('keydown', (e) => {
+  e.stopPropagation(); // Delete / V / H / Space belong to the text field
+  if (e.key === 'Enter') { e.preventDefault(); commitFpDimEditor(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeFpDimEditor(); }
+});
+fpDimInput.addEventListener('blur', () => { if (fpDimEdit) commitFpDimEditor(); });
+
+container.addEventListener('mousedown', (e) => {
+  const lbl = (e.target as Element).closest('#fpSelGuides .fp-guide-edit');
+  if (!lbl) return;
+  e.preventDefault();
+  e.stopImmediatePropagation(); // not a box-select / drag
+  suppressNextClick = true;
+  openFpDimEditor(lbl, lbl.getAttribute('data-node')!, lbl.getAttribute('data-side') as FpSide,
+    Number(lbl.getAttribute('data-gap')), Number(lbl.getAttribute('data-max')));
+}, true);
+
 // ── Label Editor ───────────────────────────────────────────────────
 const labelEditor = document.getElementById('labelEditor')!;
 let editTargetId: string | null = null;

@@ -67,7 +67,7 @@ export function computePositionEdit(
 export function computeAttrEdit(
   source: string,
   nodeId: string,
-  attrs: Record<string, string | number>
+  attrs: AttrPatch
 ): TextEdit | undefined {
   const lines = source.split('\n');
 
@@ -87,8 +87,25 @@ export function computeAttrEdit(
     if (/^\s*(<-->|<->|<--|-->|==>|\.\.>|->|---|--)/.test(line.slice(idEnd))) continue;
 
     const lineStartOffset = lines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0);
+    return patchAttrBlock(line, lineStartOffset, leadingWs, attrs);
+  }
 
-    const freshBlock = ` { ${Object.entries(attrs).map(([k, v]) => `${k}: ${fmtAttr(v)}`).join(', ')} }`;
+  return undefined;
+}
+
+/** Attribute values: string/number are written, an array is written as a
+ *  flat `[a, b, …]` list, `null` removes the key. */
+export type AttrPatch = Record<string, string | number | number[] | null>;
+
+/** Merge `attrs` into the trailing `{ … }` block of `line` (searched from
+ *  `leadingWs`), or append one. An emptied block is removed entirely — a
+ *  bare `{ }` after a node would read as a diamond shape. Returns undefined
+ *  when nothing would change. */
+function patchAttrBlock(line: string, lineStartOffset: number, leadingWs: number, attrs: AttrPatch): TextEdit | undefined {
+  {
+    const setEntries = Object.entries(attrs).filter(([, v]) => v !== null);
+    const freshBlock = ` { ${setEntries.map(([k, v]) => `${k}: ${fmtAttr(v!)}`).join(', ')} }`;
+    if (line.indexOf('{', leadingWs) === -1 && !setEntries.length) return undefined;
 
     // Find a trailing `{ ... }` attribute block on this line (single-line
     // node declarations are how every existing patcher in this codebase
@@ -110,19 +127,23 @@ export function computeAttrEdit(
 
     const attrBody = line.slice(braceOpen + 1, braceClose);
     const merged = mergeAttrs(attrBody, attrs);
+    if (!merged.trim()) {
+      let ws = braceOpen;
+      while (ws > 0 && (line[ws - 1] === ' ' || line[ws - 1] === '\t')) ws--;
+      return { start: lineStartOffset + ws, end: lineStartOffset + braceClose + 1, text: '' };
+    }
     return {
       start: lineStartOffset + braceOpen,
       end: lineStartOffset + braceClose + 1,
       text: `{${merged}}`,
     };
   }
-
-  return undefined;
 }
 
 /** Attribute value printer: numbers bare, strings double-quoted (trimmed,
  *  inner quotes downgraded so a value can never break out of the literal). */
-function fmtAttr(v: string | number): string {
+function fmtAttr(v: string | number | number[]): string {
+  if (Array.isArray(v)) return `[${v.map((n) => Math.round(n * 10) / 10).join(', ')}]`;
   return typeof v === 'number' ? String(v) : `"${String(v).trim().replace(/"/g, "'")}"`;
 }
 
@@ -160,7 +181,7 @@ function findMatchingBrace(line: string, openIdx: number): number {
  * `layout: { ... }` sub-block are rewritten in place there instead of being
  * duplicated at top level.
  */
-function mergeAttrs(attrBody: string, attrs: Record<string, string | number>): string {
+function mergeAttrs(attrBody: string, attrs: AttrPatch): string {
   const entries = splitTopLevelEntries(attrBody);
   const kept: string[] = [];
   const seen = new Set<string>();
@@ -175,7 +196,8 @@ function mergeAttrs(attrBody: string, attrs: Record<string, string | number>): s
 
     if (key && key in attrs) {
       seen.add(key);
-      kept.push(` ${key}: ${fmtAttr(attrs[key])}`);
+      const v = attrs[key];
+      if (v !== null) kept.push(` ${key}: ${fmtAttr(v)}`);
       continue;
     }
     if (key === 'layout' && hasXY) {
@@ -185,23 +207,23 @@ function mergeAttrs(attrBody: string, attrs: Record<string, string | number>): s
       const braceStart = trimmed.indexOf('{');
       const braceEnd = trimmed.lastIndexOf('}');
       const inner = braceStart !== -1 && braceEnd !== -1 ? trimmed.slice(braceStart + 1, braceEnd) : '';
-      const xy: Record<string, string | number> = {};
+      const xy: AttrPatch = {};
       if ('x' in attrs) xy.x = attrs.x;
       if ('y' in attrs) xy.y = attrs.y;
       const innerMerged = mergeAttrs(inner, xy);
-      kept.push(` layout: {${innerMerged}}`);
+      if (innerMerged.trim()) kept.push(` layout: {${innerMerged}}`);
       continue;
     }
     kept.push(` ${trimmed}`);
   }
 
   for (const [k, v] of Object.entries(attrs)) {
-    if (seen.has(k)) continue;
+    if (seen.has(k) || v === null) continue;
     if ((k === 'x' || k === 'y') && sawLayout) continue; // written inside layout
     kept.push(` ${k}: ${fmtAttr(v)}`);
   }
 
-  return kept.join(',') + ' ';
+  return kept.length ? kept.join(',') + ' ' : '';
 }
 
 /** Split an attribute-block body into top-level comma-separated entries,
@@ -227,8 +249,8 @@ function splitTopLevelEntries(body: string): string[] {
       current += ch;
       continue;
     }
-    if (ch === '{') { depth++; current += ch; continue; }
-    if (ch === '}') { depth--; current += ch; continue; }
+    if (ch === '{' || ch === '[') { depth++; current += ch; continue; }
+    if (ch === '}' || ch === ']') { depth--; current += ch; continue; }
     if (ch === ',' && depth === 0) {
       entries.push(current);
       current = '';
@@ -486,6 +508,22 @@ export function computeEdgeLabelEdit(source: string, srcId: string, tgtId: strin
       const at = seg.arrowStart + seg.arrow.length;
       return { start: base + at, end: base + at, text: ` |"${clean}"|` };
     }
+  }
+  return undefined;
+}
+
+/**
+ * Merge attributes (e.g. `via: [x1, y1, …]`, or `via: null` to drop it) into
+ * the edge `srcId → tgtId`'s trailing `{ … }` block. Only single-link lines
+ * qualify: a chain's block is shared by every link, so pinning one link's
+ * route there would pin them all. Returns undefined for chains / no match.
+ */
+export function computeEdgeAttrEdit(source: string, srcId: string, tgtId: string, attrs: AttrPatch): TextEdit | undefined {
+  const lines = source.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const chain = parseEdgeLine(lines[i]);
+    if (!chain || chain.segs.length !== 1 || !segMatches(chain, 0, srcId, tgtId)) continue;
+    return patchAttrBlock(lines[i], lineStart(lines, i), chain.suffixStart, attrs);
   }
   return undefined;
 }

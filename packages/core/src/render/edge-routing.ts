@@ -33,6 +33,20 @@ export function centerOf(n: IRNode): Point {
   return { x: n.position.x + n.size.width / 2, y: n.position.y + n.size.height / 2 };
 }
 
+/** Where a pinned (`via`) route attaches to node `n`, given the route's
+ *  nearest bend `p`: level with the bend when it sits beside the node (a
+ *  square horizontal / vertical exit), else the centre. Attaching to the
+ *  centre made the first leg slightly slanted whenever the bend was
+ *  off-centre (fanned ports), so a frozen route redrew a pixel or two off. */
+export function squareAnchor(n: IRNode, p: Point): Point {
+  const c = centerOf(n);
+  const { x, y } = n.position, { width: w, height: h } = n.size;
+  const inY = p.y > y && p.y < y + h, inX = p.x > x && p.x < x + w;
+  if (inY && !inX) return { x: c.x, y: p.y };
+  if (inX && !inY) return { x: p.x, y: c.y };
+  return c;
+}
+
 /** The node's box, grown by `gap` on every side. */
 export function nodeRect(n: IRNode, gap = 0): Rect {
   return {

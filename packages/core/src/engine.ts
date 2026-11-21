@@ -47,7 +47,7 @@ import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPl
 import { BUILTIN_THEMES } from './themes.js';
 import { fullScore, lexLess, swapNeighbours, sweepOrder } from './layout/refine.js';
 import { layoutWithDagre, layoutWithElkSync, type AutoLayoutResult } from './layout/engines.js';
-import { routeEdgePolyline, routeAllEdges, manualEdgeRoute, centerOf, computeFans, type Fan } from './render/edge-routing.js';
+import { routeEdgePolyline, routeAllEdges, manualEdgeRoute, centerOf, squareAnchor, computeFans, type Fan } from './render/edge-routing.js';
 import { iconLabelLayout, balancedWrap, shapeTextBox } from './render/node-label-geometry.js';
 import { chipRect, EDGE_LABEL_FONT, computeEdgeLabelPositions, type LabelPlacement } from './render/edge-label-placement.js';
 import { textWidth } from './layout/text-measure.js';
@@ -533,7 +533,7 @@ class SelDiAEngine implements CoreEngine {
     const tgt = nodes.find(n => n.id === edge.targetId);
     if (!src || !tgt) return [];
     const manual = this.manualEdgeRoute(edge);
-    if (manual) return [centerOf(src), ...manual, centerOf(tgt)];
+    if (manual) return [squareAnchor(src, manual[0]), ...manual, squareAnchor(tgt, manual[manual.length - 1])];
     return [centerOf(src), centerOf(tgt)];
   }
 
@@ -943,7 +943,11 @@ class SelDiAEngine implements CoreEngine {
       const postRouted = POST_ROUTE_TYPES.has(dt);
       let jumps = new Map<string, Hop[]>();
       if (postRouted) {
-        const fixed = new Map([...routedWps].filter(([id]) => !(edges.find((e) => e.id === id)?.data as any)?.exactEnds));
+        // `via`-pinned edges are the user's own geometry: never nudge them.
+        const fixed = new Map([...routedWps].filter(([id]) => {
+          const e = edges.find((x) => x.id === id);
+          return !(e?.data as any)?.exactEnds && !(e && manualEdgeRoute(e));
+        }));
         const post = postRoute({ nodes: allNodes }, fixed, cleanEdges, titleBands);
         for (const [id, pts] of post.routes) routedWps.set(id, pts);
         jumps = post.jumps;
@@ -975,7 +979,11 @@ class SelDiAEngine implements CoreEngine {
       for (const e of routedEdges) {
         const parts = this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes, edgeStyle);
         const id = this.esc(e.id);
-        paths += `  <g class="seldia-edge" data-seldia-edge-id="${id}" data-src="${this.esc(e.sourceId)}" data-tgt="${this.esc(e.targetId)}">\n${parts.path}  </g>\n`;
+        // Drawn route (layout coords) + pad, so the visual editor can freeze
+        // routes as `via:` pins and offer segment handles for edge moves.
+        const route = (e.waypoints || []).map((p) => `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`).join(' ');
+        const pinnedAttr = manualEdgeRoute(e) ? ' data-pinned="1"' : '';
+        paths += `  <g class="seldia-edge" data-seldia-edge-id="${id}" data-src="${this.esc(e.sourceId)}" data-tgt="${this.esc(e.targetId)}" data-route="${route}" data-pad="${pad}"${pinnedAttr}>\n${parts.path}  </g>\n`;
         if (parts.head) heads += `    <g class="seldia-edge-head" data-seldia-edge-ref="${id}">\n${parts.head}    </g>\n`;
         if (parts.label) labels += `    <g class="seldia-edge-label" data-seldia-edge-ref="${id}">\n${parts.label}    </g>\n`;
       }

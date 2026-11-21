@@ -72,6 +72,7 @@ let irData: any = window.__seldiaInit.ir;
 document.addEventListener('DOMContentLoaded', () => {
   annotateSvg();
   initFromIR();
+  prepareEdges();
   vscode.postMessage({ type: 'ready' });
 });
 
@@ -340,50 +341,73 @@ function zoomAt(cx: number, cy: number, factor: number) {
   applyTransform();
 }
 
+// Wheel behaves like every canvas app: scroll / two-finger swipe pans,
+// Ctrl+wheel (and trackpad pinch, which arrives as ctrl+wheel) zooms at the
+// cursor. Shift+wheel scrolls sideways on a plain mouse.
 container.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const rect = container.getBoundingClientRect();
-  // Proportional to the wheel delta (trackpads emit many small deltas,
-  // mice ~100 per notch) and clamped, so one notch is a gentle ~10% step.
-  const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
-  const step = Math.max(-0.1, Math.min(0.1, dy * 0.0015));
-  zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-step));
+  const unit = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? container.clientHeight : 1;
+  if (e.ctrlKey || e.metaKey) {
+    const rect = container.getBoundingClientRect();
+    // Proportional to the delta and clamped: one mouse notch ≈ 10%.
+    const step = Math.max(-0.1, Math.min(0.1, e.deltaY * unit * 0.0015));
+    zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-step));
+    return;
+  }
+  let dx = e.deltaX * unit, dy = e.deltaY * unit;
+  if (e.shiftKey && !dx) { dx = dy; dy = 0; }
+  offsetX -= dx;
+  offsetY -= dy;
+  applyTransform();
 }, { passive: false });
 
-// Hand (pan) tool: when on, left-drag anywhere pans. When off, left-drag on
-// empty canvas still pans; middle button or Shift+drag always pan.
-let panTool = false;
-function setPanTool(on: boolean) {
-  panTool = on;
-  document.getElementById('btnPan')?.classList.toggle('active', on);
-  container.style.cursor = on ? 'grab' : '';
+// ── Tools: Select (default) | Pan ──────────────────────────────────
+// Select: click selects, drag moves, drag on empty canvas box-selects.
+// Pan: drag moves the view. Middle-drag or holding Space pans in any tool.
+type Tool = 'select' | 'pan';
+let tool: Tool = 'select';
+let spaceDown = false;
+function syncToolUi() {
+  const pan = tool === 'pan' || spaceDown;
+  container.classList.toggle('tool-pan', pan);
+  container.classList.toggle('tool-select', !pan);
+  for (const [id, on] of [['btnSelect', tool === 'select'], ['btnPan', tool === 'pan']] as const) {
+    const b = document.getElementById(id);
+    b?.classList.toggle('active', on);
+    b?.setAttribute('aria-pressed', String(on));
+  }
 }
-window.togglePanTool = () => setPanTool(!panTool);
+function setTool(t: Tool) {
+  tool = t;
+  syncToolUi();
+}
+window.togglePanTool = () => setTool(tool === 'pan' ? 'select' : 'pan');
+syncToolUi();
 
 container.addEventListener('mousedown', (e) => {
-  const onElement = !!(e.target as Element).closest('[data-id]');
-  const emptyDrag = e.button === 0 && !onElement && editMode !== 'drawing-edge';
-  if (e.button === 1 || (e.button === 0 && (e.shiftKey || panTool)) || emptyDrag) {
+  if (e.button === 1 || (e.button === 0 && (tool === 'pan' || spaceDown))) {
     isPanning = true;
-    container.style.cursor = 'grabbing';
+    container.classList.add('is-panning');
     panStartX = e.clientX - offsetX;
     panStartY = e.clientY - offsetY;
     e.preventDefault();
-    return;
+    e.stopImmediatePropagation(); // panning never also selects / drags
   }
-});
+}, true);
 
 document.addEventListener('mousemove', (e) => {
   if (isPanning) {
     offsetX = e.clientX - panStartX;
     offsetY = e.clientY - panStartY;
     applyTransform();
-    return;
   }
 });
 
-document.addEventListener('mouseup', () => {
-  if (isPanning) container.style.cursor = panTool ? 'grab' : '';
+document.addEventListener('mouseup', (e) => {
+  if (isPanning) {
+    container.classList.remove('is-panning');
+    if (container.contains(e.target as Node)) suppressNextClick = true;
+  }
   isPanning = false;
 });
 
@@ -443,10 +467,12 @@ function applyInteractionEffects(effects: InteractionEffect[]) {
       case 'selectEdge': {
         const el = container.querySelector('[data-id="' + eff.id + '"]');
         if (el) el.setAttribute('data-selected', 'true');
+        showEdgeHandles(eff.id);
         break;
       }
       case 'clearSelection':
         clearSelectionDom();
+        clearEdgeHandles();
         break;
       case 'markEdgeSource':
         markEdgeDrawSource(eff.id);
@@ -509,6 +535,14 @@ container.addEventListener('click', (e) => {
   }
   if (isPanning || e.button !== 0) return;
   const target = (e.target as Element).closest('[data-id]');
+  // Shift+click adds / removes a node from the selection.
+  if (e.shiftKey && target?.getAttribute('data-type') === 'node' && editMode === 'idle') {
+    const id = target.getAttribute('data-id')!;
+    const ids = selectedNodeIds();
+    setMultiSel(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+    return;
+  }
+  clearMultiSel();
   if (target) {
     const id = target.getAttribute('data-id')!;
     const type = target.getAttribute('data-type');
@@ -543,71 +577,415 @@ container.addEventListener('dblclick', (e) => {
   }
 });
 
-// ── Node Dragging ──────────────────────────────────────────────────
+// ── Direct manipulation: move nodes, box-select, move edges ────────
+// "Only what you touch moves": every gesture posts the CURRENT layout
+// (positions + drawn routes) alongside the change, and the host freezes the
+// rest of the diagram in the source (see edit/layout-patch.ts).
+type Pt = { x: number; y: number };
 let dragUnitsPerPx = 1; // captured at drag start; scale can't change mid-drag
 let dragIsFloorplan = false;
+let dragIds: string[] = [];
+/** Extra nodes selected by box-select / Shift+click (beyond the reducer's single selection). */
+const multiSel = new Set<string>();
 
-container.addEventListener('mousedown', (e) => {
-  if (e.button !== 0 || e.shiftKey || isPanning) return;
-  const target = (e.target as Element).closest('[data-id][data-type="node"]');
-  if (!target) return;
-  const id = target.getAttribute('data-id')!;
-  dragNodeId = id;
-  dragStartX = e.clientX;
-  dragStartY = e.clientY;
-  dragUnitsPerPx = svgUnitsPerPixel();
+const freeLayout = () => !!(irData && irData.freeLayout);
+const cssEsc = (s: string) => s.replace(/["\\]/g, '\\$&');
+
+function svgEl(): SVGSVGElement | null {
+  return container.querySelector('svg') as SVGSVGElement | null;
+}
+/** Client px → SVG user units. */
+function toSvgPt(clientX: number, clientY: number): Pt {
+  const svg = svgEl();
+  if (!svg) return { x: clientX, y: clientY };
+  const rect = svg.getBoundingClientRect();
+  const upp = svgUnitsPerPixel();
+  const vb = svg.viewBox.baseVal;
+  return { x: (vb ? vb.x : 0) + (clientX - rect.left) * upp, y: (vb ? vb.y : 0) + (clientY - rect.top) * upp };
+}
+
+function parseRoute(s: string | null): Pt[] {
+  if (!s) return [];
+  return s.trim().split(/\s+/).map((p) => {
+    const [x, y] = p.split(',').map(Number);
+    return { x, y };
+  }).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+}
+function edgeGroup(id: string): SVGGElement | null {
+  return container.querySelector('g.seldia-edge[data-seldia-edge-id="' + cssEsc(id) + '"]');
+}
+function edgePad(g: Element | null): number {
+  return parseFloat(g?.getAttribute('data-pad') || '0') || 0;
+}
+/** Every edge's drawn route (layout coords), for the host's freeze. */
+function currentRoutes(): Record<string, Pt[]> {
+  const out: Record<string, Pt[]> = {};
+  container.querySelectorAll('g.seldia-edge[data-route]').forEach((g) => {
+    const pts = parseRoute(g.getAttribute('data-route'));
+    if (pts.length >= 2) out[g.getAttribute('data-seldia-edge-id')!] = pts;
+  });
+  return out;
+}
+/** All parts of an edge: path group + arrowhead + label layers. */
+function edgeParts(id: string): Element[] {
+  const sel = cssEsc(id);
+  return Array.from(container.querySelectorAll('[data-seldia-edge-id="' + sel + '"], [data-seldia-edge-ref="' + sel + '"]'));
+}
+
+/** Called after every SVG install: wide invisible hit line on each edge
+ *  (thin strokes are hard to grab) + a movable / fixed cursor class. */
+function prepareEdges() {
+  const movable = freeLayout();
+  container.querySelectorAll('g.seldia-edge').forEach((g) => {
+    g.classList.toggle('seldia-edge-movable', movable);
+    g.classList.toggle('seldia-edge-fixed', !movable);
+    if (!movable) g.setAttribute('title', 'Edges in this diagram type are placed automatically');
+    const pts = parseRoute(g.getAttribute('data-route'));
+    if (pts.length < 2 || g.querySelector('.seldia-edge-hit')) return;
+    const pad = edgePad(g);
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    hit.setAttribute('class', 'seldia-edge-hit');
+    hit.setAttribute('points', pts.map((p) => p.x + pad + ',' + (p.y + pad)).join(' '));
+    g.insertBefore(hit, g.firstChild);
+  });
+}
+
+// ── Multi-selection ────────────────────────────────────────────────
+function markSelected(id: string, on: boolean) {
+  const el = container.querySelector('[data-id="' + cssEsc(id) + '"][data-type="node"]');
+  if (el) el.setAttribute('data-selected', on ? 'true' : 'false');
+}
+function clearMultiSel() {
+  for (const id of multiSel) if (id !== selectedNodeId) markSelected(id, false);
+  multiSel.clear();
+}
+function setMultiSel(ids: string[]) {
+  clearMultiSel();
+  dispatchInteraction({ type: 'CLICK_EMPTY' });
+  if (ids.length === 1) {
+    dispatchInteraction({ type: 'CLICK_NODE', id: ids[0] });
+    return;
+  }
+  for (const id of ids) {
+    multiSel.add(id);
+    markSelected(id, true);
+  }
+}
+function selectedNodeIds(): string[] {
+  const s = new Set(multiSel);
+  if (selectedNodeId) s.add(selectedNodeId);
+  return [...s];
+}
+
+// ── Box select ─────────────────────────────────────────────────────
+const marquee = document.getElementById('marquee') as HTMLDivElement;
+let boxStart: { x: number; y: number; additive: boolean } | null = null;
+let boxActive = false;
+
+function boxRect(e: MouseEvent) {
+  const x = Math.min(boxStart!.x, e.clientX), y = Math.min(boxStart!.y, e.clientY);
+  return { x, y, w: Math.abs(e.clientX - boxStart!.x), h: Math.abs(e.clientY - boxStart!.y) };
+}
+
+// ── Node drag state ────────────────────────────────────────────────
+function dragGhost(tx: number, ty: number) {
+  const svg = svgEl();
+  if (!svg) return;
+  for (const id of dragIds) {
+    const el = svg.querySelector('[data-id="' + cssEsc(id) + '"][data-type="node"]');
+    if (!el) continue;
+    // The ghost translate is in SVG user units, so it must track the
+    // cursor exactly regardless of zoom / CSS scaling.
+    el.setAttribute('transform', 'translate(' + tx + ', ' + ty + ')');
+    el.classList.add('seldia-moving');
+    if (dragIsFloorplan && dragIds.length === 1) updateFpDragGuides(svg, el, tx, ty);
+  }
+}
+/** Edges touching a moved node will be re-routed: show them dashed while dragging. */
+function markRerouting(on: boolean) {
+  const set = new Set(dragIds);
+  container.querySelectorAll('g.seldia-edge').forEach((g) => {
+    const hit = set.has(g.getAttribute('data-src') || '') || set.has(g.getAttribute('data-tgt') || '');
+    if (!hit) return;
+    for (const part of edgeParts(g.getAttribute('data-seldia-edge-id')!)) part.classList.toggle('seldia-edge-rerouting', on);
+  });
+}
+function endNodeDrag(cancel: boolean) {
+  if (cancel || !isDragging) {
+    const svg = svgEl();
+    for (const id of dragIds) {
+      const el = svg?.querySelector('[data-id="' + cssEsc(id) + '"][data-type="node"]');
+      el?.removeAttribute('transform');
+      el?.classList.remove('seldia-moving');
+    }
+  }
+  markRerouting(false);
+  container.classList.remove('is-dragging');
+  dragNodeId = null;
+  dragIds = [];
   isDragging = false;
-  const svg = container.querySelector('svg');
-  dragIsFloorplan = !!(svg && svg.querySelector('.seldia-floorplan-walls'));
+  clearFpDragGuides();
+}
+
+// ── Edge drag state ────────────────────────────────────────────────
+interface EdgeDrag {
+  id: string;
+  route: Pt[];       // layout coords, as drawn
+  seg: number;       // segment index being moved
+  orient: 'h' | 'v' | 'd';
+  start: Pt;         // svg coords at mousedown
+  pad: number;
+  moved: boolean;
+  next: Pt[];
+}
+let edgeDrag: EdgeDrag | null = null;
+
+function nearestSegment(route: Pt[], p: Pt): number {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i], b = route[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+    const d = Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+function segOrient(a: Pt, b: Pt): 'h' | 'v' | 'd' {
+  if (Math.abs(a.y - b.y) < 0.5) return 'h';
+  if (Math.abs(a.x - b.x) < 0.5) return 'v';
+  return 'd';
+}
+/** New route for dragging segment `seg` by (dx, dy). A horizontal segment
+ *  slides vertically, a vertical one sideways (bends stay square); an end
+ *  segment keeps its node attachment by gaining a short stub. A diagonal
+ *  (straight) segment gets a new bend at the cursor. */
+function draggedRoute(d: EdgeDrag, dx: number, dy: number, cursor: Pt): Pt[] {
+  const r = d.route.map((p) => ({ ...p }));
+  const i = d.seg;
+  if (d.orient === 'd') {
+    r.splice(i + 1, 0, cursor);
+    return r;
+  }
+  const off = d.orient === 'h' ? { x: 0, y: dy } : { x: dx, y: 0 };
+  const a = { x: r[i].x + off.x, y: r[i].y + off.y };
+  const b = { x: r[i + 1].x + off.x, y: r[i + 1].y + off.y };
+  const head = i === 0 ? [r[0], a] : [...r.slice(0, i), a];
+  const tail = i + 1 === r.length - 1 ? [b, r[r.length - 1]] : [b, ...r.slice(i + 2)];
+  return [...head, ...tail];
+}
+
+function handleLayer(): SVGGElement | null {
+  const svg = svgEl();
+  if (!svg) return null;
+  let g = svg.querySelector('#edgeHandles') as SVGGElement | null;
+  if (!g) {
+    g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('id', 'edgeHandles');
+    svg.appendChild(g);
+  }
+  return g;
+}
+function clearEdgeHandles() {
+  const g = svgEl()?.querySelector('#edgeHandles');
+  if (g) g.innerHTML = '';
+}
+/** Selected edge: a small handle on each segment's midpoint says "drag me". */
+function showEdgeHandles(id: string) {
+  clearEdgeHandles();
+  if (!freeLayout()) return;
+  const g = edgeGroup(id);
+  const layer = handleLayer();
+  if (!g || !layer) return;
+  const pts = parseRoute(g.getAttribute('data-route'));
+  const pad = edgePad(g);
+  const sz = 7 * svgUnitsPerPixel();
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const o = segOrient(a, b);
+    const h = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    h.setAttribute('class', 'seg-handle ' + o);
+    h.setAttribute('x', String((a.x + b.x) / 2 + pad - sz / 2));
+    h.setAttribute('y', String((a.y + b.y) / 2 + pad - sz / 2));
+    h.setAttribute('width', String(sz));
+    h.setAttribute('height', String(sz));
+    h.setAttribute('rx', String(sz / 4));
+    h.setAttribute('data-edge', id);
+    h.setAttribute('data-seg', String(i));
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    t.textContent = o === 'd' ? 'Drag to add a bend' : 'Drag to move this part of the edge';
+    h.appendChild(t);
+    layer.appendChild(h);
+  }
+}
+function drawEdgeGhost(d: EdgeDrag) {
+  const layer = handleLayer();
+  if (!layer) return;
+  let ghost = layer.querySelector('.ghost') as SVGPolylineElement | null;
+  if (!ghost) {
+    ghost = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    ghost.setAttribute('class', 'ghost');
+    layer.appendChild(ghost);
+  }
+  ghost.setAttribute('points', d.next.map((p) => p.x + d.pad + ',' + (p.y + d.pad)).join(' '));
+}
+function endEdgeDrag(cancel: boolean) {
+  if (!edgeDrag) return;
+  for (const part of edgeParts(edgeDrag.id)) part.classList.remove('seldia-edge-rerouting');
+  const ghost = svgEl()?.querySelector('#edgeHandles .ghost');
+  ghost?.remove();
+  container.classList.remove('is-dragging');
+  if (cancel && selectedEdgeId === edgeDrag.id) showEdgeHandles(edgeDrag.id);
+  edgeDrag = null;
+}
+
+// ── mousedown: decide what this gesture is ─────────────────────────
+container.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || isPanning || tool !== 'select' || editMode === 'drawing-edge' || editMode === 'reconnecting') return;
+  const t = e.target as Element;
+
+  // 1. Edge handle or edge body → move that edge.
+  const handle = t.closest('#edgeHandles .seg-handle');
+  const edgeEl = handle ? null : t.closest('[data-id][data-type="edge"]');
+  if (handle || edgeEl) {
+    const id = handle ? handle.getAttribute('data-edge')! : edgeEl!.getAttribute('data-id')!;
+    const g = edgeGroup(id);
+    const route = parseRoute(g?.getAttribute('data-route') ?? null);
+    if (!freeLayout() || route.length < 2) return;
+    const pad = edgePad(g);
+    const sp = toSvgPt(e.clientX, e.clientY);
+    const seg = handle ? Number(handle.getAttribute('data-seg')) : nearestSegment(route, { x: sp.x - pad, y: sp.y - pad });
+    edgeDrag = { id, route, seg, orient: segOrient(route[seg], route[seg + 1]), start: sp, pad, moved: false, next: route };
+    dragUnitsPerPx = svgUnitsPerPixel();
+    e.preventDefault();
+    return;
+  }
+
+  // 2. Node → move it (plus the rest of the selection, if it's part of one).
+  const node = t.closest('[data-id][data-type="node"]');
+  if (node) {
+    const id = node.getAttribute('data-id')!;
+    const sel = selectedNodeIds();
+    dragNodeId = id;
+    dragIds = sel.includes(id) && sel.length > 1 ? sel : [id];
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragUnitsPerPx = svgUnitsPerPixel();
+    isDragging = false;
+    const svg = svgEl();
+    dragIsFloorplan = !!(svg && svg.querySelector('.seldia-floorplan-walls'));
+    return;
+  }
+
+  // 3. Empty canvas → box select.
+  if (!t.closest('[data-id]') && !t.closest('.error')) {
+    boxStart = { x: e.clientX, y: e.clientY, additive: e.shiftKey };
+    boxActive = false;
+    e.preventDefault();
+  }
 });
 
 document.addEventListener('mousemove', (e) => {
+  if (boxStart) {
+    const r = boxRect(e);
+    if (!boxActive && r.w < 4 && r.h < 4) return;
+    boxActive = true;
+    marquee.style.display = 'block';
+    marquee.style.left = r.x + 'px';
+    marquee.style.top = r.y + 'px';
+    marquee.style.width = r.w + 'px';
+    marquee.style.height = r.h + 'px';
+    return;
+  }
+
+  if (edgeDrag) {
+    const sp = toSvgPt(e.clientX, e.clientY);
+    const dx = sp.x - edgeDrag.start.x, dy = sp.y - edgeDrag.start.y;
+    if (!edgeDrag.moved) {
+      if (Math.hypot(dx, dy) < 3 * dragUnitsPerPx) return;
+      edgeDrag.moved = true;
+      clearEdgeHandles();
+      container.classList.add('is-dragging');
+      for (const part of edgeParts(edgeDrag.id)) part.classList.add('seldia-edge-rerouting');
+    }
+    edgeDrag.next = draggedRoute(edgeDrag, dx, dy, { x: sp.x - edgeDrag.pad, y: sp.y - edgeDrag.pad });
+    drawEdgeGhost(edgeDrag);
+    return;
+  }
+
   if (!dragNodeId) return;
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
-
   if (!isDragging) {
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      isDragging = true;
+    if (Math.abs(dx) <= 3 && Math.abs(dy) <= 3) return;
+    isDragging = true;
+    container.classList.add('is-dragging');
+    if (freeLayout()) markRerouting(true);
+  }
+  dragGhost(dx * dragUnitsPerPx, dy * dragUnitsPerPx);
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (boxStart) {
+    if (boxActive) {
+      const r = boxRect(e);
+      const hits: string[] = [];
+      container.querySelectorAll('[data-id][data-type="node"]').forEach((el) => {
+        const b = el.getBoundingClientRect();
+        if (b.width && b.left >= r.x && b.top >= r.y && b.right <= r.x + r.w && b.bottom <= r.y + r.h) hits.push(el.getAttribute('data-id')!);
+      });
+      const ids = boxStart.additive ? [...new Set([...selectedNodeIds(), ...hits])] : hits;
+      setMultiSel(ids);
+      suppressNextClick = true;
+    }
+    marquee.style.display = 'none';
+    boxStart = null;
+    boxActive = false;
+    return;
+  }
+
+  if (edgeDrag) {
+    const d = edgeDrag;
+    if (d.moved) {
+      vscode.postMessage({ type: 'layoutGesture', positions: nodePositions, routes: currentRoutes(), edgeRoute: { id: d.id, route: d.next } });
+      suppressNextClick = true;
+      endEdgeDrag(false);
+    } else {
+      edgeDrag = null; // plain click: the click handler selects the edge
     }
     return;
   }
 
-  const svg = container.querySelector('svg') as SVGSVGElement | null;
-  if (svg) {
-    const el = svg.querySelector('[data-id="' + dragNodeId + '"]');
-    if (el) {
-      // The ghost translate is in SVG user units, so it must track the
-      // cursor exactly regardless of zoom / CSS scaling.
-      const tx = dx * dragUnitsPerPx,
-        ty = dy * dragUnitsPerPx;
-      el.setAttribute('transform', 'translate(' + tx + ', ' + ty + ')');
-      if (dragIsFloorplan) updateFpDragGuides(svg, el, tx, ty);
-    }
-  }
-});
-
-document.addEventListener('mouseup', (e) => {
   if (dragNodeId && isDragging) {
-    const oldPos = nodePositions[dragNodeId];
-    if (oldPos) {
-      const nx = oldPos.x + (e.clientX - dragStartX) * dragUnitsPerPx;
-      const ny = oldPos.y + (e.clientY - dragStartY) * dragUnitsPerPx;
-      vscode.postMessage({
-        type: 'nodeDragged',
-        nodeId: dragNodeId,
-        oldPosition: { x: oldPos.x, y: oldPos.y },
-        newPosition: { x: nx, y: ny },
-      });
-      nodePositions[dragNodeId] = { x: nx, y: ny };
+    const ddx = (e.clientX - dragStartX) * dragUnitsPerPx;
+    const ddy = (e.clientY - dragStartY) * dragUnitsPerPx;
+    const moved: Record<string, Pt> = {};
+    for (const id of dragIds) {
+      const p = nodePositions[id];
+      if (p) moved[id] = { x: p.x + ddx, y: p.y + ddy };
     }
+    if (freeLayout() && !dragIsFloorplan) {
+      vscode.postMessage({ type: 'layoutGesture', positions: nodePositions, routes: currentRoutes(), moved });
+    } else {
+      for (const [id, np] of Object.entries(moved)) {
+        const op = nodePositions[id];
+        vscode.postMessage({ type: 'nodeDragged', nodeId: id, oldPosition: { x: op.x, y: op.y }, newPosition: np });
+      }
+    }
+    Object.assign(nodePositions, moved);
     suppressNextClick = true; // the click event that follows must not clear the selection
   }
-  dragNodeId = null;
-  isDragging = false;
-  clearFpDragGuides();
+  endNodeDrag(false);
 });
 
+/** Esc mid-gesture: put everything back, send nothing. */
+function cancelGesture(): boolean {
+  if (dragNodeId && isDragging) { endNodeDrag(true); suppressNextClick = true; return true; }
+  if (edgeDrag?.moved) { endEdgeDrag(true); suppressNextClick = true; return true; }
+  if (boxStart) { marquee.style.display = 'none'; boxStart = null; boxActive = false; return true; }
+  return false;
+}
 // ── Label Editor ───────────────────────────────────────────────────
 const labelEditor = document.getElementById('labelEditor')!;
 let editTargetId: string | null = null;
@@ -986,7 +1364,9 @@ const TOOLBAR_COMMANDS: Record<string, () => void> = {
   redo: () => window.handleRedo(),
   zoomIn: () => window.zoomIn(),
   zoomOut: () => window.zoomOut(),
-  pan: () => window.togglePanTool(),
+  select: () => setTool('select'),
+  pan: () => setTool('pan'),
+  autoLayout: () => { clearMultiSel(); vscode.postMessage({ type: 'autoLayout' }); },
   fit: () => window.fitToScreen(),
   resetZoom: () => window.resetZoom(),
   addNode: () => window.handleAddNode(),
@@ -1021,11 +1401,17 @@ document.addEventListener('keydown', (e) => {
   // the text field — without this guard, a Backspace while renaming a
   // selected node deleted the node out from under the editor.
   if (document.activeElement === labelEditor) return;
-  if ((e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    window.togglePanTool();
+  const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+  if ((e.key === 'h' || e.key === 'H') && plain) { setTool('pan'); return; }
+  if ((e.key === 'v' || e.key === 'V') && plain) { setTool('select'); return; }
+  if (e.key === ' ' && plain) {
+    e.preventDefault();
+    if (!spaceDown) { spaceDown = true; syncToolUi(); }
     return;
   }
   if (e.key === 'Escape') {
+    if (cancelGesture()) return;
+    clearMultiSel();
     dispatchInteraction({ type: 'ESCAPE' });
   }
   if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
@@ -1045,9 +1431,10 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     vscode.postMessage({ type: 'redoRequested' });
   }
-  if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedNodeId || selectedEdgeId)) {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedNodeId || selectedEdgeId || multiSel.size)) {
     e.preventDefault();
-    if (selectedNodeId) vscode.postMessage({ type: 'nodeDeleted', nodeId: selectedNodeId });
+    for (const id of selectedNodeIds()) vscode.postMessage({ type: 'nodeDeleted', nodeId: id });
+    clearMultiSel();
     if (selectedEdgeId) vscode.postMessage({ type: 'edgeDeleted', edgeId: selectedEdgeId });
     clearSelection();
   }
@@ -1056,6 +1443,11 @@ document.addEventListener('keydown', (e) => {
     rotateFurniture(selectedNodeId);
   }
 });
+
+document.addEventListener('keyup', (e) => {
+  if (e.key === ' ' && spaceDown) { spaceDown = false; syncToolUi(); }
+});
+window.addEventListener('blur', () => { if (spaceDown) { spaceDown = false; syncToolUi(); } });
 
 // ── Edge draw visual feedback ─────────────────────────────────────
 function markEdgeDrawSource(id: string) {
@@ -1205,7 +1597,12 @@ window.addEventListener('message', (event) => {
       // Fresh SVG: re-bridge engine ids to the interaction attributes,
       // re-apply the current zoom/pan and restore selection.
       annotateSvg();
+      prepareEdges();
       applyTransform();
+      for (const id of [...multiSel]) {
+        if (container.querySelector('[data-id="' + cssEsc(id) + '"][data-type="node"]')) markSelected(id, true);
+        else multiSel.delete(id);
+      }
       if (selectedNodeId) {
         const sel = container.querySelector('[data-id="' + selectedNodeId + '"]');
         if (sel) sel.setAttribute('data-selected', 'true');
@@ -1213,7 +1610,7 @@ window.addEventListener('message', (event) => {
       }
       if (selectedEdgeId) {
         const sel = container.querySelector('[data-id="' + selectedEdgeId + '"]');
-        if (sel) sel.setAttribute('data-selected', 'true');
+        if (sel) { sel.setAttribute('data-selected', 'true'); showEdgeHandles(selectedEdgeId); }
         else selectedEdgeId = null;
       }
       renderPalettes();

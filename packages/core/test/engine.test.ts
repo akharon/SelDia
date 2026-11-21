@@ -234,6 +234,32 @@ describe('edge via/routing attrs', () => {
     }
   });
 
+  it('frozen layout: a pinned `via` route is drawn as-is and exposed via data-route / data-pinned', () => {
+    // What the visual editor writes after a drag: every node pinned, the
+    // untouched edge carrying its drawn route. Re-rendering must reproduce
+    // that route exactly so "only what you touch moves" holds.
+    const nodes = 'a [A] { x: 0, y: 0 }\n b [B] { x: 0, y: 200 }\n c [C] { x: 300, y: 200 }\n';
+    const find = (svg: string, id: string) => {
+      const m = new RegExp(`data-seldia-edge-id="${id}"[^>]*data-route="([^"]+)"`).exec(svg);
+      return m ? m[1].split(' ').map((p) => p.split(',').map(Number)) : null;
+    };
+    const first = engine.compileSync(`fl "T" { ${nodes} a -> b
+ a -> c }`);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const drawn = find(first.value.svg, 'edge-a-c')!;
+    expect(drawn.length).toBeGreaterThanOrEqual(3); // a bent route
+    // The editor stores only the bends; the engine re-attaches the ends.
+    const via = drawn.slice(1, -1).flat().join(', ');
+    const again = engine.compileSync(`fl "T" { ${nodes} a -> b
+ a -> c { via: [${via}] } }`);
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(find(again.value.svg, 'edge-a-c')).toEqual(drawn);
+    expect(again.value.svg).toMatch(/data-seldia-edge-id="edge-a-c"[^>]*data-pinned="1"/);
+    expect(again.value.svg).not.toMatch(/data-seldia-edge-id="edge-a-b"[^>]*data-pinned/);
+  });
+
   it('an odd-length `via` array is treated as absent, not guessed at', () => {
     const src = 'fl "T" { a (Start)\n b [Do]\n a -> b { via: [1, 2, 3] } }';
     const r = engine.compileSync(src);

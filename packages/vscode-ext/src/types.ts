@@ -186,7 +186,23 @@ export type WebviewToExtMessage =
   | WebviewMsgRedoRequested
   | WebviewMsgViewModeChanged
   | WebviewMsgZoomChanged
-  | WebviewMsgSaveRequested;
+  | WebviewMsgSaveRequested
+  | WebviewMsgLayoutGesture
+  | WebviewMsgAutoLayout;
+
+/** Move nodes or one edge; the host freezes everything else (edit/layout-patch.ts). */
+export interface WebviewMsgLayoutGesture {
+  type: 'layoutGesture';
+  positions: Record<ID, { x: number; y: number }>;
+  routes: Record<ID, Array<{ x: number; y: number }>>;
+  moved?: Record<ID, { x: number; y: number }>;
+  edgeRoute?: { id: ID; route: Array<{ x: number; y: number }> };
+}
+
+/** Strip every manual position / edge route. */
+export interface WebviewMsgAutoLayout {
+  type: 'autoLayout';
+}
 
 export interface WebviewMsgReady {
   type: 'ready';

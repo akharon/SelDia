@@ -5,6 +5,7 @@ export type StaleAction = 'install-svg' | 'show-stale' | 'show-error';
 export const EDIT_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'nodeAdded', 'nodeDeleted', 'edgeAdded', 'edgeDeleted', 'edgeReconnected',
   'furnitureRotated', 'requestStyleEdit', 'nodeMoved', 'labelEdited', 'nodeResized',
+  'nodeDragged', 'layoutGesture', 'autoLayout',
 ]);
 
 export function decideUpdate(msg: { svg?: string }, hasGoodSvg: boolean): StaleAction {

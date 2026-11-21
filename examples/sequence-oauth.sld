@@ -25,4 +25,7 @@ diagram sequence "OAuth 2.0 Flow" {
     else invalid
         auth --> user: Error Message
     end
+    participant node5: "New Node 5"
+    participant node6: "New Node 6"
+    node6 -> app: Message
 }

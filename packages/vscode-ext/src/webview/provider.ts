@@ -19,6 +19,14 @@ import {
 } from '../edit/position-patch.js';
 import { findBlockById, findSelDiABlocks, type SelDiABlockLoc } from '../edit/blocks.js';
 import { computeFloorplanDragPatch } from '../edit/floorplan-drag.js';
+import { computeLayoutGestureEdits, computeAutoLayoutEdits, type LayoutEdge } from '../edit/layout-patch.js';
+
+/** Diagram types with their own fixed layout (lifelines, time axes, plans…):
+ *  nodes/edges there aren't freely placeable, so no freeze / edge moves. */
+const FIXED_LAYOUT_TYPES = new Set([
+  'sequence', 'gantt', 'mindmap', 'sankey', 'gitgraph', 'chart-bar', 'chart-line', 'chart-pie',
+  'chart-radar', 'chart-scatter', 'floorplan', 'circuit', 'pcb', 'table', 'timeline', 'wireframe',
+]);
 import { EditSession } from '../edit/session.js';
 import { SerialQueue } from '../edit/serial-queue.js';
 
@@ -444,6 +452,7 @@ export class SelDiAInteractiveProvider {
     let stats = 'Compilation failed';
     let nodes: Array<{ id: string; x: number; y: number }> = [];
     let fpScale: number | undefined;
+    let freeLayout = false;
 
     const r1 = eng.parse(this._currentSource, fsPath);
     const r2 = r1.ok ? eng.analyze(r1.value) : r1;
@@ -456,6 +465,7 @@ export class SelDiAInteractiveProvider {
       this._positionedIr = r4.value.diagram;
       nodes = r4.value.diagram.nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }));
       fpScale = r4.value.diagram.metadata?.floorplanScale as number | undefined;
+      freeLayout = !FIXED_LAYOUT_TYPES.has(String(r4.value.diagram.type));
       svgContent = result.value.svg;
       stats = `Nodes: ${result.value.stats?.nodeCount || 0} | Edges: ${result.value.stats?.edgeCount || 0}`;
       vocabulary = getEditVocabulary(r4.value.diagram.type);
@@ -483,7 +493,7 @@ export class SelDiAInteractiveProvider {
       : undefined;
     if (!this._htmlInitialized) {
       // First render: install the full page (styles, toolbar, script).
-      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes, fpScale, vocabulary });
+      this._panel.webview.html = this.getHtmlContent(svgContent, stats, errorMsg, { nodes, fpScale, vocabulary, freeLayout });
       this._htmlInitialized = true;
       this._lastSentSig = sig;
     } else {
@@ -502,14 +512,14 @@ export class SelDiAInteractiveProvider {
         svg: svgContent,
         error: errorMsg,
         stats,
-        ir: { nodes, fpScale, vocabulary },
+        ir: { nodes, fpScale, vocabulary, freeLayout },
         focusNodeId,
         focusEdgeId,
       });
     }
   }
 
-  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }>; fpScale?: number; vocabulary?: ReturnType<typeof getEditVocabulary> }): string {
+  private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }>; fpScale?: number; freeLayout?: boolean; vocabulary?: ReturnType<typeof getEditVocabulary> }): string {
     const theme = this._currentTheme;
 
     // Node id → laid-out position, for drag write-back in the webview.
@@ -699,6 +709,36 @@ export class SelDiAInteractiveProvider {
       border: 1px solid var(--vscode-inputValidation-errorBorder, currentColor);
       font-family: var(--vscode-editor-font-family, monospace); font-size: 13px; white-space: pre-wrap;
     }
+    /* Tool switch (Select | Pan): one segmented control. */
+    .toolbar .seg { display: inline-flex; gap: 1px; padding: 1px; border-radius: 6px; background: var(--hover-bg); }
+    .toolbar .seg button { border-radius: 5px; }
+    .toolbar #btnAutoLayout .seldia-icon { margin-right: 0; width: 16px; height: 16px; }
+    #container.tool-pan, #container.tool-pan * { cursor: grab !important; }
+    #container.is-panning, #container.is-panning * { cursor: grabbing !important; }
+    #container.tool-select [data-type="node"] { cursor: move; }
+    #container.is-dragging, #container.is-dragging * { cursor: grabbing !important; }
+    /* Box select */
+    #marquee {
+      display: none; position: fixed; z-index: 999; pointer-events: none;
+      border: 1px solid var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      border-radius: 2px;
+    }
+    /* Edges: wide invisible hit line + hover highlight + segment handles */
+    .seldia-edge-hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
+    #container.tool-select .seldia-edge-movable { cursor: grab; }
+    #container.tool-select .seldia-edge-fixed { cursor: not-allowed; }
+    .seldia-edge-movable:hover path:not(.seldia-edge-hit) { filter: drop-shadow(0 0 2px var(--accent)); }
+    .seldia-edge-rerouting { opacity: .45; stroke-dasharray: 5 4; }
+    .seldia-moving { opacity: .85; filter: drop-shadow(0 0 4px var(--accent)); }
+    #edgeHandles .seg-handle {
+      fill: var(--vscode-editor-background, #fff); stroke: var(--accent); stroke-width: 1.5;
+      cursor: grab; vector-effect: non-scaling-stroke;
+    }
+    #edgeHandles .seg-handle.h { cursor: ns-resize; }
+    #edgeHandles .seg-handle.v { cursor: ew-resize; }
+    #edgeHandles .seg-handle:hover { fill: var(--accent); }
+    #edgeHandles .ghost { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 3; pointer-events: none; vector-effect: non-scaling-stroke; }
     /* Selection highlight */
     .seldia-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
     [data-selected="true"] { filter: drop-shadow(0 0 3px var(--accent)); }
@@ -733,11 +773,19 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" id="btnRedo" data-cmd="redo" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${icon('redo')}</button>
 
     <span class="sep"></span>
-    <button class="icon-btn" data-cmd="zoomIn" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
-    <button class="icon-btn" data-cmd="zoomOut" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
+    <span class="seg" role="group" aria-label="Tool">
+      <button class="icon-btn active" id="btnSelect" data-cmd="select" title="Select (V) — click, drag to move, drag empty canvas to box-select" aria-label="Select tool" aria-pressed="true">${icon('pointer')}</button>
+      <button class="icon-btn" id="btnPan" data-cmd="pan" title="Pan (H) — drag to move the view. Tip: scroll wheel also pans" aria-label="Pan tool" aria-pressed="false">${icon('hand')}</button>
+    </span>
+
+    <span class="sep"></span>
+    <button class="icon-btn" data-cmd="zoomOut" title="Zoom out (Ctrl+wheel)" aria-label="Zoom out">${icon('zoom-out')}</button>
+    <button class="icon-btn" data-cmd="zoomIn" title="Zoom in (Ctrl+wheel)" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="icon-btn" data-cmd="fit" title="Fit to screen" aria-label="Fit to screen">${icon('fit-screen')}</button>
-    <button class="icon-btn" id="btnPan" data-cmd="pan" title="Pan tool (H) — or drag empty canvas" aria-label="Pan tool">${icon('hand')}</button>
-    <button class="icon-btn" data-cmd="resetZoom" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
+    <button class="icon-btn" data-cmd="resetZoom" title="Actual size (100%)" aria-label="Reset zoom">${icon('reset')}</button>
+
+    <span class="sep"></span>
+    <button id="btnAutoLayout" data-cmd="autoLayout" title="Auto-layout: arrange every node and route every edge automatically (Ctrl+Z to undo)">${icon('auto-layout')}<span>Auto-layout</span></button>
 
     <span class="sep"></span>
     <!-- Custom dropdown, NOT a native <select>: native popup surfaces spawned
@@ -774,6 +822,7 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" data-cmd="exportSvg" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
   </div>
 
+  <div id="marquee"></div>
   <div id="container">
     ${svgContent || `<div class="error">${errorMsg || 'No diagram to render'}</div>`}
     <div id="modeBanner"></div>
@@ -815,6 +864,14 @@ export class SelDiAInteractiveProvider {
 
       case 'nodeDragged':
         void this._editQueue.run(() => this.applyNodePosition(msg.nodeId, msg.newPosition.x, msg.newPosition.y));
+        break;
+
+      case 'layoutGesture':
+        void this._editQueue.run(() => this.handleLayoutGesture(msg));
+        break;
+
+      case 'autoLayout':
+        void this._editQueue.run(() => this.handleAutoLayout());
         break;
 
       case 'furnitureRotated':
@@ -1232,6 +1289,34 @@ export class SelDiAInteractiveProvider {
       return;
     }
     await this.applyNodeAttrs(nodeId, { x: Math.round(x), y: Math.round(y) });
+  }
+
+  /** Move nodes / an edge with everything else frozen (see layout-patch.ts). */
+  private async handleLayoutGesture(msg: {
+    positions: Record<string, { x: number; y: number }>;
+    routes: Record<string, Array<{ x: number; y: number }>>;
+    moved?: Record<string, { x: number; y: number }>;
+    edgeRoute?: { id: string; route: Array<{ x: number; y: number }> };
+  }): Promise<void> {
+    const ir = this._positionedIr;
+    if (!ir) return;
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    const edges: LayoutEdge[] = ir.edges.map((e) => ({ id: e.id, sourceId: e.sourceId, targetId: e.targetId, route: msg.routes?.[e.id] }));
+    const edits = computeLayoutGestureEdits(gt.source, { positions: msg.positions, edges, moved: msg.moved, edgeRoute: msg.edgeRoute });
+    if (msg.edgeRoute && !edits.length) { this.editSkipped('this edge is part of a chain (a -> b -> c) and can\'t be moved on its own'); return; }
+    await this.applySourceEdits(gt, edits);
+  }
+
+  private async handleAutoLayout(): Promise<void> {
+    const ir = this._positionedIr;
+    if (!ir) return;
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); return; }
+    const edges: LayoutEdge[] = ir.edges.map((e) => ({ id: e.id, sourceId: e.sourceId, targetId: e.targetId }));
+    const edits = computeAutoLayoutEdits(gt.source, ir.nodes.map((n) => n.id), edges);
+    if (!edits.length) { vscode.window.setStatusBarMessage('SelDiA: already auto-laid-out', 3000); return; }
+    await this.applySourceEdits(gt, edits);
   }
 
   /** Floorplan-specific drag mapping, or undefined when this isn't a

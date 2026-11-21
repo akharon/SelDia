@@ -9,12 +9,12 @@
   "author": "SelDiA",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/seldia/seldia.git"
+    "url": "git+https://github.com/akharon/SelDia.git"
   },
   "bugs": {
-    "url": "https://github.com/seldia/seldia/issues"
+    "url": "https://github.com/akharon/SelDia/issues"
   },
-  "homepage": "https://seldia.dev",
+  "homepage": "https://github.com/akharon/SelDia#readme",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -48,7 +48,7 @@
     "build": "node scripts/build.mjs && node scripts/vendor-external-deps.mjs",
     "dev": "node scripts/build.mjs --watch",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@marp-team/marp-core": "^4.4.0",
@@ -169,22 +169,6 @@
         "title": "SelDiA: Export Markdown to PDF"
       },
       {
-        "command": "seldia.deploySkill",
-        "title": "SelDiA: Deploy Copilot Skill"
-      },
-      {
-        "command": "seldia.updateSkill",
-        "title": "SelDiA: Update Copilot Skill"
-      },
-      {
-        "command": "seldia.uninstallSkill",
-        "title": "SelDiA: Uninstall Copilot Skill"
-      },
-      {
-        "command": "seldia.checkSkillStatus",
-        "title": "SelDiA: Check Skill Status"
-      },
-      {
         "command": "seldia.revealSource",
         "title": "SelDiA: Reveal Diagram Source"
       },
@@ -201,80 +185,6 @@
       {
         "language": "seldia",
         "path": "./snippets/seldia.code-snippets"
-      }
-    ],
-    "languageModelTools": [
-      {
-        "name": "seldia_renderDiagram",
-        "displayName": "Render SelDiA Diagram",
-        "modelDescription": "Compiles SelDiA DSL source (flowchart, sequence, class, ER, C4, BPMN, state, gantt, mindmap, and 15+ other diagram types) to SVG and writes it to a temp file. Use this to visually verify a diagram you wrote or edited compiles and looks correct before showing it to the user.",
-        "toolReferenceName": "seldiaRender",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(graph)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "source": {
-              "type": "string",
-              "description": "The full SelDiA DSL source text to render."
-            },
-            "fileName": {
-              "type": "string",
-              "description": "Optional file path of the source, used for resolving `include` directives and in error messages."
-            }
-          },
-          "required": ["source"]
-        }
-      },
-      {
-        "name": "seldia_validateDiagram",
-        "displayName": "Validate SelDiA Diagram",
-        "modelDescription": "Parses and semantically analyzes SelDiA DSL source without rendering it, returning any syntax or validation errors. Use this for a fast check-and-fix loop while authoring or editing a diagram, before rendering the final result.",
-        "toolReferenceName": "seldiaValidate",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(check)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "source": {
-              "type": "string",
-              "description": "The full SelDiA DSL source text to validate."
-            },
-            "fileName": {
-              "type": "string",
-              "description": "Optional file path of the source, used for resolving `include` directives and in error messages."
-            }
-          },
-          "required": ["source"]
-        }
-      },
-      {
-        "name": "seldia_checkDiagram",
-        "displayName": "Check SelDiA Diagram Quality",
-        "modelDescription": "Lays out a diagram exactly as it renders and reports readability defects (edge crossings, overlaps, detached or colliding labels, group violations) with a hint per defect on what to change. Call it after rendering a diagram, apply the hints (reorder declarations, shorten labels, set direction), and iterate until the report is clean.",
-        "toolReferenceName": "seldiaCheck",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(checklist)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "code": { "type": "string", "description": "The diagram source text." },
-            "language": { "type": "string", "enum": ["seldia", "mermaid", "plantuml"], "description": "Source language; defaults to seldia." }
-          },
-          "required": ["code"]
-        }
-      },
-      {
-        "name": "seldia_listDiagramTypes",
-        "displayName": "List SelDiA Diagram Types",
-        "modelDescription": "Returns the list of diagram type keywords supported by SelDiA (e.g. flowchart, sequence, class, er, c4-context, bpmn, state, gantt, mindmap). Use this before generating a new diagram from scratch to pick a valid type keyword for the `diagram <type> \"Title\" { ... }` header.",
-        "toolReferenceName": "seldiaTypes",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(list-unordered)",
-        "inputSchema": {
-          "type": "object",
-          "properties": {}
-        }
       }
     ],
     "menus": {
@@ -408,14 +318,6 @@
             "media": {
               "markdown": "media/walkthrough/export-pdf.md"
             }
-          },
-          {
-            "id": "copilotSkill",
-            "title": "Enable Copilot Integration",
-            "description": "Deploy the SelDiA DSL Copilot skill so GitHub Copilot can generate, modify, and explain SelDiA diagrams. Run 'SelDiA: Deploy Copilot Skill' from the command palette.",
-            "media": {
-              "markdown": "media/walkthrough/copilot-skill.md"
-            }
           }
         ]
       }
@@ -457,11 +359,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open the Marp slide preview when a Markdown file whose front-matter sets `marp: true` is opened. The built-in Markdown preview is left alone; this opens SelDiA's slide panel beside it."
-        },
-        "seldia.copilotSkill.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable deployment of the SelDiA DSL Copilot skill"
         },
         "seldia.interactive.enabled": {
           "type": "boolean",

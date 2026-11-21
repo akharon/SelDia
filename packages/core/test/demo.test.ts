@@ -14,7 +14,7 @@ const demoPath = fileURLToPath(new URL('../../../docs/examples/demo-basic.md', i
 const engine = createEngine();
 
 function demoBlocks(): string[] {
-  return [...readFileSync(demoPath, 'utf8').matchAll(/```seldia\n([\s\S]*?)```/g)].map((m) => m[1]);
+  return [...readFileSync(demoPath, 'utf8').replace(/\r\n/g, '\n').matchAll(/```seldia\n([\s\S]*?)```/g)].map((m) => m[1]);
 }
 
 /** The diagram type the engine actually resolves a block to. */

@@ -56,9 +56,6 @@ Convert any Markdown file with embedded SelDiA diagrams to a professional PDF:
 - Auto-generated Table of Contents
 - Error fallback rendering for broken diagrams
 
-### 🤖 GitHub Copilot Integration
-Deploy the SelDiA DSL Copilot skill so GitHub Copilot can generate, modify, and explain SelDiA diagrams. Run **"SelDiA: Deploy Copilot Skill"** from the command palette.
-
 ## Getting Started
 
 1. Create a new file with the `.sld` extension
@@ -97,8 +94,6 @@ diagram sequence "API Call" {
 | SelDiA: Insert Diagram Block | `Ctrl+Shift+I` | Insert a SelDiA fenced block in Markdown |
 | SelDiA: Export Diagram | — | Export current diagram as SVG/PNG/PDF |
 | SelDiA: Export Markdown to PDF | — | Convert Markdown with diagrams to PDF |
-| SelDiA: Deploy Copilot Skill | — | Deploy Copilot DSL skill |
-| SelDiA: Check Skill Status | — | Check Copilot skill deployment status |
 
 ## Settings
 
@@ -106,7 +101,6 @@ diagram sequence "API Call" {
 |---------|---------|-------------|
 | `seldia.defaultTheme` | `sketchy-light` | Default theme for rendered diagrams |
 | `seldia.markdown.enabled` | `true` | Enable diagram detection in Markdown |
-| `seldia.copilotSkill.enabled` | `true` | Enable Copilot skill deployment |
 | `seldia.interactive.enabled` | `true` | Enable interactive editing |
 | `seldia.interactive.undoStackSize` | `50` | Maximum undo steps for visual edits |
 | `seldia.export.defaultFormat` | `svg` | Default export format |

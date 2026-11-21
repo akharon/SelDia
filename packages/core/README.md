@@ -36,7 +36,7 @@ if (result.ok) {
 
 ## Documentation
 
-See [seldia.dev](https://seldia.dev) for full DSL reference and API docs.
+See the [docs](https://github.com/akharon/SelDia/tree/main/docs) for the full DSL reference and API docs.
 
 ## License
 

@@ -105,7 +105,7 @@ component.
 
 ## Documentation
 
-Full documentation at [seldia.dev](https://seldia.dev) (coming soon) or in the `docs/` directory.
+Full documentation is in the [`docs/`](docs/) directory.
 
 ## License
 

@@ -1,8 +1,8 @@
 // =============================================================================
 // SelDiA — the import galleries must keep compiling
 // =============================================================================
-// demo_mermaid.md and demo_plantuml.md are the only place a reader sees what
-// SelDiA accepts as an *input format*. demo.test.ts already guards demo.md for
+// demo-mermaid.md and demo-plantuml.md are the only place a reader sees what
+// SelDiA accepts as an *input format*. demo.test.ts already guards demo-basic.md for
 // the native DSL; these two shipped unguarded, so a fence that stopped
 // importing would show readers an error box (or silently degrade to plain
 // code) with nothing failing. Both galleries also make specific claims about
@@ -17,7 +17,7 @@ import { importMermaid } from '../src/import/mermaid.js';
 import { importPlantUml } from '../src/import/plantuml.js';
 
 const engine = createEngine();
-const read = (name: string) => readFileSync(fileURLToPath(new URL(`../../../${name}`, import.meta.url)), 'utf8');
+const read = (name: string) => readFileSync(fileURLToPath(new URL(`../../../docs/examples/${name}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 
 function fences(md: string, lang: string): string[] {
   return [...md.matchAll(new RegExp('```' + lang + '\\n([\\s\\S]*?)```', 'g'))].map((m) => m[1]);
@@ -36,7 +36,7 @@ function compile(source: string, importer: (s: string) => { ir: unknown; diagnos
 }
 
 describe('demo_plantuml.md', () => {
-  const md = read('docs/examples/demo-plantuml.md');
+  const md = read('demo-plantuml.md');
   const blocks = fences(md, 'plantuml');
 
   it('has a block per documented family', () => {
@@ -64,7 +64,7 @@ describe('demo_plantuml.md', () => {
 });
 
 describe('demo_mermaid.md', () => {
-  const blocks = fences(read('docs/examples/demo-mermaid.md'), 'mermaid');
+  const blocks = fences(read('demo-mermaid.md'), 'mermaid');
 
   it('has a block per documented type', () => {
     expect(blocks.length).toBeGreaterThanOrEqual(9);

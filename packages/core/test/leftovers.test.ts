@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { createEngine } from '../src/engine.js';
 import { importMermaid } from '../src/index.js';
@@ -96,7 +97,7 @@ describe('T2 sankey chips never intersect', () => {
   it.each([['demo-basic.md#25'], ['demo-mermaid.md#17']])('%s', async (key) => {
     const { extractFences } = await import('../../../scripts/layout-metrics-lib.mjs');
     const core = await import('../src/index.js');
-    const f = extractFences(new URL('../../../docs/examples', import.meta.url).pathname, (l: string) => core.fenceToSource(l, '') !== null).find((x: any) => x.key === key)!;
+    const f = extractFences(fileURLToPath(new URL('../../../docs/examples', import.meta.url)), (l: string) => core.fenceToSource(l, '') !== null).find((x: any) => x.key === key)!;
     const { kind, source } = core.fenceToSource(f.lang, f.code)!;
     const eng = core.createEngine({});
     let ir: any;

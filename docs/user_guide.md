@@ -51,7 +51,6 @@
     - [11.6 Marp Slide Decks](#116-marp-slide-decks)
     - [11.7 Keybindings](#117-keybindings)
     - [11.8 Extension Settings](#118-extension-settings)
-    - [11.9 Copilot Integration — SelDiA DSL Skill](#119-copilot-integration--seldia-dsl-skill)
 12. [Programmatic API](#12-programmatic-api)
 13. [Best Practices](#13-best-practices)
 14. [Troubleshooting](#14-troubleshooting)
@@ -1890,90 +1889,6 @@ Everything else is a Command Palette entry (`Ctrl+Shift+P`, type "SelDiA"): Expo
 | `seldia.export.defaultFormat` | `svg` \| `png` \| `pdf` | `svg` | Default export format |
 | `seldia.copilotSkill.enabled` | boolean | `true` | Enable deployment of the SelDiA DSL Copilot skill |
 
-### 11.9 Copilot Integration — SelDiA DSL Skill
-
-When you install the SelDiA VS Code extension, it can deploy a **Copilot skill** that teaches GitHub Copilot how to write SelDiA DSL. Once deployed, Copilot can generate, modify, explain, and refactor SelDiA diagrams — directly in chat and inline.
-
-#### What the Skill Enables
-
-With the `seldia-dsl` skill active, you can ask Copilot:
-
-| Prompt | Copilot Can... |
-|--------|---------------|
-| *"Create a flowchart for user registration"* | Generate a complete ` ```seldia ` block with proper syntax |
-| *"Add error handling to this sequence diagram"* | Modify an existing diagram, preserving conventions |
-| *"What diagram type should I use for a microservices architecture?"* | Recommend C4 Container or Component diagram |
-| *"Convert this class diagram to an ER diagram"* | Translate between diagram types |
-| *"Explain what this SelDiA diagram shows"* | Read and describe the diagram's structure |
-| *"Fix the syntax error in this .sld file"* | Diagnose and correct DSL issues |
-
-#### Deployment
-
-**On first activation**, SelDiA prompts:
-
-> *"SelDiA can teach Copilot to write diagrams. Deploy DSL skill?"*
-
-You can choose:
-- **Deploy to Workspace** — installs to `.github/skills/seldia-dsl/` (team-shared, version-controlled)
-- **Deploy for All Workspaces** — installs to `~/.copilot/skills/seldia-dsl/` (personal, roams with Settings Sync)
-- **Not Now** — skip; you can deploy later via the Command Palette
-
-**Manual deployment** at any time:
-- `Ctrl+Shift+P` → **"SelDiA: Deploy Copilot Skill"**
-- `Ctrl+Shift+P` → **"SelDiA: Update Copilot Skill"** (when extension updates)
-- `Ctrl+Shift+P` → **"SelDiA: Uninstall Copilot Skill"**
-- `Ctrl+Shift+P` → **"SelDiA: Check Skill Status"**
-
-#### Invoking the Skill in Chat
-
-You can invoke the skill explicitly in Copilot Chat by typing `/seldia-dsl` followed by your request:
-
-```
-/seldia-dsl Create a C4 context diagram for an e-commerce platform
-```
-
-Copilot auto-detects diagram-related requests and loads the skill automatically — no need to type `/seldia-dsl` every time. Keywords that trigger auto-loading include: *seldia, diagram, flowchart, sequence diagram, C4 model, architecture diagram, BPMN, ERD, state machine, Gantt, mind map*, and more.
-
-#### Settings
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `seldia.copilotSkill.enabled` | boolean | `true` | Enable Copilot skill deployment |
-| `seldia.copilotSkill.scope` | `workspace` \| `user` \| `both` | `workspace` | Where to deploy the skill |
-| `seldia.copilotSkill.autoDeploy` | boolean | `false` | Deploy without prompting on activation |
-| `seldia.copilotSkill.promptBeforeDeploy` | boolean | `true` | Show a prompt before first deployment |
-| `seldia.copilotSkill.autoUpdate` | boolean | `true` | Auto-update the skill when extension updates |
-
-#### How It Works
-
-1. The extension bundles a `SKILL.md` file containing the complete SelDiA DSL reference (all 21 diagram types, syntax, conventions, examples)
-2. On deployment, `SKILL.md` is copied to the appropriate Copilot skills directory
-3. Copilot discovers the skill via its `name` and `description` fields
-4. When you ask a diagram-related question, Copilot loads the skill and uses its knowledge to generate correct SelDiA code
-5. The extension tracks the deployed version via a manifest file (`.sld-skill-manifest.json`) and can detect when updates are available
-
-#### Customizing the Skill
-
-If you deploy to the **workspace** scope (`.github/skills/seldia-dsl/SKILL.md`), you can edit the skill to add:
-- **Organization-specific conventions** — preferred themes, naming patterns, default layouts
-- **Shared style blocks** — company color palettes, standard node styles
-- **Custom diagram templates** — frequently used diagram patterns
-
-The extension detects user modifications (via content hash) and will **not overwrite** your customizations during updates.
-
-#### Status Bar
-
-The VS Code status bar shows the current skill state:
-
-| Indicator | Meaning |
-|-----------|---------|
-| `SelDiA Skill: Active ✓` | Skill is deployed and up-to-date |
-| `SelDiA Skill: Update Available ↑` | A newer version is available from the extension |
-| `SelDiA Skill: Modified ✎` | You've customized the skill; auto-update disabled |
-| `SelDiA Skill: Not Deployed` | Skill is not yet deployed; click to deploy |
-
-
----
 
 ## 12. Programmatic API
 

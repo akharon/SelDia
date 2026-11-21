@@ -8,7 +8,6 @@
 # Options:
 #   --out <dir>      Output directory for the .vsix file (default: packages/vscode-ext)
 #   --no-build       Skip the build step (use if already built)
-#   --deploy-skill   Also deploy the Copilot skill to user scope (~/.copilot/skills/)
 #   --help, -h       Show this help message
 # =============================================================================
 
@@ -19,15 +18,13 @@ cd "$ROOT_DIR"
 
 OUT_DIR=""
 SKIP_BUILD=false
-DEPLOY_SKILL=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --out)          OUT_DIR="$2"; shift 2 ;;
     --no-build)     SKIP_BUILD=true; shift ;;
-    --deploy-skill) DEPLOY_SKILL=true; shift ;;
-    --help|-h)      echo "Usage: ./scripts/package-vsix.sh [--out <dir>] [--no-build] [--deploy-skill]"; exit 0 ;;
+    --help|-h)      echo "Usage: ./scripts/package-vsix.sh [--out <dir>] [--no-build]"; exit 0 ;;
     *)              echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -116,42 +113,6 @@ else
 fi
 
 cd "$ROOT_DIR"
-
-# ── Deploy Copilot & Claude skills ──────────────────────────
-deploy_skill() {
-  local name="$1"
-  local target_dir="$2"
-  local deployed_by="$3"
-  local target="${target_dir}/seldia-dsl/SKILL.md"
-
-  mkdir -p "$(dirname "$target")"
-  cp "$SKILL_SRC" "$target"
-  cat > "$(dirname "$target")/.sld-skill-manifest.json" <<- JSONEOF
-{
-  "name": "seldia-dsl",
-  "version": "1.0.0",
-  "deployedBy": "${deployed_by}",
-  "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "scope": "user",
-  "skillPath": "${target}",
-  "contentHash": "sha256:deployed"
-}
-JSONEOF
-  echo -e "${GREEN}   ✅ ${name} skill deployed to: $(dirname "$target")${NC}"
-}
-
-if [ "$DEPLOY_SKILL" = true ]; then
-  echo ""
-  echo -e "${YELLOW}🧠 Deploying skills...${NC}"
-  SKILL_SRC="$ROOT_DIR/packages/vscode-ext/resources/skills/seldia-dsl/SKILL.md"
-
-  if [ -f "$SKILL_SRC" ]; then
-    deploy_skill "Copilot" "${HOME}/.copilot/skills" "seldia-vscode-ext@1.0.0 (package-vsix.sh)"
-    deploy_skill "Claude Code" "${HOME}/.claude/skills" "seldia-vscode-ext@1.0.0 (package-vsix.sh)"
-  else
-    echo -e "${RED}   ⚠️  Skill source not found at: ${SKILL_SRC}${NC}"
-  fi
-fi
 
 echo ""
 echo -e "${GREEN}🎉 Done!${NC}"

@@ -19,8 +19,9 @@ const extensionConfig = {
   platform: 'node',
   target: 'node22',
   format: 'cjs',
-  sourcemap: true,
-  minify: false,
+  // Watch (F5 debug) keeps readable output + maps; packaged builds minify.
+  sourcemap: isWatch,
+  minify: !isWatch,
   keepNames: true,
   external: [
     'vscode',                  // provided by VS Code at runtime

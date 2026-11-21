@@ -279,6 +279,8 @@ export interface WebviewMsgEdgeRerouted {
 export interface WebviewMsgExportRequested {
   type: 'exportRequested';
   format: 'svg' | 'png' | 'pdf';
+  /** Serialized diagram; the host writes it via a save dialog. */
+  svg?: string;
 }
 
 export interface WebviewMsgUndoRequested {

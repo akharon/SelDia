@@ -185,6 +185,7 @@ export class SelDiAInteractiveProvider {
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'icon.png');
     this._engine = engine;
     this._currentSource = source;
     this._editSession = new EditSession(source);
@@ -696,17 +697,17 @@ export class SelDiAInteractiveProvider {
     <span class="stats">${stats}</span>
 
     <span class="sep"></span>
-    <button class="icon-btn" id="btnSave" onclick="handleSave()" title="Save (Ctrl+S)" aria-label="Save">${icon('save')}</button>
+    <button class="icon-btn" id="btnSave" data-cmd="save" title="Save (Ctrl+S)" aria-label="Save">${icon('save')}</button>
 
     <span class="sep"></span>
-    <button class="icon-btn" id="btnUndo" onclick="handleUndo()" disabled title="Undo (Ctrl+Z)" aria-label="Undo">${icon('undo')}</button>
-    <button class="icon-btn" id="btnRedo" onclick="handleRedo()" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${icon('redo')}</button>
+    <button class="icon-btn" id="btnUndo" data-cmd="undo" disabled title="Undo (Ctrl+Z)" aria-label="Undo">${icon('undo')}</button>
+    <button class="icon-btn" id="btnRedo" data-cmd="redo" disabled title="Redo (Ctrl+Shift+Z)" aria-label="Redo">${icon('redo')}</button>
 
     <span class="sep"></span>
-    <button class="icon-btn" onclick="zoomIn()" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
-    <button class="icon-btn" onclick="zoomOut()" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
-    <button class="icon-btn" onclick="fitToScreen()" title="Fit to screen" aria-label="Fit to screen">${icon('fit-screen')}</button>
-    <button class="icon-btn" onclick="resetZoom()" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
+    <button class="icon-btn" data-cmd="zoomIn" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
+    <button class="icon-btn" data-cmd="zoomOut" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
+    <button class="icon-btn" data-cmd="fit" title="Fit to screen" aria-label="Fit to screen">${icon('fit-screen')}</button>
+    <button class="icon-btn" data-cmd="resetZoom" title="Reset zoom (1:1)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
     <!-- Custom dropdown, NOT a native <select>: native popup surfaces spawned
@@ -729,16 +730,16 @@ export class SelDiAInteractiveProvider {
 
     <span class="sep"></span>
     <span id="nodePaletteWrap" style="position:relative">
-      <button class="icon-btn" id="btnAddNode" onclick="handleAddNode()" title="Add node" aria-haspopup="listbox" aria-expanded="false" aria-label="Add node">${icon('add-node')}</button>
+      <button class="icon-btn" id="btnAddNode" data-cmd="addNode" title="Add node" aria-haspopup="listbox" aria-expanded="false" aria-label="Add node">${icon('add-node')}</button>
       <div id="nodePalette" role="listbox"></div>
     </span>
     <span id="edgePaletteWrap" style="position:relative">
-      <button class="icon-btn" id="btnAddEdge" onclick="handleAddEdge()" title="Draw edge (click source, then target)" aria-haspopup="listbox" aria-expanded="false" aria-label="Draw edge">${icon('add-edge')}</button>
+      <button class="icon-btn" id="btnAddEdge" data-cmd="addEdge" title="Draw edge (click source, then target)" aria-haspopup="listbox" aria-expanded="false" aria-label="Draw edge">${icon('add-edge')}</button>
       <div id="edgePalette" role="listbox"></div>
     </span>
 
     <span class="sep"></span>
-    <button class="icon-btn" onclick="exportSvg()" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
+    <button class="icon-btn" data-cmd="exportSvg" title="Export SVG" aria-label="Export SVG">${icon('download')}</button>
   </div>
 
   <div id="container">
@@ -830,7 +831,7 @@ export class SelDiAInteractiveProvider {
         break;
 
       case 'exportRequested':
-        // Handled via the export SVG button in webview
+        if (typeof msg.svg === 'string') void this.exportSvg(msg.svg);
         break;
 
       case 'changeTheme':
@@ -946,6 +947,26 @@ export class SelDiAInteractiveProvider {
   /** Write the edited document to disk. Visual edits are applied as
    *  WorkspaceEdits, which only make the document dirty — without this the
    *  panel had no way to persist them at all. */
+  /** Blob/anchor downloads are a silent no-op inside VS Code webviews, so the
+   *  host writes the SVG through a save dialog and reports the path. */
+  private async exportSvg(svg: string): Promise<void> {
+    const src = this._sourceUri;
+    const defaultUri = src && src.scheme === 'file'
+      ? vscode.Uri.file(src.fsPath.replace(/\.[^./\\]+$/, '') + '.svg')
+      : undefined;
+    const target = await vscode.window.showSaveDialog({ defaultUri, filters: { SVG: ['svg'] } });
+    if (!target) return;
+    try {
+      const xml = svg.startsWith('<?xml') ? svg : '<?xml version="1.0" encoding="UTF-8"?>\n' + svg;
+      await vscode.workspace.fs.writeFile(target, Buffer.from(xml, 'utf8'));
+      const pick = await vscode.window.showInformationMessage(`SVG exported to ${target.fsPath}`, 'Open', 'Reveal');
+      if (pick === 'Open') await vscode.commands.executeCommand('vscode.open', target);
+      if (pick === 'Reveal') await vscode.commands.executeCommand('revealFileInOS', target);
+    } catch (e) {
+      void vscode.window.showErrorMessage(`SVG export failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   private async saveDocument(): Promise<void> {
     if (!this._sourceUri) { this.editSkipped('no document to save'); return; }
     const document = await vscode.workspace.openTextDocument(this._sourceUri);

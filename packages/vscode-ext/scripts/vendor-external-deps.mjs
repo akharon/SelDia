@@ -121,6 +121,14 @@ console.log(`[vendor-deps] Vendoring ${closure.size} package(s) rooted at ${root
 rmSync(destModules, { recursive: true, force: true });
 mkdirSync(destModules, { recursive: true });
 
+const UNUSED_DIRS = {
+  'mathjax-full': ['es5', 'components', 'ts'],
+  'highlight.js': ['es', 'scss', 'styles', 'types'],
+  katex: ['src', 'contrib'],
+};
+
+const DEAD_WEIGHT =/(\.d\.[cm]?ts|\.[cm]?ts|\.tsx|\.map|\.md|\.markdown)$/i;
+
 for (const [destRel, src] of closure) {
   const dest = join(destModules, ...destRel.split('/'));
   mkdirSync(dirname(dest), { recursive: true });
@@ -130,7 +138,17 @@ for (const [destRel, src] of closure) {
   cpSync(src, dest, {
     recursive: true,
     dereference: true,
-    filter: (srcPath) => !srcPath.slice(src.length).includes('node_modules'),
+    filter: (srcPath) => {
+      const rel = srcPath.slice(src.length);
+      if (rel.includes('node_modules')) return false;
+      // Alternate builds nobody requires: marp-core only loads mathjax-full/js
+      // and highlight.js/lib; katex is used via dist/.
+      const top = rel.split(/[\\/]/)[1];
+      if (UNUSED_DIRS[destRel]?.includes(top)) return false;
+      // Node never loads TS sources, type definitions, source maps or docs —
+      // they made up most of the ~27 MB .vsix.
+      return !DEAD_WEIGHT.test(rel);
+    },
   });
 }
 

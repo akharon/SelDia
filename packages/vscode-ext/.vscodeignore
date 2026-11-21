@@ -11,3 +11,8 @@ node_modules/**
 **/node_modules/**
 !dist/node_modules/**
 ../**
+test/**
+**/*.d.ts
+**/*.d.mts
+**/*.d.cts
+dist/node_modules/**/*.md

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
 # SelDiA — VSIX Package Script
-# Usage: ./scripts/package-vsix.sh [--out <dir>] [--no-build]
+# Usage: ./scripts/package-vsix.sh [--out <dir>] [--no-build] [--force]
 #
 # Builds the SelDiA VS Code extension and packages it into a .vsix file.
 #
 # Options:
 #   --out <dir>      Output directory for the .vsix file (default: packages/vscode-ext)
 #   --no-build       Skip the build step (use if already built)
+#   --force          Ignore the Turbo cache and rebuild everything
 #   --help, -h       Show this help message
 # =============================================================================
 
@@ -18,13 +19,15 @@ cd "$ROOT_DIR"
 
 OUT_DIR=""
 SKIP_BUILD=false
+TURBO_FORCE=()
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --out)          OUT_DIR="$2"; shift 2 ;;
     --no-build)     SKIP_BUILD=true; shift ;;
-    --help|-h)      echo "Usage: ./scripts/package-vsix.sh [--out <dir>] [--no-build]"; exit 0 ;;
+    --force)        TURBO_FORCE=(--force); shift ;;
+    --help|-h)      echo "Usage: ./scripts/package-vsix.sh [--out <dir>] [--no-build] [--force]"; exit 0 ;;
     *)              echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -62,8 +65,10 @@ echo ""
 
 # ── Build step ────────────────────────────────────────────────
 if [ "$SKIP_BUILD" = false ]; then
-  echo -e "${YELLOW}🔨 Building all packages...${NC}"
-  if ! npx turbo run build --force 2>&1; then
+  # Only the extension and its workspace deps (core, interaction); cached
+  # unless --force. Building web/cli here was wasted work.
+  echo -e "${YELLOW}🔨 Building extension + deps...${NC}"
+  if ! npx turbo run build --filter=seldia-vscode... ${TURBO_FORCE[@]+"${TURBO_FORCE[@]}"} 2>&1; then
     echo ""
     echo -e "${RED}✗ Build failed${NC}"
     exit 1

@@ -12,8 +12,11 @@ The repo is an **npm workspaces + Turborepo** monorepo (Node >= 22, `packageMana
 | `turbo.json` | Tasks: `build` (depends on `^build`, outputs `dist/**`), `test` (depends on `build`), `dev` (persistent), `lint`, `clean` |
 | `tsconfig.base.json` | Shared compiler options (ES2022, ESNext modules, `strict`, bundler resolution); each package has its own `tsconfig.json` |
 | `packages/*/package.json` | Per-package scripts. Tests are Vitest (`vitest run`). The per-package `lint` script is a placeholder (`echo lint`); no ESLint or Prettier config is committed |
+| `packages/core/package.json` `exports` | Subpath `@seldia/core/render/flow-css` (`./render/flow-css`) exporting `FLOW_KEYFRAMES_CSS`, `TRACE_CSS` and `INTERACTIVE_FLOW_CSS` from `render/flow-css.ts`: the one CSS source for flow and trace rules, shared by the engine, the Markdown preview and the visual editor |
 | `packages/vscode-ext/package.json` | Extension manifest: commands, menus, keybindings, `seldia.*` settings, LM tools |
 | `packages/vscode-ext/scripts/build.mjs` | esbuild bundles: extension host, language server, and the webview client `media/editor.js` |
+| `packages/vscode-ext/turbo.json` | Extends root `turbo.json`; adds `media/editor.js` and `media/table-editor.js` to `build` outputs so cache hits restore them |
+| `.vscode/tasks.json` | `Build VSIX Package` (default build task, Ctrl+Shift+B) and a `--force` no-cache variant; runs `scripts/package-vsix.sh` with the repo-local Node in `.tools/`. A task, not a launch config: a `node` debug launch injects the js-debug bootloader into every child process |
 | `docs/.vitepress/config.mts` | Docs site (`user_guide.md` is served as the home page via `rewrites`) |
 | `.github/actions/seldia-render`, `.github/workflows/render-diagrams.yml.example` | GitHub Action that renders diagram blocks to SVG |
 
@@ -23,7 +26,7 @@ Scripts in `scripts/` (see `scripts/README.md`): `build.sh`, `test.sh`, `debug.s
 npm run build            # turbo: all packages
 npm run test             # turbo: build, then vitest in every package
 npm run dev              # watch mode
-bash scripts/package-vsix.sh   # build the .vsix (vsce needs --no-dependencies; the script handles it)
+bash scripts/package-vsix.sh   # build the .vsix (extension + deps only, Turbo-cached; --force to rebuild, --no-build to skip)
 npm run docs:build       # VitePress site
 node tests/integration.mjs     # end-to-end DSL -> SVG smoke test
 ```
@@ -60,8 +63,12 @@ Corpus-style tests run over `docs/examples/` (every fence of every demo file) an
 | `packages/core/test/layout-metrics-labels.test.ts` | Hand-built IRs for the label metrics (`labelDetached`, `labelOnArrowhead`, `labelEdgeHits`, `groupTitleHits`, `parallelRunLength`) and `tokenViolations` | TypeScript | Run with the core suite |
 | `packages/core/test/table.test.ts` | `table` type: pipe-row parsing, `^`/`<` merge resolution (chains, 2x2 blocks, escapes), invalid and non-rectangular merges degrading with diagnostics, engine compile and theming, lossy GFM export; `chart` directive (defaults, named/quoted columns, non-numeric warnings, pie single column), table IR → chart IR, stacked table+chart and `only` SVG | TypeScript | Run with the core suite |
 | `packages/vscode-ext/test/seldia-table-patch.test.ts` | Table editor write-back for `table` fences: merge/unmerge, span-aware insert/delete/move, marker escaping, GFM → fence conversion, setting/replacing/removing the `chart` directive. Output is re-parsed with core's `parseTableBody` | TypeScript | Run with the vscode-ext suite |
+| `packages/vscode-ext/test/trace.test.ts` | Hover trace (incident edges and neighbours), transitive upstream and downstream trace with cycle and size limits, edge trace, and `stripClientArtifacts` for exported SVG | TypeScript | Run with the vscode-ext suite |
 | `packages/cli/test/check.test.ts` | `seldia check`: per-fence report, `--json`, `--max` exit code, bad extension | TypeScript | Run with the CLI suite |
-| `packages/core/test/fixtures/mermaid-corpus/*.mmd` | 9 hand-written Mermaid samples (flowchart, sequence, class, ER, state, gantt, gitGraph, mindmap, pie) | Mermaid | `mermaid-fidelity.test.ts`: import, render, export, re-import |
+| `packages/core/test/fixtures/mermaid-corpus/*.mmd` | 9 hand-written Mermaid samples (flowchart, sequence, class, ER, state, gantt, gitGraph, mindmap, pie); the tenth file, `flowchart-animated.mmd`, has its own row below | Mermaid | `mermaid-fidelity.test.ts`: import, render, export, re-import |
+| `packages/core/test/fixtures/mermaid-corpus/flowchart-animated.mmd` | Flowchart with Mermaid 11.5+ edge ids (`e1@-->`), `e1@{ animate: true }`, `e1@{ animation: fast }` and an unknown `@{}` key | Mermaid | `animated-edges.test.ts` (not in the 9-sample `mermaid-fidelity.test.ts` corpus) |
+| `packages/core/test/animated-edges.test.ts` | Authored animated edges: DSL `animate` and `~~>` reach the IR and SVG (`seldia-flow` classes and keyframes only when an edge animates), non-animating types, Mermaid and PlantUML import, export and the dotted fallback | TypeScript | Run with the core suite |
+| `packages/core/test/glow-theme.test.ts` | Glow theme registration, DSL `theme glow` and bare `glow` forms, tint, accent bar, `flow` modes, glow cap above 200 nodes, `animate` across diagram types | TypeScript | Run with the core suite |
 | `packages/core/test/fixtures/plantuml-corpus/*.puml` | 7 PlantUML samples (activity, class, component, ER, sequence, state, usecase) | PlantUML | `plantuml-fidelity.test.ts`, `group-layout.test.ts` |
 | `packages/vscode-ext/test/skill-examples.test.ts` | Compiles the examples embedded in the seldia-dsl SKILL.md | TypeScript | Run with the vscode-ext suite |
 | `docs/examples/demo-*.md` | basic, mermaid, plantuml, circuits, readability, marp galleries | Markdown | Documentation and the layout-metrics corpus |
@@ -74,9 +81,9 @@ To add a fixture: drop the file next to the others, extend the test that loads t
 
 There are no per-renderer packages; renderers are modules in `packages/core/src/render/`. Fidelity is a property of the import and export legs, and it is asserted by the corpus tests above rather than by a loss percentage.
 
-- **Mermaid import** (`import/mermaid.ts`): flowchart, sequence, class, ER, state, gantt, pie, gitGraph, mindmap. Journey is deliberately excluded. An unsupported construct degrades to a diagnostic, and an unimportable block falls back to the default fence (G3).
-- **Mermaid export** (`exportMermaid`): lossy by design. Covers the types with a Mermaid equivalent; styling round-trips through `style`, `classDef` and `linkStyle`. Types with no mapping return `null` and the CodeLens hides the action. The 9-sample corpus asserts what survives import, export, and re-import.
-- **PlantUML import/export**: 11 families imported without Java. Better than Mermaid for class, sequence, component, state, activity and usecase; groups map to real layout clusters. The 7-sample corpus gates it. `@startjson` and other declined blocks are reported as unsupported, not failed.
+- **Mermaid import** (`import/mermaid.ts`): flowchart, sequence, class, ER, state, gantt, pie, gitGraph, mindmap. Journey is deliberately excluded. An unsupported construct degrades to a diagnostic, and an unimportable block falls back to the default fence (G3). Mermaid 11.5+ edge ids and the `animate` / `animation` edge properties import as animated edges; unknown `@{}` keys are ignored.
+- **Mermaid export** (`exportMermaid`): lossy by design. Covers the types with a Mermaid equivalent; styling round-trips through `style`, `classDef` and `linkStyle`. Types with no mapping return `null` and the CodeLens hides the action. The 9-sample corpus asserts what survives import, export, and re-import. Animated edges export with a regenerated id (`eN@-->`) plus `eN@{ animate: true }` or `eN@{ animation: fast|slow }`; plain edges keep their plain syntax.
+- **PlantUML import/export**: 11 families imported without Java. Better than Mermaid for class, sequence, component, state, activity and usecase; groups map to real layout clusters. The 7-sample corpus gates it. `@startjson` and other declined blocks are reported as unsupported, not failed. Animated edges export as dotted `..>` lines, so the animation is lost.
 - **BPMN XML / SQL DDL** (`exportBpmn`, `exportSqlDdl`): one-way exports for `bpmn` and `er`.
 - **GFM export of `table`** (`exportTableGfm`): cell text, column alignment and header row survive. Merged cells do not (GFM has no spans): the anchor keeps the text and covered cells are written empty. The `chart ...` directive is dropped but the data is kept. `table` has no Mermaid or PlantUML mapping.
 - **Circuit and PCB**: `circuit` imports SPICE and KiCad netlists (top level only; `.subckt` internals are not expanded). `pcb` is render-only.

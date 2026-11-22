@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Plain shell task, not a debug launch: a "node" launch config injects
+      // the js-debug bootloader into every child node process (turbo, tsc,
+      // esbuild, vsce), which made packaging very slow.
+      "label": "Build VSIX Package",
+      "type": "process",
+      "command": "C:/Program Files/Git/bin/bash.exe",
+      "args": ["scripts/package-vsix.sh"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PUPPETEER_SKIP_DOWNLOAD": "1",
+          "PATH": "${workspaceFolder}/.tools/node-v24.22.3-win-x64;${env:PATH}"
+        }
+      },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Build VSIX Package (clean, no cache)",
+      "type": "process",
+      "command": "C:/Program Files/Git/bin/bash.exe",
+      "args": ["scripts/package-vsix.sh", "--force"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PUPPETEER_SKIP_DOWNLOAD": "1",
+          "PATH": "${workspaceFolder}/.tools/node-v24.22.3-win-x64;${env:PATH}"
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

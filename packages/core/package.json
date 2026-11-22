@@ -1,6 +1,6 @@
 {
   "name": "@seldia/core",
-  "version": "1.75.0",
+  "version": "1.76.0",
   "description": "SelDiA core: parser, engine, types, plugin system for 21+ diagram types",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,7 +10,8 @@
     "./types/*": "./dist/types/*.js",
     "./ir/types": "./dist/ir/types.js",
     "./ast/nodes": "./dist/ast/nodes.js",
-    "./plugin/types": "./dist/plugin/types.js"
+    "./plugin/types": "./dist/plugin/types.js",
+    "./render/flow-css": "./dist/render/flow-css.js"
   },
   "scripts": {
     "build": "tsc",

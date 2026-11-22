@@ -170,6 +170,9 @@ export interface EdgeStyle {
   /** Custom dash array for dashed/dotted */
   strokeDasharray: string;
 
+  /** Flowing (animated) edge: true = normal speed, or 'slow' | 'fast'. Same values as Mermaid. */
+  animate?: boolean | 'slow' | 'fast';
+
   /** Opacity (0-1). Default: 1 */
   opacity: number;
 
@@ -265,6 +268,21 @@ export interface Theme {
     node?: Partial<NodeStyle>;
     edge?: Partial<EdgeStyle>;
   }>>;
+
+  /** Render-stage effects (never read by parser/IR). Absent = plain rendering. */
+  effects?: ThemeEffects;
+}
+
+/** Optional render-stage visual effects a theme can switch on. */
+export interface ThemeEffects {
+  /** When edges animate: 'trace' (default, interactive hosts only), 'all' (every edge flows), 'none' (never, even on trace). */
+  flow?: 'none' | 'trace' | 'all';
+  /** One shared feDropShadow filter, applied only to traced/selected/flowing elements. */
+  glow?: boolean;
+  /** Node fill = accent mixed into the background at this percentage (0-100), computed at render time. */
+  tint?: number;
+  /** 4px left accent bar on rectangular nodes. */
+  accentBar?: boolean;
 }
 
 export interface ThemePalette {

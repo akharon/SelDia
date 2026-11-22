@@ -3,7 +3,7 @@
     "prefix": "seldia-flowchart",
     "body": [
       "diagram flowchart \"${1:My Flowchart}\" {",
-      "\ttheme \"${2|sketchy-light,sketchy-dark,clean-light,clean-dark,mono|}\"",
+      "\ttheme \"${2|sketchy-light,sketchy-dark,clean-light,clean-dark,mono,glow-dark,glow-light|}\"",
       "",
       "\t// Nodes",
       "\tstart: (${3:Start})",

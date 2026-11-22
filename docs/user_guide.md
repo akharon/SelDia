@@ -1244,15 +1244,21 @@ There is one source of truth. The chart is rebuilt from the table on every rende
 | `clean-light` | Clean Light | Smooth, professional, light |
 | `clean-dark` | Clean Dark | Smooth, professional, dark |
 | `mono` | Monochrome | Black & white for print |
+| `glow-dark` | Glow Dark | Dark canvas with accent-tinted nodes and glow on traced and flowing elements |
+| `glow-light` | Glow Light | Light canvas with the same accents and glow |
+
+**Glow themes** tint node fills with accent colors from a seven-color palette (blue, teal, amber, red, cyan, violet, fuchsia). Rectangular nodes get a 4px accent bar on the left, except in sketch mode. Traced, selected and flowing elements get a soft glow, which is skipped above 200 nodes. Only the hovered path moves; the rest of the diagram stays still.
 
 ### 6.2 Applying Themes
 
 ```text
 diagram flowchart "Example" {
-    theme "sketchy-dark"
+    theme glow dark
     // ...
 }
 ```
+
+`theme glow dark` and `theme glow light` select the glow themes. The bare line `glow` means `glow dark`, and `glow light` selects the light one. Variant names are case-insensitive, and a node named `glow` still parses as a node. Only glow lines take effect in the DSL; other `theme` lines are ignored, so choose the other themes with `--theme`, the config or the `seldia.defaultTheme` setting.
 
 ### 6.3 Inline Styling
 
@@ -1368,7 +1374,7 @@ Diagrams are drawn to stay legible without hand-tuning:
 
 - **Clean edges.** The config key `edgeStyle` is `clean` (default) or `sketch`. `clean` draws rounded orthogonal paths; `sketch` keeps the hand-drawn rough lines. Edges have no casing: crossings are marked by line jumps, and edge labels are plain text with a canvas-coloured halo. A single diagram can override the config with a one-line directive inside the fence, `edges sketch` or `edges clean`, on its own line before or among the statements; it wins over `edgeStyle`. `edges` stays usable as a node id when it is not followed by `sketch` or `clean` on the same line.
 - **Line jumps.** Where a later edge crosses an earlier horizontal one, it hops over with a small arc (clean edges only). Parallel runs that would overlap are nudged apart.
-- **Hover highlight.** In SVG output, hovering an edge or node thickens it and its connections and dims the rest (pure CSS, no script).
+- **Hover highlight.** In SVG output, hovering an edge or node thickens it and its connections and dims the rest (pure CSS, no script). In the Markdown preview and the visual editor the trace also flows; see [7.4](#74-animated-edges-and-trace-highlight).
 - **Labels on the line.** An edge label sits on its own edge, never over an arrowhead, a node or a group title. If it has to move away, a thin dashed leader ties it back to the line.
 - **Shapes sized to their text.** Nodes grow to fit their label, wrapped inside the usable area of the shape (diamond, cylinder, hexagon).
 
@@ -1381,6 +1387,40 @@ seldia check diagram.sld --max 0    # exit 1 if any diagram has more than 0 prob
 ```
 
 Counted problems: `crossings`, `edgeOverlaps`, `edgeNodeHits`, `labelOverlaps`, `labelDetached`, `labelOnArrowhead`, `labelEdgeHits`, `groupViolations`, `nodeLabelHits`. `--max` also fails on a diagram that cannot be laid out.
+
+### 7.4 Animated Edges and Trace Highlight
+
+Edges can flow with animated dashes to show the direction of travel. Add `animate` to an edge's style block, or use the `~~>` arrow:
+
+```text
+pay -> bill { animate }          // flowing dashes at the default speed
+bill -> ship { animate: fast }   // or: slow
+ship -> done { animate: false }  // explicit off
+pay ~~> bill                     // same as an animated directed edge
+```
+
+- **Diagram types.** Flowchart, activity, BPMN, state, sequence (message arrows), C4 context, container and component, deployment, network, cloud, component and workitem diagrams animate. Circuit animates only when the author asks for it. Class, ER, use case, DMN, C4 code and block diagrams ignore `animate` and draw a plain edge.
+- **Precedence.** An `animate:` value in the block overrides `~~>`, so `x ~~> y { animate: false }` is a plain edge.
+- **Sketch edges.** `edges sketch` draws rough strokes with no dash, so those edges do not animate.
+
+**Trace highlight** works in the Markdown preview and the visual editor:
+
+- **Hover** a node or edge. Its edges, arrowheads, labels and neighbors stay lit, traced edges thicken and flow, and everything else dims.
+- **Shift+hover** or **Shift+click** traces the full upstream and downstream chain, up to 500 elements.
+- **Click** makes the trace sticky. Clicking an edge lights the edge and both of its ends. **Esc** or a click on the background clears it. Dragging to pan does not select.
+- In the visual editor, hover tracing applies only with the Select tool, not while dragging, and it follows the editor's selection.
+- The **pause/play** button in the diagram toolbar (preview and editor) pauses or resumes the flow animation.
+
+**Reduced motion and print.** With `prefers-reduced-motion: reduce`, the highlight stays but nothing moves. Printing disables the animation.
+
+**Where the motion survives.**
+
+- Standalone SVG opened in a browser: the flow runs. Hover uses the built-in CSS from section 7.3, without click selection.
+- Marp HTML: the flow runs.
+- GitHub `<img>` embeds: expected to run, not yet verified.
+- PDF, PNG and PPTX: a static dashed line.
+
+**Mermaid and PlantUML.** Mermaid 11.5+ edge ids and animation properties import as animated edges: `e1@-->` with `e1@{ animate: true }` or `e1@{ animation: fast }`. Unknown `@{}` keys are ignored. Mermaid export writes the same syntax for animated edges, with regenerated ids. PlantUML export draws animated edges as dotted `..>` lines, so the animation is lost.
 
 ---
 
@@ -1876,7 +1916,7 @@ Everything else is a Command Palette entry (`Ctrl+Shift+P`, type "SelDiA"): Expo
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `seldia.defaultTheme` | string | `sketchy-light` | Default theme for rendered diagrams |
+| `seldia.defaultTheme` | string | `sketchy-light` | Default theme for rendered diagrams; includes `glow-dark` and `glow-light` |
 | `seldia.layout.engine` | `dagre` \| `elk` | `dagre` | Default automatic layout engine; a diagram can override it with a `layout` line |
 | `seldia.markdown.enabled` | boolean | `true` | Detect and render diagrams in Markdown |
 | `seldia.markdown.autoPreview` | boolean | `true` | Open the Markdown preview automatically for files with SelDiA blocks |
@@ -2166,6 +2206,7 @@ seldia list-types
 | `a --> b` | Solid directed arrow |
 | `a ..> b` | Dotted directed arrow |
 | `a ==> b` | Thick directed arrow |
+| `a ~~> b` | Animated directed arrow (flowing dashes) |
 | `a --- b` | Undirected line |
 | `a -..- b` | Undirected dotted line |
 | `a <--> b` | Bidirectional solid |

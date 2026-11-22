@@ -15,7 +15,7 @@ floorplan "Garden House — Ground Floor" {
   d2 "door"   { type: "door",  at: "Bath.north", offset: 0.8, width: 0.8 }
   d3 "door"   { type: "door",  at: "Bed.north", offset: 0.6, width: 0.9 }
 
-  sofa  "sofa"  { type: "furniture", item: "sofa", in: "Living", at: "0.61,0.42" }
+  sofa  "sofa"  { type: "furniture", item: "sofa", in: "Living", at: "1.23,0.57" }
   tv    "tv"    { type: "furniture", item: "tv", in: "Living", at: "1.2,3.9" }
   rug   "rug"   { type: "furniture", item: "carpet-large", in: "Living", at: "1.3,1.6" }
   ct    "table" { type: "furniture", item: "coffee-table", in: "Living", at: "1.88,2.47" }

@@ -333,6 +333,9 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
   const classAssignments: Array<{ nodeIds: string[]; className: string }> = [];
   const linkStyles = new Map<number, Partial<EdgeStyle>>();
   let defaultLinkStyle: Partial<EdgeStyle> | undefined;
+  // Mermaid 11.5+ edge ids (`A e1@--> B`) and their `e1@{ animate: true }` property
+  // lines. A property line may precede or follow the edge, so it resolves in a post-pass.
+  const edgeIdProps = new Map<string, Record<string, string>>();
   // Stack of currently-open subgraphs, innermost last — a node/edge mentioned
   // while nested inside N subgraphs belongs directly to the innermost one;
   // the outer ones get it transitively via childGroupIds.
@@ -454,6 +457,22 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
       return;
     }
 
+    // `e1@{ animate: true }` / `e1@{ animation: fast }`: an edge property block.
+    // Claimed only when it carries an animation key or targets a known edge id, so
+    // node `A@{ shape: ... }` syntax keeps its existing path. Unknown keys are ignored (G3).
+    const edgeProps = line.match(/^([\w-]+)@\{(.*)\}\s*;?$/);
+    if (edgeProps) {
+      const props: Record<string, string> = {};
+      for (const part of edgeProps[2].split(',')) {
+        const kv = part.match(/^\s*([\w-]+)\s*:\s*(.*?)\s*$/);
+        if (kv) props[kv[1].toLowerCase()] = kv[2].replace(/^["']|["']$/g, '').toLowerCase();
+      }
+      if ('animate' in props || 'animation' in props || edges.some((e) => e.data?.mermaidId === edgeProps[1])) {
+        edgeIdProps.set(edgeProps[1], { ...edgeIdProps.get(edgeProps[1]), ...props });
+        return;
+      }
+    }
+
     const split = splitFlowLine(line);
     if (!split) {
       // A standalone declaration: `login[Log In]`
@@ -466,7 +485,11 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
       // links. Each side expands to a list, so one statement can yield several
       // edges — common enough in real diagrams that dropping it loses real
       // structure.
-      const sources = splitAmpersand(split.refs[k]).map((r) => ensure(r, lineNo));
+      // `A e1@--> B`: the id sits at the end of the text before the connector.
+      const idMatch = split.refs[k].match(/^([\s\S]*?)\s*\b([\w-]+)@$/);
+      const mermaidId = idMatch ? idMatch[2] : undefined;
+      const sourceRef = idMatch ? idMatch[1] : split.refs[k];
+      const sources = splitAmpersand(sourceRef).map((r) => ensure(r, lineNo));
       const targets = splitAmpersand(split.refs[k + 1]).map((r) => ensure(r, lineNo));
       const { dashed, arrowhead, bidirectional } = edgeStyleFor(split.links[k].connector);
 
@@ -482,7 +505,7 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
             routing: EdgeRouting.ORTHOGONAL,
             bidirectional,
             classList: [],
-            data: {},
+            data: mermaidId ? { mermaidId } : {},
           });
         }
       }
@@ -507,6 +530,14 @@ function importFlowchart(lines: string[], diagnostics: MermaidImportDiagnostic[]
   // also array-push order here — resolved as a post-pass (not inline at push
   // time) because Mermaid convention puts style directives after the edges
   // they target.
+  for (const edge of edges) {
+    const props = edge.data?.mermaidId ? edgeIdProps.get(edge.data.mermaidId as string) : undefined;
+    if (!props) continue;
+    const speed = props.animation;
+    if (speed === 'fast' || speed === 'slow') edge.style.animate = speed;
+    else if (props.animate === 'true' || speed === 'true') edge.style.animate = true;
+  }
+
   if (defaultLinkStyle || linkStyles.size) {
     edges.forEach((edge, i) => {
       Object.assign(edge.style, defaultLinkStyle, linkStyles.get(i));

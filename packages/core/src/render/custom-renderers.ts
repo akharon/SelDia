@@ -76,7 +76,7 @@ export function renderSequenceParticipant(node: IRNode, pad: number, sketchy: bo
   return el;
 }
 
-export function renderSequenceMessage(edge: IREdge, pad: number, sketchy: boolean, accent: Swatch): string {
+export function renderSequenceMessage(edge: IREdge, pad: number, sketchy: boolean, accent: Swatch, flowing = false): string {
   const wps = edge.waypoints || [];
   if (wps.length < 2) return '';
   const pts = wps.map((p) => ({ x: p.x + pad, y: p.y + pad }));
@@ -90,7 +90,7 @@ export function renderSequenceMessage(edge: IREdge, pad: number, sketchy: boolea
     }
   } else {
     const d = pts.map((p) => `${p.x},${p.y}`).join(' ');
-    const dashAttr = dashed ? ` stroke-dasharray="${DS.dash.edge}"` : '';
+    const dashAttr = dashed || flowing ? ` stroke-dasharray="${DS.dash.edge}"` : '';
     el += `    <polyline points="${d}" fill="none" stroke="${stroke}" stroke-width="${DS.stroke.edge}"${dashAttr}/>\n`;
   }
   // Filled arrowhead at the final point.

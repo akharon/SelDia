@@ -37,9 +37,10 @@ function decl(keyword: string, label: string, alias: string): string {
   return label && label !== alias ? `${keyword} ${quote(label)} as ${alias}` : `${keyword} ${alias}`;
 }
 
-/** `-->` vs `..>` — a dashed IR edge is PlantUML's dotted connector. */
+/** `-->` vs `..>` — a dashed IR edge is PlantUML's dotted connector. PlantUML has no
+ *  animation, so a flowing (`animate`) edge falls back to the dotted connector too. */
 function connector(edge: IREdge, solid = '-->', dashed = '..>'): string {
-  return edge.style.strokeStyle === StrokeStyle.DASHED ? dashed : solid;
+  return edge.style.strokeStyle === StrokeStyle.DASHED || edge.style.animate ? dashed : solid;
 }
 
 function edgeLabel(edge: IREdge): string {

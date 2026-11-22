@@ -192,8 +192,8 @@ Questions for a design pass, not conclusions:
 #### L5. Preview polish
 
 - **Animated re-layout (S, after R4).** Match elements by `data-seldia-node-id` and animate the transform over about 180 ms when the SVG is swapped, respecting `prefers-reduced-motion`. Without stable layout this is noise; with it, an edit reads as an edit.
-- **Focus on click (S).** The hover highlight exists in CSS. Make it sticky on click so a neighbourhood can be studied in a dense diagram.
 - No minimap. Fit-to-view and zoom already cover it at the diagram sizes this tool targets.
+- **Verify animated SVG outside the preview (S).** Check GitHub `<img>` playback (expected, unverified) and the Marp PDF frame for animated edges. Per-type `Theme.overrides` are not read by the renderer.
 
 ## 5. Architecture and design
 

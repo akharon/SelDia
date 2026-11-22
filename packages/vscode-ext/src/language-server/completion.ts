@@ -58,11 +58,14 @@ const ARROWS = [
   { label: '..>', detail: 'Dashed directed edge', insertText: ' ..> ' },
   { label: '==>', detail: 'Thick directed edge', insertText: ' ==> ' },
   { label: '..', detail: 'Dashed undirected edge', insertText: ' .. ' },
+  { label: '~~>', detail: 'Animated directed edge (flowing dashes)', insertText: ' ~~> ' },
 ];
 
 const DSL_KEYWORDS = [
   { label: 'diagram', detail: 'Start a diagram block', doc: 'diagram <type> "<title>" { ... }' },
-  { label: 'theme', detail: 'Set a theme', doc: 'theme "<name>" or theme { ... }' },
+  { label: 'theme', detail: 'Set a theme', doc: 'theme "<name>" or theme { ... }; also `theme glow dark|light`' },
+  { label: 'glow', detail: 'Glow theme shorthand', doc: 'glow [light|dark] - same as `theme glow dark|light`' },
+  { label: 'animate', detail: 'Edge attribute: flowing dashes', doc: '{ animate } or { animate: fast|slow|true|false }' },
   { label: 'layout', detail: 'Set layout engine', doc: 'layout <engine> { options }' },
   { label: 'style', detail: 'Apply style rules', doc: 'style node { fill: "#fff" }' },
   { label: 'group', detail: 'Create a group', doc: 'group "name" { node1, node2 }' },
@@ -75,6 +78,8 @@ const DSL_KEYWORDS = [
 const THEMES = [
   { label: 'sketchy-light', detail: 'Light theme with sketchy rendering (default)' },
   { label: 'sketchy-dark', detail: 'Dark theme with sketchy rendering' },
+  { label: 'glow-dark', detail: 'PAiRS-style dark: tinted nodes, accent bars, glow on focus' },
+  { label: 'glow-light', detail: 'PAiRS-style light: tinted nodes, accent bars, glow on focus' },
   { label: 'smooth-light', detail: 'Clean light theme without sketch effect' },
   { label: 'smooth-dark', detail: 'Clean dark theme without sketch effect' },
   { label: 'handdrawn', detail: 'Exaggerated hand-drawn aesthetic' },

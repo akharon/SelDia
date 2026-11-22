@@ -7,6 +7,7 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTGroupDecl, ASTStatement }
 import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
+import { animStyle } from './edge-anim.js';
 const ROUTING_MAP: Record<string, EdgeRouting> = {
   straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
   orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
@@ -67,7 +68,7 @@ export const componentPlugin: DiagramPlugin = {
         walk(gd.body, gd.id);
       } else if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `compe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `compe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: animStyle(ed.style), routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     };

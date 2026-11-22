@@ -417,3 +417,32 @@ export const BUILTIN_THEMES: Theme[] = [
     },
   },
 ];
+
+// -----------------------------------------------------------------------------
+// Glow themes (PAiRS look): tinted rounded nodes, left accent bar, glow on
+// traced/selected/flowing elements. Render-stage only; see Theme.effects.
+// The renderer reads the palette via BUILTIN_PALETTES['glow-*'] (render/design-system.ts).
+// -----------------------------------------------------------------------------
+function glowTheme(variant: 'dark' | 'light'): Theme {
+  const base = BUILTIN_THEMES.find((t) => t.id === 'clean-dark')!;
+  const dark = variant === 'dark';
+  return {
+    ...base,
+    id: `glow-${variant}`,
+    name: dark ? 'Glow Dark' : 'Glow Light',
+    description: 'Tinted rounded nodes with accent bars and glowing, flowing edges',
+    sketchy: false,
+    palette: {
+      primary: '#3b82f6', secondary: '#a78bfa', tertiary: '#14b8a6',
+      background: dark ? '#1e1e1e' : '#fafafa', surface: dark ? '#252526' : '#ffffff',
+      text: dark ? '#e5e7eb' : '#1f2937', textMuted: dark ? '#9ca3af' : '#6b7280',
+      border: dark ? '#3f3f46' : '#d4d4d8',
+      success: '#22c55e', warning: '#f59e0b', error: '#ef4444', info: '#06b6d4',
+      extended: { fuchsia: '#c026d3', violet: '#7c3aed' },
+    },
+    node: { ...base.node, roughness: 0, bowing: 0, borderRadius: 8, stroke: '#3b82f6', textColor: dark ? '#e5e7eb' : '#1f2937' },
+    edge: { ...base.edge, roughness: 0, bowing: 0, stroke: dark ? '#6b7280' : '#9ca3af' },
+    effects: { flow: 'trace', glow: true, tint: dark ? 16 : 10, accentBar: true },
+  };
+}
+BUILTIN_THEMES.push(glowTheme('dark'), glowTheme('light'));

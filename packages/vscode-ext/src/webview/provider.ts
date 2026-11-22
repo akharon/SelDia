@@ -42,11 +42,13 @@ const THEME_RENDER_CONFIG: Record<string, { sketchy: boolean; theme?: string }> 
   'mono': { sketchy: false, theme: 'high-contrast' },
   'blueprint': { sketchy: false, theme: 'blueprint' },
   'comic': { sketchy: true, theme: 'comic' },
+  'glow-dark': { sketchy: false, theme: 'glow-dark' },
+  'glow-light': { sketchy: false, theme: 'glow-light' },
 };
 
 /** Canvas backdrop per diagram theme (the toolbar/menus follow VS Code's theme). */
 const CANVAS_BG: Record<string, string> = {
-  'sketchy-dark': '#1e1e1e', 'clean-dark': '#1e1e1e', 'blueprint': '#1d4e89', 'comic': '#fffbeb',
+  'sketchy-dark': '#1e1e1e', 'clean-dark': '#1e1e1e', 'blueprint': '#1d4e89', 'comic': '#fffbeb', 'glow-dark': '#1e1e1e', 'glow-light': '#fafafa',
 };
 const canvasBg = (t: string): string => CANVAS_BG[t] ?? '#ffffff';
 
@@ -678,6 +680,8 @@ export class SelDiAInteractiveProvider {
     #themeMenu [data-theme-value="mono"] { --swatch: linear-gradient(135deg,#fff 50%,#111 50%); }
     #themeMenu [data-theme-value="blueprint"] { --swatch: #1d4e89; }
     #themeMenu [data-theme-value="comic"] { --swatch: #fde047; }
+    #themeMenu [data-theme-value="glow-dark"] { --swatch: #1e1e1e; }
+    #themeMenu [data-theme-value="glow-light"] { --swatch: #fafafa; }
     /* Mode banner: floating pill so the active mode is obvious. */
     #modeBanner {
       display: none;
@@ -799,6 +803,7 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" data-cmd="resetZoom" title="Actual size (100%)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
+    <button class="icon-btn" id="btnPause" data-cmd="toggleAnimations" title="Pause animations" aria-label="Pause animations" aria-pressed="false">${icon('pause')}</button>
     <button class="icon-btn" id="btnAutoLayout" data-cmd="autoLayout" title="Auto-layout: arrange every node and route every edge automatically (Ctrl+Z to undo)" aria-label="Auto-layout">${icon('auto-layout')}</button>
 
     <span class="sep"></span>
@@ -809,7 +814,7 @@ export class SelDiAInteractiveProvider {
          the webview's own compositor surface. -->
     <span id="themeWrap" style="position:relative">
       <button id="themeBtn" title="Theme" aria-haspopup="listbox" aria-expanded="false">${
-        ({ 'sketchy-light': 'Sketchy Light', 'sketchy-dark': 'Sketchy Dark', 'clean-light': 'Clean Light', 'clean-dark': 'Clean Dark', 'mono': 'Mono', 'blueprint': 'Blueprint', 'comic': 'Comic' } as Record<string, string>)[theme] ?? theme
+        ({ 'sketchy-light': 'Sketchy Light', 'sketchy-dark': 'Sketchy Dark', 'clean-light': 'Clean Light', 'clean-dark': 'Clean Dark', 'mono': 'Mono', 'blueprint': 'Blueprint', 'comic': 'Comic', 'glow-dark': 'Glow Dark', 'glow-light': 'Glow Light' } as Record<string, string>)[theme] ?? theme
       } ▾</button>
       <div id="themeMenu" role="listbox">
         <div class="menu-item" role="option" data-theme-value="sketchy-light">Sketchy Light</div>
@@ -819,6 +824,8 @@ export class SelDiAInteractiveProvider {
         <div class="menu-item" role="option" data-theme-value="mono">Mono</div>
         <div class="menu-item" role="option" data-theme-value="blueprint">Blueprint</div>
         <div class="menu-item" role="option" data-theme-value="comic">Comic</div>
+        <div class="menu-item" role="option" data-theme-value="glow-dark" title="PAiRS-style dark: tinted nodes, accent bars, glow on focus">Glow Dark</div>
+        <div class="menu-item" role="option" data-theme-value="glow-light" title="PAiRS-style light: tinted nodes, accent bars, glow on focus">Glow Light</div>
       </div>
     </span>
 

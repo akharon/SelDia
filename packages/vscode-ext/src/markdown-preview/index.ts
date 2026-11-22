@@ -22,9 +22,11 @@
 // =============================================================================
 
 import { toCsv } from '../edit/table-patch.js';
+import { ensureFlowCss, installTrace, stripClientArtifacts } from './trace.js';
 
 (() => {
   const zoomState = new Map<string, number>();
+  const pausedBlocks = new Set<string>();
 
   // ── Table of Contents ─────────────────────────────────────────────────────
   // Built from the rendered DOM, not from markdown-it's `env` — a renderer
@@ -203,7 +205,7 @@ import { toCsv } from '../edit/table-patch.js';
       return;
     }
     const btn = target?.closest?.(
-      '.seldia-mode-btn, .seldia-btn-zoom-in, .seldia-btn-zoom-out, .seldia-btn-reset, .seldia-btn-export, .seldia-btn-copy-source'
+      '.seldia-mode-btn, .seldia-btn-zoom-in, .seldia-btn-zoom-out, .seldia-btn-reset, .seldia-btn-export, .seldia-btn-copy-source, .seldia-btn-pause'
     ) as HTMLElement | null;
     // The reveal-source deep-link anchor is handled by VS Code itself — don't
     // intercept it here.
@@ -234,6 +236,12 @@ import { toCsv } from '../edit/table-patch.js';
     if (btn.classList.contains('seldia-btn-reset')) {
       e.preventDefault();
       applyZoom(container, blockId, 1);
+      return;
+    }
+    if (btn.classList.contains('seldia-btn-pause')) {
+      e.preventDefault();
+      if (!pausedBlocks.delete(blockId)) pausedBlocks.add(blockId);
+      applyInteractive();
       return;
     }
     if (btn.classList.contains('seldia-btn-export')) {
@@ -333,6 +341,7 @@ import { toCsv } from '../edit/table-patch.js';
     const svg = svgOf(container);
     if (!svg) return;
     const clone = svg.cloneNode(true) as SVGElement;
+    stripClientArtifacts(clone);
     // Reset zoom styles so the export shows the diagram at its natural size.
     clone.style.width = '';
     clone.style.height = '';
@@ -386,6 +395,26 @@ import { toCsv } from '../edit/table-patch.js';
     }
   }
 
+  // Hover/click trace + pause state. Idempotent: installTrace no-ops on an svg
+  // it already wired, and the preview swaps in fresh DOM on every edit.
+  function applyInteractive() {
+    ensureFlowCss(document);
+    document.querySelectorAll<HTMLElement>('.seldia-diagram').forEach((container) => {
+      const blockId = container.dataset.seldiaBlock || container.id;
+      const paused = pausedBlocks.has(blockId);
+      container.querySelectorAll<SVGSVGElement>('.seldia-diagram-svg svg.seldia-diagram-svg-el').forEach((svg) => {
+        installTrace(svg);
+        svg.classList.toggle('seldia-paused', paused);
+      });
+      const b = container.querySelector('.seldia-btn-pause');
+      if (b) {
+        b.classList.toggle('seldia-paused-on', paused);
+        b.setAttribute('aria-pressed', String(paused));
+        b.setAttribute('title', paused ? 'Play animations' : 'Pause animations');
+      }
+    });
+  }
+
   // Re-apply remembered zoom whenever the preview content changes, and now.
   function reapplyZoom() {
     document.querySelectorAll<HTMLElement>('.seldia-diagram').forEach((container) => {
@@ -395,15 +424,18 @@ import { toCsv } from '../edit/table-patch.js';
   }
   window.addEventListener('vscode.markdown.updateContent', () => {
     reapplyZoom();
+    applyInteractive();
     buildToc();
   });
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       reapplyZoom();
+      applyInteractive();
       buildToc();
     });
   } else {
     reapplyZoom();
+    applyInteractive();
     buildToc();
   }
 })();

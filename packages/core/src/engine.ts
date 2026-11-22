@@ -12,7 +12,21 @@ const TRIM_TYPES = new Set<DiagramType>([
 
 /** Per-render edge drawing options (see renderEdge). */
 interface EdgeStyle { clean: boolean; jumps: Map<string, Hop[]>; round: boolean; }
-interface EdgeParts { path: string; head: string; label: string; }
+interface EdgeParts { path: string; head: string; label: string; /** seldia-flow class list when the edge animates */ flow?: string; }
+
+/** Glow filter is skipped above this node count; flow:'all' falls back to trace above FLOW_ALL_MAX_EDGES. */
+const GLOW_MAX_NODES = 200;
+const FLOW_ALL_MAX_EDGES = 300;
+const GLOW_COLOR = '#3b82f6';
+/** Structural diagram types: no looping flow, an `animate` attribute is ignored (graceful). */
+const FLOW_DENY = new Set<string>(['class', 'er', 'usecase', 'dmn', 'c4-code', 'block']);
+
+/** Normalise an IR `animate` value: undefined = still, otherwise the speed suffix ('' = normal). */
+function flowSpeed(a: unknown): '' | 'fast' | 'slow' | undefined {
+  if (a === true || a === 'true' || a === 'normal') return '';
+  if (a === 'fast' || a === 'slow') return a;
+  return undefined;
+}
 
 
 // =============================================================================
@@ -22,11 +36,12 @@ import type { DiagramIR, LayoutResult, RenderResult, IRNode, IREdge, IRGroup } f
 import { DiagramType, EdgeRouting } from './ir/types.js';
 import type { DiagramAST } from './ast/nodes.js';
 import type { DiagramPlugin, PluginManager, PluginDiagnostic } from './plugin/types.js';
-import type { Theme } from './types/style.js';
+import type { Theme, ThemeEffects } from './types/style.js';
 import type { SelDiAConfig } from './config.js';
 import { DiagnosticSeverity, Direction } from './types/common.js';
 import { DEFAULT_CONFIG } from './config.js';
 import { analyze } from './analyzer.js';
+import { FLOW_KEYFRAMES_CSS } from './render/flow-css.js';
 import { parseDSL } from './parser/index.js';
 import { DefaultPluginManager } from './plugin-manager.js';
 import { flowchartPlugin } from './diagrams/flowchart.js';
@@ -202,6 +217,9 @@ class SelDiAEngine implements CoreEngine {
   readonly config: SelDiAConfig;
   readonly plugins: PluginManager;
   private themes = new Map<string, Theme>();
+  /** Effects of the theme active for the render in flight (set/cleared around renderToSvg). */
+  private effects?: ThemeEffects;
+  private activeThemeId?: string;
 
   constructor(options?: EngineOptions) {
     // A shallow spread here would let a caller's partial `render: { theme }`
@@ -288,7 +306,8 @@ class SelDiAEngine implements CoreEngine {
       const ir = plugin.transform(ast, this.config);
       const layoutDecl = ast.body.find((s): s is import('./ast/nodes.js').ASTLayoutDecl => s.kind === 'LayoutDecl');
       const edgeDecl = ast.body.find((s): s is import('./ast/nodes.js').ASTEdgeStyleDecl => s.kind === 'EdgeStyleDecl');
-      ir.metadata = { ...ir.metadata, layoutEngine: layoutDecl?.engine, ...(edgeDecl ? { edgeStyle: edgeDecl.style } : {}) };
+      const themeDecl = ast.body.find((s): s is import('./ast/nodes.js').ASTThemeDecl => s.kind === 'ThemeDecl');
+      ir.metadata = { ...ir.metadata, layoutEngine: layoutDecl?.engine, ...(edgeDecl ? { edgeStyle: edgeDecl.style } : {}), ...(typeof themeDecl?.theme === 'string' ? { theme: themeDecl.theme } : {}) };
       return { ok: true, value: ir };
     }
     catch (err: any) { return { ok: false, errors: [{ severity: DiagnosticSeverity.ERROR, message: `Transform error: ${err.message}`, source: ast.loc, code: 'E0005' }] }; }
@@ -606,7 +625,17 @@ class SelDiAEngine implements CoreEngine {
     // so it can never leak into a concurrent/later compile of a different
     // diagram — see render/design-system.ts for why this is a module-level
     // slot rather than a threaded parameter.
-    const override = resolvePalette(this.config.render.palette ?? this.config.render.theme);
+    // A DSL `theme glow dark` directive (carried in IR metadata) applies unless the host set a
+    // real palette itself; hosts routinely pass a default like 'sketchy-light', which is no palette.
+    const cfgTheme = this.config.render.palette ?? this.config.render.theme;
+    const dslTheme = layoutResult.diagram.metadata?.theme;
+    const cfgIsPalette = cfgTheme !== undefined && (typeof cfgTheme !== 'string' || (cfgTheme !== 'default' && !!resolvePalette(cfgTheme)));
+    const themeId = cfgIsPalette ? cfgTheme
+      : (typeof dslTheme === 'string' && /^glow-(dark|light)$/.test(dslTheme) ? dslTheme : cfgTheme);
+    this.activeThemeId = typeof themeId === 'string' ? themeId : undefined;
+    this.effects = this.activeThemeId ? this.themes.get(this.activeThemeId)?.effects : undefined;
+    const basePalette = resolvePalette(themeId);
+    const override = basePalette && this.effects?.tint !== undefined ? { ...basePalette, tint: this.effects.tint } : basePalette;
     setPaletteOverride(override);
     try {
       const fragmentBoxes = (layoutResult.diagram.metadata?.sequenceFragmentBoxes as any[]) ?? [];
@@ -637,6 +666,8 @@ class SelDiAEngine implements CoreEngine {
       };
     } finally {
       clearPaletteOverride();
+      this.effects = undefined;
+      this.activeThemeId = undefined;
     }
   }
 
@@ -713,7 +744,7 @@ class SelDiAEngine implements CoreEngine {
     // outward, plus the thickest stroke width in use, so nothing gets
     // clipped by the viewBox at any zoom level (see improvement_request.md
     // item 7).
-    const sketchy = this.config.render.sketchy !== false && !['circuit', 'pcb', 'table'].includes(diagramType as string);
+    const sketchy = this.config.render.sketchy !== false && !this.effects && !['circuit', 'pcb', 'table'].includes(diagramType as string);
     const maxStroke = Math.max(2, ...nodes.map((n) => (n.style?.strokeWidth as number) || 2));
     const displacement = sketchy ? 6 : 0;
     const pad = (this.config.render.padding || 20) + maxStroke + displacement;
@@ -737,7 +768,7 @@ class SelDiAEngine implements CoreEngine {
     // DEFAULT_CONFIG value is 'transparent', which we don't want to treat as
     // "explicitly set" — it's the un-set default, so an active theme's
     // background should still apply on top of it.
-    const paletteBg = resolvePalette(this.config.render.palette ?? this.config.render.theme)?.background;
+    const paletteBg = resolvePalette(this.activeThemeId ?? this.config.render.palette ?? this.config.render.theme)?.background;
     const explicitBg = this.config.render.background;
     const bg = (explicitBg && explicitBg !== 'transparent') ? explicitBg : (paletteBg || explicitBg || '#ffffff');
     // Gantt and chart diagrams are left-aligned (their content starts from the
@@ -752,7 +783,15 @@ class SelDiAEngine implements CoreEngine {
     // pixel budget — it just rendered oversized relative to its neighbours.
     const wideTypes: DiagramType[] = [DiagramType.GANTT, DiagramType.SANKEY];
     const wideClass = wideTypes.includes(diagramType) ? ' seldia-wide' : '';
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" class="seldia-diagram-svg-el${wideClass}" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}">\n`;
+    // Theme effects (glow themes). Glow is skipped on big diagrams: a filter per highlighted element is costly.
+    const fx = this.effects;
+    const glowOn = !!fx?.glow && nodes.length <= GLOW_MAX_NODES;
+    const fxClass = (fx?.flow === 'none' ? ' seldia-noflow' : '') + (glowOn ? ' seldia-glow' : '');
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" class="seldia-diagram-svg-el${wideClass}${fxClass}" viewBox="0 0 ${bw} ${bh}" width="${bw}" height="${bh}" preserveAspectRatio="${par}">\n`;
+    if (glowOn) {
+      svg += `  <defs><filter id="seldia-glow" filterUnits="userSpaceOnUse" x="${-bw}" y="${-bh}" width="${3 * bw}" height="${3 * bh}"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="${GLOW_COLOR}" flood-opacity="0.8"/></filter></defs>\n`;
+      svg += `  <style>.seldia-glow .seldia-node.sd-on,.seldia-glow .seldia-node.sd-sel,.seldia-glow .seldia-edge.sd-on,.seldia-glow .seldia-edge.sd-sel,.seldia-glow .seldia-flow{filter:url(#seldia-glow)}</style>\n`;
+    }
     svg += `  <rect width="${bw}" height="${bh}" fill="${bg}" rx="${DS.radius}"/>\n`;
     const headerEnd = svg.length;
     const typeAccent = typeSwatch(diagramType);
@@ -975,20 +1014,25 @@ class SelDiAEngine implements CoreEngine {
       // arrowheads → label chips and labels. Each edge's parts go to their own
       // layer so a node can never paint over a label or an arrowhead.
       const edgeStyle: EdgeStyle = { clean: cleanEdges, jumps, round: dt !== 'circuit' && dt !== 'pcb' };
-      let paths = '', heads = '', labels = '';
+      let paths = '', heads = '', labels = '', anyFlow = false;
       for (const e of routedEdges) {
-        const parts = this.renderEdge(e, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes, edgeStyle);
+        // Flow policy: structural types ignore `animate`; a flow:'all' theme animates every edge (capped).
+        let fe = e;
+        if (FLOW_DENY.has(diagramType as string)) { if (e.style?.animate !== undefined) fe = { ...e, style: { ...e.style, animate: undefined } }; }
+        else if (this.effects?.flow === 'all' && (diagramType as string) !== 'circuit' && routedEdges.length <= FLOW_ALL_MAX_EDGES && e.style?.animate === undefined) fe = { ...e, style: { ...e.style, animate: true } };
+        const parts = this.renderEdge(fe, pad, sketchy, typeAccent, diagramType, nodeById, fans.get(e.id), labelPos.get(e.id), true, allNodes, edgeStyle);
         const id = this.esc(e.id);
         // Drawn route (layout coords) + pad, so the visual editor can freeze
         // routes as `via:` pins and offer segment handles for edge moves.
         const route = (e.waypoints || []).map((p) => `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`).join(' ');
         const pinnedAttr = manualEdgeRoute(e) ? ' data-pinned="1"' : '';
-        paths += `  <g class="seldia-edge" data-seldia-edge-id="${id}" data-src="${this.esc(e.sourceId)}" data-tgt="${this.esc(e.targetId)}" data-route="${route}" data-pad="${pad}"${pinnedAttr}>\n${parts.path}  </g>\n`;
+        if (parts.flow) anyFlow = true;
+        paths += `  <g class="seldia-edge${parts.flow ? ' ' + parts.flow : ''}" data-seldia-edge-id="${id}" data-src="${this.esc(e.sourceId)}" data-tgt="${this.esc(e.targetId)}" data-route="${route}" data-pad="${pad}"${pinnedAttr}>\n${parts.path}  </g>\n`;
         if (parts.head) heads += `    <g class="seldia-edge-head" data-seldia-edge-ref="${id}">\n${parts.head}    </g>\n`;
         if (parts.label) labels += `    <g class="seldia-edge-label" data-seldia-edge-ref="${id}">\n${parts.label}    </g>\n`;
       }
       if (routedEdges.length) {
-        svg += `  <style>.seldia-edge:hover path{stroke-width:${DS.stroke.emphasis}}svg:has(.seldia-edge:hover) .seldia-edge:not(:hover),svg:has(.seldia-edge:hover) .seldia-edge-head,svg:has(.seldia-edge:hover) .seldia-edge-label{opacity:.35}svg:has(.seldia-edge:hover) .seldia-edge:hover,svg:has(.seldia-edge:hover) .seldia-edge-head:hover,svg:has(.seldia-edge:hover) .seldia-edge-label:hover{opacity:1}</style>\n`;
+        svg += `  <style>svg:not(.sd-interactive) .seldia-edge:hover path{stroke-width:${DS.stroke.emphasis}}svg:not(.sd-interactive):has(.seldia-edge:hover) .seldia-edge:not(:hover),svg:not(.sd-interactive):has(.seldia-edge:hover) .seldia-edge-head,svg:not(.sd-interactive):has(.seldia-edge:hover) .seldia-edge-label{opacity:.35}svg:not(.sd-interactive):has(.seldia-edge:hover) .seldia-edge:hover,svg:not(.sd-interactive):has(.seldia-edge:hover) .seldia-edge-head:hover,svg:not(.sd-interactive):has(.seldia-edge:hover) .seldia-edge-label:hover{opacity:1}${anyFlow ? FLOW_KEYFRAMES_CSS : ''}</style>\n`;
       }
       svg += paths;
       svg += groupTitles; groupTitles = '';
@@ -1141,6 +1185,8 @@ class SelDiAEngine implements CoreEngine {
         el = sketchy
           ? roughRect(x, y, w, h, roughStyle)
           : `    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${DS.radius}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${op}/>\n`;
+        // Theme accent bar: rect-like nodes only (diamonds, circles and custom shapes skip it).
+        if (!sketchy && this.effects?.accentBar && h > 2 * DS.radius + 4) el += `    <rect x="${x}" y="${y + DS.radius}" width="4" height="${h - 2 * DS.radius}" fill="${stroke}" data-accent-bar="1"/>\n`;
         break;
     }
     let rawLabel = node.label || node.id;
@@ -1176,7 +1222,13 @@ class SelDiAEngine implements CoreEngine {
    *  `path`, as before. */
   private renderEdge(edge: IREdge, pad: number, sketchy: boolean, typeAccent: Swatch, diagramType?: DiagramType, byId?: Map<string, IRNode>, fan?: Fan, labelPos?: LabelPlacement, preRouted = false, allNodesIn?: IRNode[], style?: EdgeStyle): EdgeParts {
     const only = (path: string): EdgeParts => ({ path, head: '', label: '' });
-    if (diagramType === DiagramType.SEQUENCE) return only(renderSequenceMessage(edge, pad, sketchy, typeAccent));
+    if (diagramType === DiagramType.SEQUENCE) {
+      // Flowing message arrows (not lifelines); sketch mode draws loose strokes, so skip there.
+      const seqFlow = sketchy ? undefined : flowSpeed(edge.style?.animate);
+      const parts = only(renderSequenceMessage(edge, pad, sketchy, typeAccent, seqFlow !== undefined));
+      if (seqFlow !== undefined) parts.flow = seqFlow ? `seldia-flow seldia-flow-${seqFlow}` : 'seldia-flow';
+      return parts;
+    }
     if (diagramType === DiagramType.ER) {
       const raw = edge.waypoints || [];
       const src = byId?.get(edge.sourceId), tgt = byId?.get(edge.targetId);
@@ -1227,7 +1279,9 @@ class SelDiAEngine implements CoreEngine {
       wps = this.routedWaypoints(edge, rawWps, byId?.get(edge.sourceId), byId?.get(edge.targetId), fan, allNodes);
     }
     const clean = style?.clean ?? true;
-    const dashAttr = dash ? ` stroke-dasharray="${dash}"${kind === 'dotted' ? ' stroke-linecap="round"' : ''}` : '';
+    // Sketch (Rough.js) routes are loose, undashed strokes: the flow animation is skipped there.
+    const flow = (!clean && sketchy) ? undefined : flowSpeed(s.animate);
+    const dashAttr = (dash || flow !== undefined) ? ` stroke-dasharray="${dash || DS.dash.edge}"${kind === 'dotted' ? ' stroke-linecap="round"' : ''}` : '';
     const polyPts = wps.map(p => `${p.x + pad},${p.y + pad}`).join(' ');
     let el: string;
     if (!clean && sketchy) {
@@ -1285,7 +1339,7 @@ class SelDiAEngine implements CoreEngine {
       label += `    <text ${textAttrs} fill="none" stroke="var(--seldia-label-bg, ${DS.neutral.surface})" stroke-width="${DS.stroke.halo}" stroke-linejoin="round" data-halo="1" aria-hidden="true">${tspans}</text>\n`;
       label += `    <text ${textAttrs} fill="${DS.neutral.text}">${tspans}</text>\n`;
     }
-    return { path: el, head, label };
+    return { path: el, head, label, flow: flow === undefined ? undefined : flow ? `seldia-flow seldia-flow-${flow}` : 'seldia-flow' };
   }
 
   /** Draw one of the UML-conventional arrowhead types onto the last segment

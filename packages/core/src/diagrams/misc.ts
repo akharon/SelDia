@@ -7,6 +7,7 @@ import type { DiagramAST, ASTNodeDecl, ASTEdgeDecl, ASTSectionDecl, ASTGroupDecl
 import type { DiagramIR, IRNode, IREdge, IRGroup } from '../ir/types.js';
 import type { SelDiAConfig } from '../config.js';
 import { DiagramType, EdgeRouting } from '../ir/types.js';
+import { animStyle } from './edge-anim.js';
 const ROUTING_MAP: Record<string, EdgeRouting> = {
   straight: EdgeRouting.STRAIGHT, spline: EdgeRouting.SPLINE,
   orthogonal: EdgeRouting.ORTHOGONAL, curved: EdgeRouting.CURVED,
@@ -47,7 +48,7 @@ function genericPlugin(id: string, name: string, dt: DiagramType, desc: string, 
             nodes.push({ id: nd.id, label: nd.label, shape: nd.shape || shape, position: { x: 0, y: 0 }, size: sizeForLabel(nd.label, (nd.style?.fontSize as number) || 14, 150, 60), style: { ...(nd.style || {}) }, ports: [], classList: [], collapsed: false, data: { ...(nd.data || {}), ...(sectionLabel ? { sectionLabel } : {}) } });
           } else if (stmt.kind === 'EdgeDecl') {
             const ed = stmt as ASTEdgeDecl;
-            edges.push({ id: `${dt}e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+            edges.push({ id: `${dt}e-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: animStyle(ed.style), routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
           } else if (stmt.kind === 'SectionDecl') {
             const sd = stmt as ASTSectionDecl;
             walk(sd.body, sd.label || sd.id);
@@ -158,7 +159,7 @@ export const activityPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `acte-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `acte-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: animStyle(ed.style), routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'activity-1', type: DiagramType.ACTIVITY, title: ast.title || 'Activity Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -201,7 +202,7 @@ export const deploymentPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `depe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `depe-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: animStyle(ed.style), routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'deploy-1', type: DiagramType.DEPLOYMENT, title: ast.title || 'Deployment Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -255,7 +256,7 @@ export const networkPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `nete-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `nete-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: animStyle(ed.style), routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'network-1', type: DiagramType.NETWORK, title: ast.title || 'Network Diagram', nodes, edges, groups: [], layers: [], metadata: {} };
@@ -565,7 +566,7 @@ export const cloudPlugin: DiagramPlugin = {
       }
       if (stmt.kind === 'EdgeDecl') {
         const ed = stmt as ASTEdgeDecl;
-        edges.push({ id: `cloude-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: {}, routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
+        edges.push({ id: `cloude-${ed.sourceId}-${ed.targetId}`, sourceId: ed.sourceId, targetId: ed.targetId, label: ed.label || undefined, style: animStyle(ed.style), routing: (ed.routing && ROUTING_MAP[ed.routing]) || EdgeRouting.ORTHOGONAL, bidirectional: false, classList: [], data: {} });
       }
     }
     return { id: ast.metadata?.id || 'cloud-1', type: DiagramType.CLOUD, title: ast.title || 'Cloud Architecture', nodes, edges, groups: [], layers: [], metadata: {} };

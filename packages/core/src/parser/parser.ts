@@ -160,7 +160,7 @@ class Tokenizer {
     const patterns: [string, string][] = [
       ['<-->', '<-->'], ['<->', '<->'], ['-->', '-->'], ['->', '->'],
       ['<--', '<--'], ['---', '---'], ['--', '--'],
-      ['..>', '..>'], ['==>', '==>'],
+      ['..>', '..>'], ['==>', '==>'], ['~~>', '~~>'],
     ];
     for (const [pat] of patterns) {
       if (this.source.startsWith(pat, this.pos)) {
@@ -261,7 +261,7 @@ class Tokenizer {
       if (ch === '"') { tokens.push(this.readString()); continue; }
 
       // Arrows: -, <, =, .
-      if (ch === '-' || ch === '<' || ch === '=' || ch === '.') {
+      if (ch === '-' || ch === '<' || ch === '=' || ch === '.' || ch === '~') {
         const arr = this.readArrow(start);
         if (arr) { tokens.push(arr); continue; }
       }
@@ -692,7 +692,7 @@ class Parser {
           case '<--': direction = 'left'; break;
           case '<->': case '<-->': direction = 'both'; break;
           case '--': case '---': direction = 'none'; break;
-          case '..>': case '==>': direction = 'right'; break;
+          case '..>': case '==>': case '~~>': direction = 'right'; break;
         }
         let label: string | undefined;
         if (this.peek().type === TokenType.PIPE) {
@@ -742,7 +742,7 @@ class Parser {
         }
         stmts.push({
           kind: 'EdgeDecl', sourceId: srcNode.id, targetId: tgtId,
-          direction, label, style: undefined, routing: 'straight',
+          direction, label, style: edgeTok.value === '~~>' ? { animate: true } : undefined, routing: 'straight',
           loc: {
             file: '<unknown>',
             startLine: srcNode.loc.startLine,
@@ -780,7 +780,7 @@ class Parser {
       case '<--': direction = 'left'; break;
       case '<->': case '<-->': direction = 'both'; break;
       case '--': case '---': direction = 'none'; break;
-      case '..>': case '==>': direction = 'right'; break;
+      case '..>': case '==>': case '~~>': direction = 'right'; break;
     }
     let label: string | undefined;
     if (this.peek().type === TokenType.PIPE) {
@@ -812,7 +812,7 @@ class Parser {
     }
     return {
       kind: 'EdgeDecl', sourceId, targetId: tgtId,
-      direction, label, style: undefined, routing: 'straight',
+      direction, label, style: arrowTok.value === '~~>' ? { animate: true } : undefined, routing: 'straight',
       loc: { file: '<unknown>', startLine: arrowTok.line, startColumn: arrowTok.col, endLine: arrowTok.line, endColumn: arrowTok.col + arrowTok.value.length, offset: arrowTok.offset },
     };
   }
@@ -918,6 +918,11 @@ class Parser {
       if (tokLower === 'sketchy' || tokLower === 'smooth' || tokLower === 'mono') {
         return this.parseBareTheme();
       }
+      // `glow [light|dark]` — only when it isn't being used as an ordinary node id.
+      if (tokLower === 'glow' && next.type !== TokenType.SHAPE && next.type !== TokenType.STRING &&
+          next.type !== TokenType.ARROW && next.type !== TokenType.COLON && next.type !== TokenType.LBRACE) {
+        return this.parseBareTheme();
+      }
 
       // id (Label) — bracket shape node
       if (next.type === TokenType.SHAPE) {
@@ -999,7 +1004,8 @@ class Parser {
     }
 
     // Build the theme string from name + variant
-    const theme = variant ? `${themeName}-${variant}` : themeName;
+    const isGlow = themeName.toLowerCase() === 'glow';
+    const theme = isGlow ? `glow-${variant.toLowerCase() === 'light' ? 'light' : 'dark'}` : (variant ? `${themeName}-${variant}` : themeName);
     return { kind: 'ThemeDecl', theme, loc: this.locSpan(kw, this.peek(-1)) };
   }
 
@@ -1014,7 +1020,7 @@ class Parser {
         variant = this.consume().value;
       }
     }
-    const theme = variant ? `${name}-${variant}` : `${name}-light`;
+    const theme = name === 'glow' ? `glow-${variant.toLowerCase() === 'light' ? 'light' : 'dark'}` : (variant ? `${name}-${variant}` : `${name}-light`);
     return { kind: 'ThemeDecl', theme, loc: this.locSpan(name as any, this.peek(-1)) };
   }
 
@@ -1146,7 +1152,7 @@ class Parser {
       case '<--': direction = 'left'; break;
       case '<->': case '<-->': direction = 'both'; break;
       case '--': case '---': direction = 'none'; break;
-      case '..>': case '==>': direction = 'right'; break;
+      case '..>': case '==>': case '~~>': direction = 'right'; break;
     }
     // Optional label: |"label"|
     let label: string | undefined;
@@ -1192,7 +1198,9 @@ class Parser {
     }
 
     // Optional edge attribute/style block: { stroke: "...", label: "..." }
-    const style = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
+    let style = this.peek().type === TokenType.LBRACE ? (this.parseAttrBlock() as any) : undefined;
+    // `a ~~> b` is sugar for an animated directed edge (an explicit `animate:` in the block wins).
+    if (arrowTok.value === '~~>') style = { animate: true, ...(style || {}) };
     if (!label && style && typeof style.label === 'string') label = style.label;
     // `route: straight|orthogonal|curved|spline` picks
     // this edge's routing explicitly; `routing:` accepted as an alias for

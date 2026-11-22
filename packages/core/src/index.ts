@@ -38,6 +38,7 @@ export { exportSqlDdl, isSqlDdlExportable } from './export/sql-ddl.js';
 export type { PaletteOverride } from './render/design-system.js';
 export { BUILTIN_PALETTES, resolvePalette } from './render/design-system.js';
 export { escapeXml } from './render/escape.js';
+export { FLOW_KEYFRAMES_CSS, TRACE_CSS, INTERACTIVE_FLOW_CSS, FLOW_DURATION } from './render/flow-css.js';
 
 // Macro/include — literal file-inclusion preprocessor, expanded before parse.
 export { expandIncludes } from './macro/include.js';

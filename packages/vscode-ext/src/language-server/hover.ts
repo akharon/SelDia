@@ -25,7 +25,8 @@ const SHAPE_DOCS: Record<string, string> = {
 
 const KEYWORD_DOCS: Record<string, string> = {
   diagram: '**`diagram`** — Start a diagram definition.\n\n```\ndiagram flowchart "My Diagram" {\n    ...\n}\n```\n\nType must be one of: flowchart, sequence, class, c4-context, c4-container, state, er, bpmn, dmn, component, deployment, usecase, activity, gantt, timeline, mindmap, network, gitgraph, form, sankey, block, table.',
-  theme: '**`theme`** — Apply a built-in theme or define an inline theme.\n\n```\ntheme "sketchy-light"\n```\n\nBuilt-in themes: sketchy-light, sketchy-dark, smooth-light, smooth-dark, handdrawn.',
+  theme: '**`theme`** — Apply a built-in theme or define an inline theme.\n\n```\ntheme "sketchy-light"\n```\n\nBuilt-in themes: sketchy-light, sketchy-dark, smooth-light, smooth-dark, handdrawn, glow-dark, glow-light (also `theme glow dark|light`).',
+  animate: '**`animate`** — Edge attribute: flowing dashes.\n\n```\na --> b { animate }\na --> b { animate: fast }   // fast | slow | true | false\na ~~> b                     // shorthand\n```',
   layout: '**`layout`** — Set the layout engine and options.\n\n```\nlayout dagre { direction: "TB" }\n```',
   style: '**`style`** — Apply style rules to nodes, edges, or all elements.\n\n```\nstyle node { fill: "#e8f4f8", stroke: "#2c3e50" }\n```',
   group: '**`group`** — Group nodes together (visual bounding box).\n\n```\ngroup "Group Name" { node1, node2 }\n```',
@@ -41,6 +42,7 @@ const ARROW_DOCS: Record<string, string> = {
   '---': '**Solid line** — Undirected connection. Source --- Target',
   '..>': '**Dashed arrow** ⇢ Dashed directed edge with arrowhead. Source ..> Target',
   '==>': '**Thick arrow** ⇒ Thick directed edge. Source ==> Target',
+  '~~>': '**Animated arrow** Directed edge with flowing dashes. Source ~~> Target (same as `{ animate }`)',
   '..': '**Dashed line** - - Undirected dashed connection. Source .. Target',
 };
 
@@ -97,13 +99,14 @@ export class SelDiAHoverProvider implements vscode.HoverProvider {
     }
 
     // ── Hover over theme names ────────────────────────────────────────────
-    const builtinThemes = ['sketchy-light', 'sketchy-dark', 'smooth-light', 'smooth-dark', 'handdrawn'];
+    const builtinThemes = ['sketchy-light', 'sketchy-dark', 'smooth-light', 'smooth-dark', 'handdrawn', 'glow-dark', 'glow-light'];
     if (builtinThemes.includes(word)) {
       const md = new vscode.MarkdownString();
       md.appendMarkdown(`**Theme: \`${word}\`**  \n`);
       if (word.includes('sketchy')) md.appendMarkdown('Rendered with SVG displacement filter for hand-drawn effect.');
       if (word.includes('smooth')) md.appendMarkdown('Clean SVG rendering without sketch effect.');
       if (word === 'handdrawn') md.appendMarkdown('Exaggerated hand-drawn aesthetic with stronger wobble.');
+      if (word.startsWith('glow')) md.appendMarkdown('PAiRS-style: tinted nodes, accent bars, glow on focus. ');
       if (word.includes('light')) md.appendMarkdown('Light background (default).');
       if (word.includes('dark')) md.appendMarkdown('Dark background.');
       return new vscode.Hover(md);

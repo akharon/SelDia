@@ -1,0 +1,6 @@
+flowchart LR
+  ingest[Ingest] e1@--> queue[Queue]
+  queue e2@==> worker[Worker]
+  worker --> store[(Store)]
+  e1@{ animate: true }
+  e2@{ animation: fast, unknown: 1 }

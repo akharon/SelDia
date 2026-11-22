@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { decideUpdate, isEditBlocked } from './stale-state.js';
+import { ensureFlowCss, installTrace, markSelection, stripClientArtifacts } from '../../markdown-preview/trace.js';
 import { reduceInteraction, initialInteractionState, type InteractionEffect } from './interaction-reducer.js';
 
 interface SeldiaInit {
@@ -30,6 +31,7 @@ declare global {
     handleAddNode: () => void;
     handleAddEdge: () => void;
     exportSvg: () => void;
+    toggleAnimations: () => void;
   }
   function acquireVsCodeApi(): { postMessage(msg: any): void };
 }
@@ -71,6 +73,7 @@ let irData: any = window.__seldiaInit.ir;
 // ── Initialize ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   annotateSvg();
+  syncTrace();
   initFromIR();
   prepareEdges();
   vscode.postMessage({ type: 'ready' });
@@ -95,6 +98,33 @@ function annotateSvg() {
     });
   }
 }
+
+// Hover trace (PAiRS-like) + mirror the editor's own selection as .sd-sel.
+// The editor owns click-selection, so trace is hover-only and only live in the
+// Select tool when nothing is being dragged or drawn.
+function syncTrace() {
+  const svg = container.querySelector<SVGSVGElement>('svg.seldia-diagram-svg-el') || container.querySelector<SVGSVGElement>('svg');
+  if (!svg) return;
+  ensureFlowCss(document);
+  installTrace(svg, {
+    sticky: false,
+    hitPaths: false, // editor has its own .seldia-edge-hit polylines
+    enabled: () => tool === 'select' && editMode === 'idle' && !isDragging && !dragNodeId && !isPanning,
+  });
+  markSelection(svg, { node: selectedNodeId, edge: selectedEdgeId });
+  svg.classList.toggle('seldia-paused', animPaused);
+}
+let animPaused = false;
+window.toggleAnimations = () => {
+  animPaused = !animPaused;
+  const b = document.getElementById('btnPause');
+  if (b) {
+    b.classList.toggle('active', animPaused);
+    b.setAttribute('aria-pressed', String(animPaused));
+    b.setAttribute('title', animPaused ? 'Play animations' : 'Pause animations');
+  }
+  syncTrace();
+};
 
 function initFromIR() {
   nodePositions = {};
@@ -444,16 +474,19 @@ function applyInteractionEffects(effects: InteractionEffect[]) {
       case 'selectNode': {
         const el = container.querySelector('[data-id="' + eff.id + '"]');
         if (el) el.setAttribute('data-selected', 'true');
+        syncTrace();
         break;
       }
       case 'selectEdge': {
         const el = container.querySelector('[data-id="' + eff.id + '"]');
         if (el) el.setAttribute('data-selected', 'true');
         showEdgeHandles(eff.id);
+        syncTrace();
         break;
       }
       case 'clearSelection':
         clearSelectionDom();
+        syncTrace();
         clearEdgeHandles();
         break;
       case 'markEdgeSource':
@@ -1481,13 +1514,15 @@ const THEME_LABELS: Record<string, string> = {
   mono: 'Mono',
   blueprint: 'Blueprint',
   comic: 'Comic',
+  'glow-dark': 'Glow Dark',
+  'glow-light': 'Glow Light',
 };
 let currentTheme = window.__seldiaInit.theme;
 /** The page CSS is baked at panel creation; incremental re-renders only
  *  swap the SVG, so the canvas background must follow the theme here. */
 function applyThemeChrome(t: string) {
   const bg: Record<string, string> = {
-    'sketchy-dark': '#1e1e1e', 'clean-dark': '#1e1e1e', blueprint: '#1d4e89', comic: '#fffbeb',
+    'sketchy-dark': '#1e1e1e', 'clean-dark': '#1e1e1e', blueprint: '#1d4e89', comic: '#fffbeb', 'glow-dark': '#1e1e1e', 'glow-light': '#fafafa',
   };
   document.documentElement.style.setProperty('--canvas-bg', bg[t] ?? '#ffffff');
 }
@@ -1525,6 +1560,7 @@ window.exportSvg = () => {
   if (!svgEl) return;
   // Export a clean copy: no pan/zoom transform, no selection/edit markers.
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
+  stripClientArtifacts(clone);
   clone.style.removeProperty('transform');
   clone.style.removeProperty('transform-origin');
   clone.querySelectorAll('[data-selected]').forEach((n) => n.removeAttribute('data-selected'));
@@ -1553,6 +1589,7 @@ const TOOLBAR_COMMANDS: Record<string, () => void> = {
   addNode: () => window.handleAddNode(),
   addEdge: () => window.handleAddEdge(),
   exportSvg: () => window.exportSvg(),
+  toggleAnimations: () => window.toggleAnimations(),
 };
 document.querySelectorAll<HTMLElement>('[data-cmd]').forEach((btn) => {
   const fn = TOOLBAR_COMMANDS[btn.getAttribute('data-cmd')!];
@@ -1778,6 +1815,7 @@ window.addEventListener('message', (event) => {
       // Fresh SVG: re-bridge engine ids to the interaction attributes,
       // re-apply the current zoom/pan and restore selection.
       annotateSvg();
+      syncTrace();
       prepareEdges();
       applyTransform();
       for (const id of [...multiSel]) {

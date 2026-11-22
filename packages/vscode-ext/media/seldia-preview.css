@@ -532,3 +532,8 @@
   .seldia-table-toolbar { display: none; }
   .seldia-table-scroll { max-height: none; overflow: visible; }
 }
+
+/* Pause/play toggle for flowing edges (WCAG 2.2.2): shows the play glyph while paused. */
+.seldia-btn-pause .seldia-icon-alt { display: none; }
+.seldia-btn-pause.seldia-paused-on .seldia-icon { display: none; }
+.seldia-btn-pause.seldia-paused-on .seldia-icon-alt { display: inline; }

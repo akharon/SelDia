@@ -13,7 +13,7 @@
 //
 // With keywords: diagram, as, style, theme, direction, LR, TB, BT, RL
 // Node shapes: (), [], {}, <>, (()), ([]), [()]
-// Edge types: -->, ===>, -.-, <->
+// Edge types: -->, ===>, -.-, <->, ~~> (animated)
 // Themes: sketchy-light, sketchy-dark, blueprint, monochrome, clean
 // -----------------------------------------------------------------------------
 
@@ -37,9 +37,9 @@ interface SelDiAState {
 
 /** Keywords recognised by the SelDiA DSL */
 const KEYWORDS = new Set([
-  'diagram', 'as', 'style', 'theme', 'direction',
+  'diagram', 'as', 'style', 'theme', 'direction', 'glow', 'animate',
   'LR', 'TB', 'BT', 'RL',
-  'sketchy-light', 'sketchy-dark', 'blueprint', 'monochrome', 'clean',
+  'sketchy-light', 'sketchy-dark', 'blueprint', 'monochrome', 'clean', 'glow-dark', 'glow-light',
 ]);
 
 /** Diagram type names */
@@ -103,6 +103,9 @@ const seldiaLanguageStream: StreamParser<SelDiAState> = {
       return 'operator';
     }
     if (stream.match(/^={3,5}=>/)) {
+      return 'operator';
+    }
+    if (stream.match(/^~{2,5}>/)) {
       return 'operator';
     }
     if (stream.match(/^-{2,5}-?>/)) {
@@ -224,6 +227,9 @@ export function seldiaAutocomplete(context: CompletionContext) {
     { label: 'style', type: 'keyword', detail: 'Keyword' },
     { label: 'theme', type: 'keyword', detail: 'Keyword' },
     { label: 'direction', type: 'keyword', detail: 'Keyword' },
+    { label: 'glow', type: 'keyword', detail: 'Glow theme: glow [light|dark]' },
+    { label: 'animate', type: 'keyword', detail: 'Edge attr: animate | fast | slow' },
+    { label: '~~>', type: 'keyword', detail: 'Animated directed edge' },
     { label: 'LR', type: 'keyword', detail: 'Left-to-Right' },
     { label: 'TB', type: 'keyword', detail: 'Top-to-Bottom' },
     { label: 'BT', type: 'keyword', detail: 'Bottom-to-Top' },
@@ -266,6 +272,8 @@ export function seldiaAutocomplete(context: CompletionContext) {
     { label: 'blueprint', type: 'keyword', detail: 'Theme' },
     { label: 'monochrome', type: 'keyword', detail: 'Theme' },
     { label: 'clean', type: 'keyword', detail: 'Theme' },
+    { label: 'glow-dark', type: 'keyword', detail: 'PAiRS-style dark: tinted nodes, accent bars, glow on focus' },
+    { label: 'glow-light', type: 'keyword', detail: 'PAiRS-style light: tinted nodes, accent bars, glow on focus' },
   ];
 
   return {

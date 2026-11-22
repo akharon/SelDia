@@ -105,12 +105,23 @@ function exportFlowchart(ir: DiagramIR): string {
     lines.push(`  ${nodeDecl(node, id(node.id))}`);
   }
 
+  // Mermaid 11.5+: animated edges carry an id (`e1@-->`) plus an `e1@{ animate: true }`
+  // property line (`animation: fast|slow` for the speeds).
+  const animLines: string[] = [];
+  let animN = 0;
   for (const edge of ir.edges) {
     const dashed = edge.style.strokeStyle === StrokeStyle.DASHED;
-    const arrow = edge.style.arrowhead === false ? '---' : dashed ? '-.->' : '-->';
+    let arrow = edge.style.arrowhead === false ? '---' : dashed ? '-.->' : '-->';
+    const anim = edge.style.animate;
+    if (anim) {
+      const eid = `e${++animN}`;
+      arrow = `${eid}@${arrow}`;
+      animLines.push(`  ${eid}@{ ${anim === 'fast' || anim === 'slow' ? `animation: ${anim}` : 'animate: true'} }`);
+    }
     const label = edge.label ? `|${quoteLabel(edge.label)}|` : '';
     lines.push(`  ${id(edge.sourceId)} ${arrow}${label} ${id(edge.targetId)}`);
   }
+  lines.push(...animLines);
 
   for (const node of ir.nodes) {
     const decl = styleToDecl(node.style);

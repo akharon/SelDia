@@ -16,7 +16,7 @@
     "keywords": {
       "patterns": [{
         "name": "keyword.control.seldia",
-        "match": "\\b(diagram|theme|layout|style|group|section|partition|boundary|participant|actor|class|interface|enum|entity|component|node|database|queue|artifact|container|person|system|system_Ext|containerDb|container_Ext|componentDb|state|task|gateway|event|startEvent|endEvent|flow|messageFlow|branch|leaf|root|block|source|sink|field|submit|reset|commit|merge|branch|milestone|note|opt|alt|else|loop|par|critical|break|end|pool|lane|port|interface|service|device|cloud|server|workstation|firewall|switch|router)\\b"
+        "match": "\\b(diagram|theme|glow|animate|layout|style|group|section|partition|boundary|participant|actor|class|interface|enum|entity|component|node|database|queue|artifact|container|person|system|system_Ext|containerDb|container_Ext|componentDb|state|task|gateway|event|startEvent|endEvent|flow|messageFlow|branch|leaf|root|block|source|sink|field|submit|reset|commit|merge|branch|milestone|note|opt|alt|else|loop|par|critical|break|end|pool|lane|port|interface|service|device|cloud|server|workstation|firewall|switch|router)\\b"
       }]
     },
     "types": {
@@ -45,7 +45,7 @@
     "arrows": {
       "patterns": [{
         "name": "keyword.operator.arrow.seldia",
-        "match": "(-->|<--|<-->|---|\\.\\.>|==>|-\\.\\.\\.->)"
+        "match": "(-->|<--|<-->|---|\\.\\.>|==>|~~>|-\\.\\.\\.->)"
       }]
     },
     "numbers": {

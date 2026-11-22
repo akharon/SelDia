@@ -1,6 +1,6 @@
 {
   "name": "seldia-vscode",
-  "version": "1.75.0",
+  "version": "1.76.0",
   "private": true,
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
@@ -328,7 +328,8 @@
         "seldia.defaultTheme": {
           "type": "string",
           "default": "sketchy-light",
-          "enum": ["sketchy-light", "sketchy-dark", "clean-light", "clean-dark", "mono", "blueprint", "comic"],
+          "enum": ["sketchy-light", "sketchy-dark", "clean-light", "clean-dark", "mono", "blueprint", "comic", "glow-dark", "glow-light"],
+          "enumDescriptions": ["Hand-drawn, light","Hand-drawn, dark","Clean lines, light","Clean lines, dark","High-contrast monochrome","Blueprint","Comic","PAiRS-style dark: tinted nodes, accent bars, glow on focus","PAiRS-style light: tinted nodes, accent bars, glow on focus"],
           "description": "Default theme for rendered diagrams"
         },
         "seldia.markdown.enabled": {

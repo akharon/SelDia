@@ -73,6 +73,12 @@ export interface PaletteOverride {
    *  palette MUST set this alongside neutralText, or renderers that paint a
    *  surface (work-item cards) end up with light text on white. */
   neutralSurface?: string;
+  /** Remap a built-in type/role accent (lower-case stroke hex) to this palette's
+   *  accent, keeping the per-type hue families (used by the glow themes). */
+  accents?: Record<string, string>;
+  /** Node fill = accent mixed into `background` at this percent (0-100), as a
+   *  plain hex so exports stay portable. Set by the engine from Theme.effects.tint. */
+  tint?: number;
 }
 
 let activeOverride: PaletteOverride | undefined;
@@ -93,13 +99,15 @@ export function getPaletteOverride(): PaletteOverride | undefined {
 
 function applyOverride(base: Swatch): Swatch {
   if (!activeOverride) return base;
-  const stroke = activeOverride.nodeStroke ?? base.stroke;
-  return {
-    stroke,
-    fill: activeOverride.nodeFill ?? base.fill,
-    text: activeOverride.nodeText ?? base.text,
-    accent: stroke,
-  };
+  const o = activeOverride;
+  const stroke = o.nodeStroke ?? o.accents?.[base.stroke.toLowerCase()] ?? base.stroke;
+  let fill = o.nodeFill ?? base.fill;
+  let text = o.nodeText ?? base.text;
+  if (o.tint !== undefined && o.nodeFill === undefined) {
+    fill = blendHex(o.background ?? '#ffffff', stroke, o.tint / 100);
+    text = readableTextOn(fill, o.nodeText ?? o.neutralText);
+  }
+  return { stroke, fill, text, accent: stroke };
 }
 
 // ── Shared neutrals ─────────────────────────────────────────────────────────
@@ -361,6 +369,40 @@ export const BUILTIN_PALETTES: Record<string, PaletteOverride> = {
     neutralFill: '#fef3c7',
     neutralSurface: '#ffffff',
   },
+};
+
+/** PAiRS-style accents: remap the built-in per-type/role strokes (keys) onto one bright set. */
+const GLOW_ACCENTS: Record<string, string> = {
+  '#4f46e5': '#3b82f6', '#2563eb': '#3b82f6', '#1d4ed8': '#3b82f6', '#0369a1': '#3b82f6', // blue: calls
+  '#0d9488': '#14b8a6', '#0f766e': '#14b8a6',                                             // teal: uses
+  '#c2410c': '#f59e0b', '#b45309': '#f59e0b', '#d97706': '#f59e0b', '#a16207': '#eab308', // amber: extends/decision
+  '#dc2626': '#ef4444',                                                                   // red: writes/stop
+  '#0891b2': '#06b6d4', '#0e7490': '#06b6d4', '#0284c7': '#0ea5e9',                       // cyan
+  '#4338ca': '#a78bfa', '#7c3aed': '#a78bfa',                                             // violet
+  '#9333ea': '#c026d3', '#db2777': '#d946ef',                                             // fuchsia brand
+  '#16a34a': '#22c55e',
+  '#4b5563': '#94a3b8', '#475569': '#94a3b8', '#525252': '#94a3b8', '#334155': '#94a3b8', '#111827': '#cbd5e1',
+};
+
+BUILTIN_PALETTES['glow-dark'] = {
+  background: '#1e1e1e',
+  nodeText: '#e5e7eb',
+  edgeStroke: '#6b7280',
+  neutralText: '#e5e7eb',
+  neutralMuted: '#9ca3af',
+  neutralFill: '#2a2a2e',
+  neutralSurface: '#252526',
+  accents: GLOW_ACCENTS,
+};
+BUILTIN_PALETTES['glow-light'] = {
+  background: '#fafafa',
+  nodeText: '#1f2937',
+  edgeStroke: '#9ca3af',
+  neutralText: '#1f2937',
+  neutralMuted: '#6b7280',
+  neutralFill: '#f1f5f9',
+  neutralSurface: '#ffffff',
+  accents: GLOW_ACCENTS,
 };
 
 export function resolvePalette(idOrOverride: string | PaletteOverride | undefined): PaletteOverride | undefined {

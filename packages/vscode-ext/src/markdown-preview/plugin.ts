@@ -541,7 +541,7 @@ ${ICON_SPRITE}
 // ── Utilities ────────────────────────────────────────────────────────────
 // The extension id (publisher.name) used to address this extension's registered
 // UriHandler from inside the built-in Markdown preview.
-const EXTENSION_ID = 'seldia.seldia-vscode';
+const EXTENSION_ID = 'ThalesoMilas.seldia-vscode';
 
 /** Build a `vscode://<extension-id>/<action>?<query>` deep link for a toolbar
  *  anchor. MUST be used instead of a `command:` URI: the built-in Markdown

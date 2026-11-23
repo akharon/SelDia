@@ -47,7 +47,7 @@ describe('renderSelDiABlock', () => {
   // from here.
   it('deep-links to revealSource and editBlockVisually only', () => {
     const html = renderSelDiABlock(engine, SRC, 'file:///w/demo.md');
-    const actions = [...html.matchAll(/href="vscode:\/\/seldia\.seldia-vscode\/(\w+)/g)].map((m) => m[1]);
+    const actions = [...html.matchAll(/href="vscode:\/\/ThalesoMilas\.seldia-vscode\/(\w+)/g)].map((m) => m[1]);
     expect(actions.length).toBeGreaterThan(0);
     expect(new Set(actions)).toEqual(new Set(['revealSource', 'editBlockVisually']));
   });
@@ -70,7 +70,7 @@ describe('renderSelDiABlock', () => {
   // uri travelling with each deep link, so pin that here.
   it('addresses the extension over vscode:// and never command:', () => {
     const html = renderSelDiABlock(engine, SRC, 'file:///w/demo.md');
-    expect(html).toContain('href="vscode://seldia.seldia-vscode/');
+    expect(html).toContain('href="vscode://ThalesoMilas.seldia-vscode/');
     expect(html).not.toContain('command:');
   });
 

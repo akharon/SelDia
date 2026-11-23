@@ -446,3 +446,45 @@ function glowTheme(variant: 'dark' | 'light'): Theme {
   };
 }
 BUILTIN_THEMES.push(glowTheme('dark'), glowTheme('light'));
+
+// -----------------------------------------------------------------------------
+// Theme id → render config (palette + Rough.js flag). One table shared by the
+// DSL `theme` directive (engine render stage) and hosts' theme pickers. The
+// palette is a BUILTIN_PALETTES key (render/design-system.ts); no palette
+// means the default one.
+// -----------------------------------------------------------------------------
+export const THEME_RENDER_CONFIG: Record<string, { sketchy: boolean; palette?: string }> = {
+  'sketchy-light': { sketchy: true },
+  'sketchy-dark': { sketchy: true, palette: 'dark' },
+  'clean-light': { sketchy: false },
+  'clean-dark': { sketchy: false, palette: 'dark' },
+  'mono': { sketchy: false, palette: 'high-contrast' },
+  'blueprint': { sketchy: false, palette: 'blueprint' },
+  'comic': { sketchy: true, palette: 'comic' },
+  'glow-dark': { sketchy: false, palette: 'glow-dark' },
+  'glow-light': { sketchy: false, palette: 'glow-light' },
+};
+
+const THEME_ALIASES: Record<string, string> = {
+  sketchy: 'sketchy-light', clean: 'clean-light', smooth: 'clean-light',
+  'smooth-light': 'clean-light', 'smooth-dark': 'clean-dark',
+  'mono-light': 'mono', 'mono-dark': 'mono', monochrome: 'mono', 'high-contrast': 'mono',
+  'blueprint-light': 'blueprint', 'blueprint-dark': 'blueprint', 'comic-light': 'comic', 'comic-dark': 'comic',
+  glow: 'glow-dark',
+};
+
+/** Canonical built-in theme id for a DSL/config theme name (`Clean Dark`,
+ *  `smooth-dark`, `mono-light` …), or undefined when it names no built-in theme. */
+export function normalizeThemeId(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const id = raw.trim().toLowerCase().replace(/\s+/g, '-');
+  const canon = THEME_ALIASES[id] ?? id;
+  return THEME_RENDER_CONFIG[canon] ? canon : undefined;
+}
+
+/** DSL spelling of a built-in theme id, for writing a `theme …` line back. */
+export function themeDirective(id: string): string {
+  const canon = normalizeThemeId(id) ?? id;
+  const m = /^(sketchy|clean|glow)-(light|dark)$/.exec(canon);
+  return m ? `theme ${m[1]} ${m[2]}` : `theme ${canon}`;
+}

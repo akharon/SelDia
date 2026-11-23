@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { decideUpdate, isEditBlocked } from './stale-state.js';
-import { ensureFlowCss, installTrace, markSelection, stripClientArtifacts } from '../../markdown-preview/trace.js';
+import { ensureFlowCss, installTrace, markSelection, showTrace, stripClientArtifacts } from '../../markdown-preview/trace.js';
 import { reduceInteraction, initialInteractionState, type InteractionEffect } from './interaction-reducer.js';
 
 interface SeldiaInit {
@@ -100,8 +100,10 @@ function annotateSvg() {
 }
 
 // Hover trace (PAiRS-like) + mirror the editor's own selection as .sd-sel.
-// The editor owns click-selection, so trace is hover-only and only live in the
-// Select tool when nothing is being dragged or drawn.
+// The editor owns click-selection; the selected node/edge stays traced (like
+// a click in the Markdown preview) and hover previews others. Trace is only
+// live in the Select tool when nothing is being dragged or drawn.
+const pinnedTrace = () => (selectedNodeId ? { node: selectedNodeId } : selectedEdgeId ? { edge: selectedEdgeId } : null);
 function syncTrace() {
   const svg = container.querySelector<SVGSVGElement>('svg.seldia-diagram-svg-el') || container.querySelector<SVGSVGElement>('svg');
   if (!svg) return;
@@ -110,7 +112,9 @@ function syncTrace() {
     sticky: false,
     hitPaths: false, // editor has its own .seldia-edge-hit polylines
     enabled: () => tool === 'select' && editMode === 'idle' && !isDragging && !dragNodeId && !isPanning,
+    pinned: pinnedTrace,
   });
+  showTrace(svg, pinnedTrace());
   markSelection(svg, { node: selectedNodeId, edge: selectedEdgeId });
   svg.classList.toggle('seldia-paused', animPaused);
 }
@@ -120,8 +124,10 @@ window.toggleAnimations = () => {
   const b = document.getElementById('btnPause');
   if (b) {
     b.classList.toggle('active', animPaused);
+    b.classList.toggle('seldia-paused-on', animPaused);
     b.setAttribute('aria-pressed', String(animPaused));
     b.setAttribute('title', animPaused ? 'Play animations' : 'Pause animations');
+    b.setAttribute('aria-label', animPaused ? 'Play animations' : 'Pause animations');
   }
   syncTrace();
 };

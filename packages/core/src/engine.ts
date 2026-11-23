@@ -46,7 +46,7 @@ import { parseDSL } from './parser/index.js';
 import { DefaultPluginManager } from './plugin-manager.js';
 import { flowchartPlugin } from './diagrams/flowchart.js';
 import { sequencePlugin } from './diagrams/sequence.js';
-import { classPlugin } from './diagrams/class.js';
+import { classPlugin, c4CodePlugin } from './diagrams/class.js';
 import { c4Plugin, c4ContainerPlugin, c4ComponentPlugin } from './diagrams/c4.js';
 import { statePlugin } from './diagrams/state.js';
 import { erPlugin } from './diagrams/er.js';
@@ -59,7 +59,7 @@ import { tJunctions } from './circuit/layout.js';
 import { bpmnPlugin } from './diagrams/bpmn.js';
 import { componentPlugin } from './diagrams/component.js';
 import { usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin } from './diagrams/misc.js';
-import { BUILTIN_THEMES } from './themes.js';
+import { BUILTIN_THEMES, THEME_RENDER_CONFIG, normalizeThemeId } from './themes.js';
 import { fullScore, lexLess, swapNeighbours, sweepOrder } from './layout/refine.js';
 import { layoutWithDagre, layoutWithElkSync, type AutoLayoutResult } from './layout/engines.js';
 import { routeEdgePolyline, routeAllEdges, manualEdgeRoute, centerOf, squareAnchor, computeFans, type Fan } from './render/edge-routing.js';
@@ -220,6 +220,8 @@ class SelDiAEngine implements CoreEngine {
   /** Effects of the theme active for the render in flight (set/cleared around renderToSvg). */
   private effects?: ThemeEffects;
   private activeThemeId?: string;
+  /** Rough.js flag from a DSL `theme` directive, for the current render call only. */
+  private sketchyOverride?: boolean;
 
   constructor(options?: EngineOptions) {
     // A shallow spread here would let a caller's partial `render: { theme }`
@@ -241,7 +243,7 @@ class SelDiAEngine implements CoreEngine {
     for (const theme of BUILTIN_THEMES) this.themes.set(theme.id, theme);
     if (options?.themes) for (const t of options.themes) this.themes.set(t.id, t);
 
-    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin, floorplanPlugin, circuitPlugin, pcbPlugin, tablePlugin];
+    const builtins = [flowchartPlugin, sequencePlugin, classPlugin, c4CodePlugin, c4Plugin, c4ContainerPlugin, c4ComponentPlugin, statePlugin, erPlugin, bpmnPlugin, componentPlugin, usecasePlugin, activityPlugin, deploymentPlugin, ganttPlugin, mindmapPlugin, networkPlugin, chartPlugin, chartLinePlugin, chartPiePlugin, chartRadarPlugin, chartScatterPlugin, gitgraphPlugin, formPlugin, sankeyPlugin, blockPlugin, timelinePlugin, dmnPlugin, wireframePlugin, cloudPlugin, workitemPlugin, floorplanPlugin, circuitPlugin, pcbPlugin, tablePlugin];
     for (const p of builtins) this.plugins.registry.register(p);
     if (options?.plugins) for (const p of options.plugins) this.plugins.registry.register(p);
   }
@@ -625,13 +627,15 @@ class SelDiAEngine implements CoreEngine {
     // so it can never leak into a concurrent/later compile of a different
     // diagram — see render/design-system.ts for why this is a module-level
     // slot rather than a threaded parameter.
-    // A DSL `theme glow dark` directive (carried in IR metadata) applies unless the host set a
-    // real palette itself; hosts routinely pass a default like 'sketchy-light', which is no palette.
+    // A DSL `theme <id>` directive naming a built-in theme (carried in IR
+    // metadata) wins over the host's config theme: the host theme is the
+    // default, the diagram's own line is the per-diagram choice. It sets both
+    // the palette and the Rough.js (sketchy) flag.
     const cfgTheme = this.config.render.palette ?? this.config.render.theme;
-    const dslTheme = layoutResult.diagram.metadata?.theme;
-    const cfgIsPalette = cfgTheme !== undefined && (typeof cfgTheme !== 'string' || (cfgTheme !== 'default' && !!resolvePalette(cfgTheme)));
-    const themeId = cfgIsPalette ? cfgTheme
-      : (typeof dslTheme === 'string' && /^glow-(dark|light)$/.test(dslTheme) ? dslTheme : cfgTheme);
+    const dsl = normalizeThemeId(typeof layoutResult.diagram.metadata?.theme === 'string' ? layoutResult.diagram.metadata.theme : undefined);
+    const dslCfg = dsl ? THEME_RENDER_CONFIG[dsl] : undefined;
+    const themeId = dslCfg ? dslCfg.palette : cfgTheme;
+    this.sketchyOverride = dslCfg?.sketchy;
     this.activeThemeId = typeof themeId === 'string' ? themeId : undefined;
     this.effects = this.activeThemeId ? this.themes.get(this.activeThemeId)?.effects : undefined;
     const basePalette = resolvePalette(themeId);
@@ -668,6 +672,7 @@ class SelDiAEngine implements CoreEngine {
       clearPaletteOverride();
       this.effects = undefined;
       this.activeThemeId = undefined;
+      this.sketchyOverride = undefined;
     }
   }
 
@@ -744,7 +749,7 @@ class SelDiAEngine implements CoreEngine {
     // outward, plus the thickest stroke width in use, so nothing gets
     // clipped by the viewBox at any zoom level (see improvement_request.md
     // item 7).
-    const sketchy = this.config.render.sketchy !== false && !this.effects && !['circuit', 'pcb', 'table'].includes(diagramType as string);
+    const sketchy = (this.sketchyOverride ?? this.config.render.sketchy !== false) && !this.effects && !['circuit', 'pcb', 'table'].includes(diagramType as string);
     const maxStroke = Math.max(2, ...nodes.map((n) => (n.style?.strokeWidth as number) || 2));
     const displacement = sketchy ? 6 : 0;
     const pad = (this.config.render.padding || 20) + maxStroke + displacement;
@@ -768,7 +773,8 @@ class SelDiAEngine implements CoreEngine {
     // DEFAULT_CONFIG value is 'transparent', which we don't want to treat as
     // "explicitly set" — it's the un-set default, so an active theme's
     // background should still apply on top of it.
-    const paletteBg = resolvePalette(this.activeThemeId ?? this.config.render.palette ?? this.config.render.theme)?.background;
+    // A DSL theme with the default palette (sketchy/clean light) must not fall back to the host palette.
+    const paletteBg = resolvePalette(this.activeThemeId ?? (this.sketchyOverride !== undefined ? undefined : this.config.render.palette ?? this.config.render.theme))?.background;
     const explicitBg = this.config.render.background;
     const bg = (explicitBg && explicitBg !== 'transparent') ? explicitBg : (paletteBg || explicitBg || '#ffffff');
     // Gantt and chart diagrams are left-aligned (their content starts from the

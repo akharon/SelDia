@@ -7,7 +7,8 @@
 
 import { formatDiagnostic } from './client/stale-state.js';
 import * as vscode from 'vscode';
-import { createEngine, type CoreEngine, type DiagramIR, getEditVocabulary } from '@seldia/core';
+import { createEngine, type CoreEngine, type DiagramIR, getEditVocabulary, THEME_RENDER_CONFIG, normalizeThemeId } from '@seldia/core';
+import { computeThemeEdit } from '../edit/theme-line.js';
 import { WebviewMessenger } from './messenger.js';
 import type { WebviewToExtMessage } from '../types.js';
 import { ICON_SPRITE, icon } from '../shared/icons.js';
@@ -30,21 +31,6 @@ const FIXED_LAYOUT_TYPES = new Set([
 import { EditSession } from '../edit/session.js';
 import { SerialQueue } from '../edit/serial-queue.js';
 
-/** Map the toolbar theme picker onto engine render config. The engine's
- *  theme channel is a palette id (`config.render.theme` → BUILTIN_PALETTES)
- *  plus the `sketchy` (Rough.js) flag — the "sketchy-light" default is the
- *  engine's out-of-the-box rendering. */
-const THEME_RENDER_CONFIG: Record<string, { sketchy: boolean; theme?: string }> = {
-  'sketchy-light': { sketchy: true },
-  'sketchy-dark': { sketchy: true, theme: 'dark' },
-  'clean-light': { sketchy: false },
-  'clean-dark': { sketchy: false, theme: 'dark' },
-  'mono': { sketchy: false, theme: 'high-contrast' },
-  'blueprint': { sketchy: false, theme: 'blueprint' },
-  'comic': { sketchy: true, theme: 'comic' },
-  'glow-dark': { sketchy: false, theme: 'glow-dark' },
-  'glow-light': { sketchy: false, theme: 'glow-light' },
-};
 
 /** Canvas backdrop per diagram theme (the toolbar/menus follow VS Code's theme). */
 const CANVAS_BG: Record<string, string> = {
@@ -159,7 +145,13 @@ export class SelDiAInteractiveProvider {
 
   private _currentSource: string = '';
   private _htmlInitialized = false;
+  /** Default theme when the source has no `theme` line (follows VS Code's light/dark). */
   private _currentTheme: string = 'sketchy-light';
+  /** Theme named by the source's own `theme` line; it wins over the default. */
+  private _fileTheme: string | undefined;
+  /** Theme the webview's picker currently shows. */
+  private _shownTheme: string | undefined;
+  private get _effectiveTheme(): string { return this._fileTheme ?? this._currentTheme; }
   private _viewMode: any = 'diagram';
   private _interactive: boolean = true;
   private _sourceUri: vscode.Uri | null = null;
@@ -228,7 +220,6 @@ export class SelDiAInteractiveProvider {
     this._disposables.push(
       vscode.window.onDidChangeActiveColorTheme((theme) => {
         this._currentTheme = theme.kind === vscode.ColorThemeKind.Dark ? 'sketchy-dark' : 'sketchy-light';
-        this._messenger.sendUpdateTheme(this._currentTheme);
         void this.render();
       })
     );
@@ -418,6 +409,8 @@ export class SelDiAInteractiveProvider {
 
   /** The engine to compile with for the current theme. */
   private engineForTheme(): CoreEngine {
+    // Only the default theme configures the engine; a `theme` line in the
+    // source is applied by the engine itself and overrides this.
     const cfg = THEME_RENDER_CONFIG[this._currentTheme];
     if (!cfg || this._currentTheme === 'sketchy-light') return this._engine;
     let eng = this._themedEngines.get(this._currentTheme);
@@ -425,7 +418,7 @@ export class SelDiAInteractiveProvider {
       eng = createEngine({
         config: {
           defaultLayoutEngine: (this._engine as any).config?.defaultLayoutEngine,
-          render: cfg as any,
+          render: { sketchy: cfg.sketchy, theme: cfg.palette } as any,
         },
       });
       this._themedEngines.set(this._currentTheme, eng);
@@ -459,6 +452,8 @@ export class SelDiAInteractiveProvider {
     const r1 = eng.parse(this._currentSource, fsPath);
     const r2 = r1.ok ? eng.analyze(r1.value) : r1;
     const r3 = r2.ok ? eng.transform(r2.value) : r2;
+    // Keep the last known file theme while the source doesn't compile.
+    if (r3.ok) this._fileTheme = normalizeThemeId(r3.value.metadata?.theme as string | undefined);
     const r4 = r3.ok ? await eng.layoutAsync(r3.value) : r3;
     const result = r4.ok ? eng.render(r4.value) : r4;
 
@@ -480,6 +475,9 @@ export class SelDiAInteractiveProvider {
     }
 
     if (this._disposed) return;
+    const shown = this._effectiveTheme;
+    if (this._htmlInitialized && shown !== this._shownTheme) this._messenger.sendUpdateTheme(shown);
+    this._shownTheme = shown;
     // NUL separators: neither the SVG, the stats line, nor an error message can
     // contain U+0000, so the joined signature is unambiguous. Written as an escape
     // rather than a literal NUL byte so the file stays plain text for grep/diff.
@@ -522,7 +520,7 @@ export class SelDiAInteractiveProvider {
   }
 
   private getHtmlContent(svgContent: string, stats: string, errorMsg: string, irPayload: { nodes: Array<{ id: string; x: number; y: number }>; fpScale?: number; freeLayout?: boolean; vocabulary?: ReturnType<typeof getEditVocabulary> }): string {
-    const theme = this._currentTheme;
+    const theme = this._effectiveTheme;
 
     // Node id → laid-out position, for drag write-back in the webview.
     const initJson = JSON.stringify({ ir: irPayload, theme }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
@@ -717,6 +715,9 @@ export class SelDiAInteractiveProvider {
     .toolbar .seg { display: inline-flex; gap: 1px; padding: 1px; border-radius: 6px; background: var(--hover-bg); }
     .toolbar .seg button { border-radius: 5px; }
     .toolbar #btnAutoLayout .seldia-icon { margin-right: 0; width: 16px; height: 16px; }
+    /* Pause/play toggle: shows the play glyph while paused. */
+    #btnPause .seldia-icon-alt, #btnPause.seldia-paused-on .seldia-icon { display: none; }
+    #btnPause.seldia-paused-on .seldia-icon-alt { display: inline-block; }
     #container.tool-pan, #container.tool-pan * { cursor: grab !important; }
     #container.is-panning, #container.is-panning * { cursor: grabbing !important; }
     #container.tool-select [data-type="node"] { cursor: move; }
@@ -729,7 +730,7 @@ export class SelDiAInteractiveProvider {
       border-radius: 2px;
     }
     /* Edges: wide invisible hit line + hover highlight + segment handles */
-    .seldia-edge-hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
+    .seldia-edge-hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; }
     #container.tool-select .seldia-edge-movable { cursor: grab; }
     #container.tool-select .seldia-edge-fixed { cursor: not-allowed; }
     .seldia-edge-movable:hover path:not(.seldia-edge-hit) { filter: drop-shadow(0 0 2px var(--accent)); }
@@ -803,7 +804,7 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" data-cmd="resetZoom" title="Actual size (100%)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
-    <button class="icon-btn" id="btnPause" data-cmd="toggleAnimations" title="Pause animations" aria-label="Pause animations" aria-pressed="false">${icon('pause')}</button>
+    <button class="icon-btn" id="btnPause" data-cmd="toggleAnimations" title="Pause animations" aria-label="Pause animations" aria-pressed="false">${icon('pause')}${icon('play', 'seldia-icon-alt')}</button>
     <button class="icon-btn" id="btnAutoLayout" data-cmd="autoLayout" title="Auto-layout: arrange every node and route every edge automatically (Ctrl+Z to undo)" aria-label="Auto-layout">${icon('auto-layout')}</button>
 
     <span class="sep"></span>
@@ -945,8 +946,9 @@ export class SelDiAInteractiveProvider {
         break;
 
       case 'changeTheme':
-        this._currentTheme = msg.theme;
-        void this.render();
+        // The picker writes a `theme …` line into the source, so the choice is
+        // saved with the file and seen by the preview, CLI and exporters too.
+        if (normalizeThemeId(msg.theme)) void this._editQueue.run(() => this.applyTheme(msg.theme));
         break;
 
       case 'styleEdited':
@@ -1368,6 +1370,12 @@ export class SelDiAInteractiveProvider {
   /** Merge attribute key/values (position, fill/stroke from Edit Style, …)
    *  into the node's declaration via the same ground-truth read +
    *  fence-offset translation + single WorkspaceEdit as drags. */
+  private async applyTheme(themeId: string): Promise<void> {
+    const gt = await this.groundTruth();
+    if (!gt) { this.editSkipped('could not find this diagram in the document'); this._messenger.sendUpdateTheme(this._effectiveTheme); return; }
+    await this.applySourceEdits(gt, [computeThemeEdit(gt.source, themeId)]);
+  }
+
   private async applyNodeAttrs(nodeId: string, attrs: AttrPatch): Promise<void> {
     const gt = await this.groundTruth();
     if (!gt) { this.editSkipped('could not find this diagram in the document'); return; } // fence gone — never guess

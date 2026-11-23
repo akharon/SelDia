@@ -81,3 +81,6 @@ export { chartCategoryOf } from './render/custom-renderers.js';
 export { exportTableGfm } from './export/gfm.js';
 export { checkDiagramQuality, formatCheckReport, CHECK_KEYS, CHECK_HINTS } from './check.js';
 export type { CheckResult } from './check.js';
+export { validateDiagram, validateDocument, extractDiagramFences, languageForPath, formatValidationReport } from './validate.js';
+export type { ValidationIssue, DiagramValidation, ValidateOptions, IssueSeverity, MarkdownFence } from './validate.js';
+export { BUILTIN_THEMES, THEME_RENDER_CONFIG, normalizeThemeId, themeDirective } from './themes.js';

@@ -40,7 +40,8 @@
   ],
   "activationEvents": [
     "onLanguage:seldia",
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "onLanguageModelTool:seldia_validate"
   ],
   "main": "./dist/extension.cjs",
   "type": "module",
@@ -122,6 +123,40 @@
     ],
     "markdown.previewStyles": [
       "./media/seldia-preview.css"
+    ],
+    "languageModelTools": [
+      {
+        "name": "seldia_validate",
+        "toolReferenceName": "seldiaValidate",
+        "displayName": "Validate SelDiA / Mermaid / PlantUML diagrams",
+        "modelDescription": "Compiles diagrams and reports every problem with file:line, severity and message, so you can fix them. Supports SelDiA DSL (.sld/.seldia and ```seldia fences), Mermaid (.mmd and ```mermaid fences), PlantUML (.puml and ```plantuml/```puml fences), and circuit/pcb fences. For a Markdown file it checks every diagram fence and reports lines in the Markdown file. Errors mean the diagram does not render; warnings are Mermaid/PlantUML statements that are dropped on import, or SelDiA semantic problems. Call it after writing or editing any diagram and repeat until it reports 0 errors. Pass filePath to check a file (open editors' unsaved text is used), or code + language to check a snippet; with no arguments it checks the active editor. Set layout=true to also get readability defects (edge crossings, overlaps) with hints on how to fix them.",
+        "userDescription": "Check SelDiA, Mermaid and PlantUML diagrams for errors.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(check-all)",
+        "tags": ["seldia", "mermaid", "plantuml", "diagram", "validation"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Absolute or workspace-relative path to a .sld, .seldia, .md, .mmd or .puml file."
+            },
+            "code": {
+              "type": "string",
+              "description": "Diagram source to validate instead of a file (no Markdown fence markers unless language is markdown)."
+            },
+            "language": {
+              "type": "string",
+              "enum": ["seldia", "mermaid", "plantuml", "circuit", "pcb", "markdown"],
+              "description": "Language of code, or override for filePath. Defaults to the file extension, else seldia."
+            },
+            "layout": {
+              "type": "boolean",
+              "description": "Also report layout readability defects with fix hints. Default false."
+            }
+          }
+        }
+      }
     ],
     "commands": [
       {

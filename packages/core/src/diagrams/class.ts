@@ -143,3 +143,16 @@ export const classPlugin: DiagramPlugin = {
     };
   },
 };
+
+/** C4 level 4 (`diagram c4 code`) is a UML class diagram scoped to one
+ *  component, so it reuses the class plugin and only re-tags the IR type. */
+export const c4CodePlugin: DiagramPlugin = {
+  ...classPlugin,
+  id: 'seldia-c4-code',
+  name: 'C4 Code',
+  diagramType: DiagramType.C4_CODE,
+  description: 'C4 level 4: UML class view of one component',
+  transform(ast, config) {
+    return { ...classPlugin.transform(ast, config), id: ast.metadata?.id || 'c4-code-1', type: DiagramType.C4_CODE, title: ast.title || 'C4 Code' };
+  },
+};

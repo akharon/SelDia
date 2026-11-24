@@ -96,13 +96,6 @@ const VOCABULARY: Partial<Record<DiagramType, DiagramEditVocabulary>> = {
   [DiagramType.C4_CONTAINER]: {
     nodes: [
       { kind: 'container', label: 'Container', template: 'container {id}: "{label}" "Tech" "Description"', positionable: false },
-      // NOT 'containerDb': the parser's SHAPE_KEYWORDS/isShapeKeyword only
-      // strips a `_Ext`/`_ext` suffix (parser.ts:411-415), so the camelCase
-      // `containerDb` token used by the shipped c4-container.sld template
-      // isn't recognized as a keyword at all and fails to parse. Filed as a
-      // separate parser bug; the editor's own template
-      // just avoids the broken form rather than emitting an add-node action
-      // that always fails.
       { kind: 'container_db', label: 'Database', template: 'container {id}: "{label}" "Database" "Description"', positionable: false },
     ],
     edges: [{ kind: 'solid', label: 'Calls', template: '{source} --> {target}: "Protocol"' }],

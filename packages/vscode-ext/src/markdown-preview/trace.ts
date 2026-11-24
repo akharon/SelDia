@@ -64,6 +64,14 @@ export interface TraceOptions {
   sticky?: boolean;
   /** Inject transparent hit clones (default true). The editor ships its own hit polylines. */
   hitPaths?: boolean;
+  /** Focus to fall back to when the pointer leaves a target (the editor's selection). */
+  pinned?: () => { node?: string; edge?: string } | null;
+}
+
+/** Show `t`'s trace, or clear it when there's nothing to show. */
+export function showTrace(svg: SVGSVGElement, t: { node?: string; edge?: string } | null | undefined): void {
+  if (t && (t.node || t.edge)) apply(svg, computeFocus(graphOf(svg), t));
+  else clearTrace(svg);
 }
 
 const attr = (el: Element | null, n: string) => el?.getAttribute(n) ?? '';
@@ -140,12 +148,13 @@ export function installTrace(svg: SVGSVGElement, opts: TraceOptions = {}): void 
     return true;
   };
 
+  const rest = () => showTrace(svg, opts.pinned?.());
   svg.addEventListener('mouseover', (e) => {
     if (locked || !on()) return;
-    if (!show(e.target as Element, e.shiftKey)) clearTrace(svg);
+    if (!show(e.target as Element, e.shiftKey)) rest();
   });
   svg.addEventListener('mouseleave', () => {
-    if (!locked) clearTrace(svg);
+    if (!locked) rest();
   });
   svg.addEventListener('mousedown', (e) => {
     down = { x: e.clientX, y: e.clientY };

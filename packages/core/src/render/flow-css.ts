@@ -23,7 +23,9 @@ export const FLOW_KEYFRAMES_CSS =
   `.seldia-flow-fast :is(${STROKES}){animation-duration:${FLOW_DURATION.fast}}` +
   `.seldia-flow-slow :is(${STROKES}){animation-duration:${FLOW_DURATION.slow}}` +
   `}` +
-  `.seldia-paused .seldia-flow :is(${STROKES}),.seldia-paused .sd-on :is(${STROKES}){animation-play-state:paused}` +
+  // !important: the trace rule (.sd-trace … .sd-on) restarts the animation via the
+  // `animation` shorthand at a higher specificity, which reset play-state to running.
+  `.seldia-paused :is(${STROKES}){animation-play-state:paused!important}` +
   `@media print{.seldia-flow :is(${STROKES}),.sd-on :is(${STROKES}){animation:none}}` +
   `.seldia-noflow .seldia-flow :is(${STROKES}){animation:none}`;
 
@@ -39,7 +41,7 @@ export const TRACE_CSS =
   `.sd-trace .seldia-edge.sd-on :is(${STROKES}){stroke-width:${DS.stroke.emphasis};stroke-dasharray:${DS.dash.edge}}` +
   `@media (prefers-reduced-motion:no-preference){.sd-trace:not(.seldia-noflow) .seldia-edge.sd-on :is(${STROKES}){animation:seldia-flow ${FLOW_DURATION.normal} linear infinite}}` +
   `.seldia-node.sd-sel,.seldia-edge.sd-sel{filter:drop-shadow(0 0 3px var(--vscode-focusBorder,#3b82f6))}` +
-  `.sd-hit{fill:none;stroke:transparent;stroke-width:12;pointer-events:stroke;cursor:pointer}` +
+  `.sd-hit{fill:none;stroke:transparent;stroke-width:18;pointer-events:stroke;cursor:pointer}` +
   `@media (prefers-reduced-motion:reduce){.sd-trace *{transition:none!important}}`;
 
 /** Everything an interactive host (preview / editor) needs. */

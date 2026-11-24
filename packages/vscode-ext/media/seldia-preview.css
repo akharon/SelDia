@@ -222,6 +222,16 @@
   pointer-events: none;
 }
 
+/* …except the trace targets. Nodes take the whole shape area (`all` ignores an
+   unfilled interior) so hovering a box traces it as readily as an edge; events
+   still bubble to the container, so grab-to-pan starts on them too. */
+.seldia-diagram-svg svg.sd-interactive .seldia-node,
+.seldia-diagram-svg svg.sd-interactive .seldia-edge-label {
+  pointer-events: all;
+  cursor: pointer;
+}
+.seldia-diagram-svg.seldia-panning svg.sd-interactive * { pointer-events: none; }
+
 /* Gantt, Sankey and Timeline diagrams carry a time axis or flow ribbon that
    needs its full pixel budget to be readable.  Lift the max-width cap so the
    SVG renders at its natural width — wide enough to trigger overflow:auto

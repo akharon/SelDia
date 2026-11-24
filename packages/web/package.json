@@ -1,6 +1,6 @@
 {
   "name": "@seldia/web",
-  "version": "1.76.0",
+  "version": "1.77.0",
   "description": "SelDiA web components: viewer for embedding diagrams in web pages",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,7 +11,7 @@
     "test": "vitest run",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
-  "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",
+  "license": "AGPL-3.0-or-later",
   "author": "SelDiA",
   "repository": {
     "type": "git",

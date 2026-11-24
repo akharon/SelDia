@@ -1,6 +1,6 @@
 {
   "name": "@seldia/core",
-  "version": "1.76.0",
+  "version": "1.77.0",
   "description": "SelDiA core: parser, engine, types, plugin system for 21+ diagram types",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,7 @@
     "lint": "echo lint",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
-  "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",
+  "license": "AGPL-3.0-or-later",
   "author": "SelDiA",
   "repository": {
     "type": "git",

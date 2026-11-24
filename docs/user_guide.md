@@ -74,7 +74,7 @@ Anything can draw a diagram. The problem SelDiA is built for is what happens *af
 - **Your diagram is a structure, not a picture.** The IR sits between text and pixels, so a diagram can be queried ("what depends on auth-service?"), mutated, and written back — not just re-drawn from scratch.
 - **Mistakes surface instead of rendering.** LSP diagnostics mean a broken diagram *tells you*. Formats without an IR fail silently or render garbage; that matters most when the author is a model, because a model can be told it's wrong and fix itself.
 - **One engine, 35 diagram types (C4 levels and chart kinds counted separately).** Flowcharts, sequences, class, C4, BPMN, DMN, ER, gantt, mindmap, sankey, gitgraph, charts, forms — the SelDiA DSL is the engine's native format, available in full when you want it.
-- **The usual table stakes**, all present: plain-text and version-controllable, auto-layout with manual overrides, SVG output, PDF export from VS Code, VS Code integration, dual licensed (AGPL-3.0-or-later or commercial; see `LICENSE`).
+- **The usual table stakes**, all present: plain-text and version-controllable, auto-layout with manual overrides, SVG output, PDF export from VS Code, VS Code integration, licensed under AGPL-3.0-or-later (see `LICENSE`).
 
 ### File Extension
 
@@ -594,40 +594,18 @@ diagram c4 context "Internet Banking System" {
 
 #### Level 2: Container
 
+Positional strings after the label are the technology and the description.
+
 ```
 diagram c4 container "Internet Banking System" {
-
     person customer: "Customer"
 
-    container spa: "Single-Page Application" {
-        technology: "React"
-        description: "Provides the web interface to customers"
-    }
-
-    container mobile: "Mobile App" {
-        technology: "React Native"
-        description: "Provides mobile banking features"
-    }
-
-    container api: "Web API" {
-        technology: "Go"
-        description: "Provides banking functionality via REST/JSON"
-    }
-
-    containerDb db: "Database" {
-        technology: "PostgreSQL"
-        description: "Stores user data, transactions, etc."
-    }
-
-    container cache: "Cache" {
-        technology: "Redis"
-        description: "Session and query cache"
-    }
-
-    container_Ext mainframe: "Mainframe Facade" {
-        technology: "Java"
-        description: "Adapter for the core banking mainframe"
-    }
+    container spa: "Single-Page Application" "React" "Provides the web interface to customers"
+    container mobile: "Mobile App" "React Native" "Provides mobile banking features"
+    container api: "Web API" "Go" "Provides banking functionality via REST/JSON"
+    containerDb db: "Database" "PostgreSQL" "Stores user data, transactions, etc."
+    container cache: "Cache" "Redis" "Session and query cache"
+    container_Ext mainframe: "Mainframe Facade" "Java" "Adapter for the core banking mainframe"
 
     customer --> spa: "Visits website using"
     customer --> mobile: "Uses mobile app"
@@ -645,29 +623,13 @@ diagram c4 container "Internet Banking System" {
 
 ```
 diagram c4 component "Web API — API Application" {
+    container spa: "SPA" "React"
+    containerDb db: "Database" "PostgreSQL"
 
-    container spa: "SPA"
-    containerDb db: "Database"
-
-    component signInController: "Sign In Controller" {
-        technology: "Go — MVC Controller"
-        description: "Handles user authentication"
-    }
-
-    component accountsController: "Accounts Controller" {
-        technology: "Go — MVC Controller"
-        description: "Provides account summaries"
-    }
-
-    component securityComponent: "Security Component" {
-        technology: "Go — Middleware"
-        description: "JWT validation, OAuth2 flows"
-    }
-
-    component accountRepository: "Account Repository" {
-        technology: "Go — Repository"
-        description: "Data access for accounts"
-    }
+    component signInController: "Sign In Controller" "Go — MVC Controller" "Handles user authentication"
+    component accountsController: "Accounts Controller" "Go — MVC Controller" "Provides account summaries"
+    component securityComponent: "Security Component" "Go — Middleware" "JWT validation, OAuth2 flows"
+    component accountRepository: "Account Repository" "Go — Repository" "Data access for accounts"
 
     spa --> signInController: "Signs in using [JSON/HTTPS]"
     spa --> accountsController: "Views accounts using [JSON/HTTPS]"
@@ -682,35 +644,17 @@ diagram c4 component "Web API — API Application" {
 
 #### Level 4: Code (UML Class)
 
+Level 4 is drawn as a class diagram and uses the same node labels: the first
+`\n` row is the name, then attributes and operations.
+
 ```
 diagram c4 code "Account Repository — Implementation" {
+    AccountRepository "«interface» AccountRepository\n+findById(id: UUID): Account\n+findByCustomer(customerId: UUID): List<Account>\n+save(account: Account): void\n+delete(id: UUID): void"
+    PostgresAccountRepository "PostgresAccountRepository\n-db: *sql.DB\n+findById(id: UUID): Account\n+findByCustomer(customerId: UUID): List<Account>\n+save(account: Account): void\n+delete(id: UUID): void\n-mapRow(row: sql.Row): Account"
+    Account "Account\n+id: UUID\n+customerId: UUID\n+type: AccountType\n+balance: Money\n+openedAt: DateTime"
 
-    interface AccountRepository {
-        +findById(id: UUID): Account
-        +findByCustomer(customerId: UUID): List<Account>
-        +save(account: Account): void
-        +delete(id: UUID): void
-    }
-
-    class PostgresAccountRepository {
-        -db: *sql.DB
-        +findById(id: UUID): Account
-        +findByCustomer(customerId: UUID): List<Account>
-        +save(account: Account): void
-        +delete(id: UUID): void
-        -mapRow(row: sql.Row): Account
-    }
-
-    class Account {
-        +id: UUID
-        +customerId: UUID
-        +type: AccountType
-        +balance: Money
-        +openedAt: DateTime
-    }
-
-    AccountRepository <|.. PostgresAccountRepository
-    PostgresAccountRepository ..> Account: maps to
+    PostgresAccountRepository -> AccountRepository: "implements"
+    PostgresAccountRepository -> Account: "maps to"
 }
 ```
 
@@ -718,14 +662,12 @@ diagram c4 code "Account Repository — Implementation" {
 | Prefix | Element Type |
 |--------|-------------|
 | `person` | Person (user, role) |
-| `person_Ext` | External person |
 | `system` | Software system |
 | `system_Ext` | External system |
 | `container` | Container (app, service) |
-| `containerDb` | Database container |
+| `containerDb` / `database` | Database container |
 | `container_Ext` | External container |
 | `component` | Component (inside container) |
-| `componentDb` | Database component |
 
 ---
 
@@ -875,42 +817,20 @@ diagram network "Corporate Network" {
 
 ### 5.16 Charts
 
-SelDiA supports multiple chart types, all rendered with Rough.js for a unique hand-drawn style.
+Each node is one category (or one slice, axis or point). The first label row is
+its name; the following rows hold `Series: value` pairs. A chart with several
+series gets a legend. Edges are optional and only fix the order.
 
 #### Bar Chart
 
 ```
-diagram chart bar "Monthly Revenue 2026" {
-
-    data {
-        categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
-        series "Revenue" {
-            values: [120, 200, 150, 180, 220, 250]
-            color: "#2563eb"
-        }
-        series "Costs" {
-            values: [80, 100, 90, 95, 110, 120]
-            color: "#dc2626"
-        }
-        series "Profit" {
-            values: [40, 100, 60, 85, 110, 130]
-            color: "#16a34a"
-        }
-    }
-
-    options {
-        xAxis {
-            title: "Month"
-        }
-        yAxis {
-            title: "Amount (k€)"
-            min: 0
-            max: 300
-        }
-        legend {
-            position: bottom
-        }
-    }
+diagram chart bar "Monthly Revenue 2026 (k€)" {
+    jan "Jan\nRevenue: 120  Costs: 80  Profit: 40"
+    feb "Feb\nRevenue: 200  Costs: 100  Profit: 100"
+    mar "Mar\nRevenue: 150  Costs: 90  Profit: 60"
+    apr "Apr\nRevenue: 180  Costs: 95  Profit: 85"
+    may "May\nRevenue: 220  Costs: 110  Profit: 110"
+    jun "Jun\nRevenue: 250  Costs: 120  Profit: 130"
 }
 ```
 
@@ -918,45 +838,32 @@ diagram chart bar "Monthly Revenue 2026" {
 
 ```
 diagram chart line "User Growth" {
+    q1 "Q1\nActive: 1000  Paying: 100"
+    q2 "Q2\nActive: 2500  Paying: 300"
+    q3 "Q3\nActive: 5000  Paying: 800"
+    q4 "Q4\nActive: 8000  Paying: 1500"
+    q5 "Q5\nActive: 15000  Paying: 3000"
+    q6 "Q6\nActive: 25000  Paying: 6000"
 
-    data {
-        categories: ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"]
-        series "Active Users" {
-            values: [1000, 2500, 5000, 8000, 15000, 25000]
-            color: "#7c3aed"
-            smooth: true
-        }
-        series "Paying Users" {
-            values: [100, 300, 800, 1500, 3000, 6000]
-            color: "#059669"
-            smooth: true
-        }
-    }
-
-    options {
-        xAxis { title: "Quarter" }
-        yAxis { title: "Users" }
-    }
+    q1 -> q2
+    q2 -> q3
+    q3 -> q4
+    q4 -> q5
+    q5 -> q6
 }
 ```
 
 #### Pie Chart
 
+A pie reads the first value of each slice.
+
 ```
-diagram chart pie "Traffic Sources" {
-
-    data {
-        series "Organic Search" { value: 45, color: "#2563eb" }
-        series "Direct"        { value: 25, color: "#7c3aed" }
-        series "Social Media"  { value: 15, color: "#d97706" }
-        series "Referral"      { value: 10, color: "#059669" }
-        series "Email"         { value: 5,  color: "#dc2626" }
-    }
-
-    options {
-        donut: true
-        legend { position: right }
-    }
+diagram chart pie "Traffic Sources (%)" {
+    organic "Organic Search\nShare: 45"
+    direct "Direct\nShare: 25"
+    social "Social Media\nShare: 15"
+    referral "Referral\nShare: 10"
+    email "Email\nShare: 5"
 }
 ```
 
@@ -964,48 +871,24 @@ diagram chart pie "Traffic Sources" {
 
 ```
 diagram chart radar "Skills Assessment" {
-
-    data {
-        axes: ["JavaScript", "TypeScript", "React", "Node.js", "DevOps", "Design"]
-        series "Alice" {
-            values: [9, 8, 9, 7, 5, 4]
-            color: "#2563eb"
-        }
-        series "Bob" {
-            values: [6, 5, 7, 9, 8, 7]
-            color: "#dc2626"
-        }
-    }
-
-    options {
-        scale: { min: 0, max: 10 }
-    }
+    js "JavaScript\nAlice: 9  Bob: 6"
+    ts "TypeScript\nAlice: 8  Bob: 5"
+    react "React\nAlice: 9  Bob: 7"
+    node "Node.js\nAlice: 7  Bob: 9"
+    devops "DevOps\nAlice: 5  Bob: 8"
+    design "Design\nAlice: 4  Bob: 7"
 }
 ```
 
 #### Scatter Chart
 
 ```
-diagram chart scatter "Correlation Analysis" {
-
-    data {
-        series "Dataset A" {
-            points: [
-                { x: 1, y: 2 },
-                { x: 2, y: 4 },
-                { x: 3, y: 6 },
-                { x: 4, y: 7 },
-                { x: 5, y: 9 }
-            ]
-            color: "#2563eb"
-        }
-    }
-
-    options {
-        xAxis { title: "Variable X" }
-        yAxis { title: "Variable Y" }
-        trendline: true
-    }
+diagram chart scatter "Response Time vs Load" {
+    p1 "10 req/s\nLatency: 20"
+    p2 "50 req/s\nLatency: 35"
+    p3 "100 req/s\nLatency: 80"
+    p4 "150 req/s\nLatency: 140"
+    p5 "200 req/s\nLatency: 210"
 }
 ```
 
@@ -1258,7 +1141,9 @@ diagram flowchart "Example" {
 }
 ```
 
-`theme glow dark` and `theme glow light` select the glow themes. The bare line `glow` means `glow dark`, and `glow light` selects the light one. Variant names are case-insensitive, and a node named `glow` still parses as a node. Only glow lines take effect in the DSL; other `theme` lines are ignored, so choose the other themes with `--theme`, the config or the `seldia.defaultTheme` setting.
+Any built-in theme can be set this way: `theme sketchy light`, `theme sketchy dark`, `theme clean light`, `theme clean dark`, `theme mono`, `theme blueprint`, `theme comic`, `theme glow dark` and `theme glow light`. The hyphenated IDs from 6.1 also work (`theme clean-dark`), and `smooth` is accepted for `clean`. The bare lines `sketchy`, `smooth`, `mono` and `glow` (optionally followed by `light` or `dark`) work too; bare `glow` means `glow dark`. Names are case-insensitive, and a node named `glow` still parses as a node.
+
+The diagram's own `theme` line wins over `--theme`, the config and the `seldia.defaultTheme` setting, which only apply to diagrams without one. A `theme` line naming something other than a built-in theme is ignored.
 
 ### 6.3 Inline Styling
 
@@ -1836,6 +1721,7 @@ Visual editing works in the **interactive editor for `.sld`/`.seldia` files** (`
 | **Right-click an edge, Reconnect Source / Target** | Move one end of the edge to another node |
 | **Right-click the canvas, Add Node** | Insert a new node |
 | **Delete** | Remove the selected node or edge |
+| **Theme picker (toolbar)** | Writes or replaces the diagram's `theme …` line (see 6.2), so the theme is saved with the file |
 | **`Ctrl+Z` / `Ctrl+Shift+Z`** | Undo / redo visual edits (dropped if you type in the text editor) |
 | **Scroll / drag canvas** | Zoom / pan |
 
@@ -1911,6 +1797,17 @@ comments are preserved as real PPTX notes.
 | `Ctrl+Shift+I` | Markdown | Insert a diagram block |
 
 Everything else is a Command Palette entry (`Ctrl+Shift+P`, type "SelDiA"): Export Diagram, Export Diagram to Mermaid / PlantUML, Export Table to Markdown (GFM), Export Markdown to PDF, Edit Diagram Block Visually, Edit Table, Open Interactive Diagram, Open Marp Slide Preview, Export Marp Deck, Reveal Diagram Source, and the Copilot skill commands. Standard editor shortcuts (autocomplete, format, rename) come from the language server and VS Code itself.
+
+#### Copilot validation tool
+
+The extension registers a Copilot agent-mode tool, `seldia_validate` (reference it in chat as `#seldiaValidate`). It compiles diagrams and returns each problem as `file:line severity: message`, so Copilot can see what is wrong and fix it without you copying errors back. It checks:
+
+- SelDiA DSL: `.sld` / `.seldia` files and ` ```seldia ` fences.
+- Mermaid: `.mmd` files and ` ```mermaid ` fences.
+- PlantUML: `.puml` files and ` ```plantuml ` / ` ```puml ` fences.
+- Circuit and PCB fences.
+
+For a Markdown file it checks every diagram fence and reports lines in the Markdown file. Errors mean the diagram does not render. Warnings are Mermaid or PlantUML statements that are dropped on import, or SelDiA semantic problems. The tool takes `filePath`, or `code` plus `language`; with no arguments it checks the active editor, including unsaved edits. `layout: true` adds readability hints such as edge crossings. Copilot calls it on its own in agent mode; you can also ask, for example "check docs/sample.md with #seldiaValidate and fix the errors".
 
 ### 11.8 Extension Settings
 

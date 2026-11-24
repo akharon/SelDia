@@ -387,7 +387,7 @@ const SHAPE_KEYWORDS = new Set([
   'hexagon', 'hex', 'parallelogram', 'para', 'cylinder', 'cyli', 'db',
   'cloud', 'stadium', 'flag', 'actor', 'person', 'participant', 'system', 'queue',
   'boundary', 'control', 'entity', 'database', 'storage',
-  'container', 'component', 'gateway',
+  'container', 'containerdb', 'component', 'gateway',
 ]);
 
 /**
@@ -424,7 +424,7 @@ function shapeKeywordToShapeType(word: string): ShapeType {
     case 'circle': case 'ellipse': return ShapeType.CIRCLE;
     case 'hexagon': case 'hex': return ShapeType.HEXAGON;
     case 'parallelogram': case 'para': return ShapeType.PARALLELOGRAM;
-    case 'cylinder': case 'cyli': case 'db': case 'database': case 'storage': return ShapeType.CYLINDER;
+    case 'cylinder': case 'cyli': case 'db': case 'database': case 'storage': case 'containerdb': return ShapeType.CYLINDER;
     case 'cloud': return ShapeType.CLOUD;
     case 'stadium': return ShapeType.STADIUM;
     case 'flag': case 'note': return ShapeType.NOTE;
@@ -996,9 +996,10 @@ class Parser {
     if (this.peek().type === TokenType.STRING) {
       themeName = this.consume().value;
     } else if (this.peek().type === TokenType.IDENT) {
-      themeName = this.consume().value;
-      // Optional variant: sketchy light, smooth dark
-      if (this.peek().type === TokenType.IDENT) {
+      const nameTok = this.consume();
+      themeName = nameTok.value;
+      // Optional variant on the same line: sketchy light, smooth dark (never the next statement's id)
+      if (this.peek().type === TokenType.IDENT && this.peek().line === nameTok.line) {
         variant = this.consume().value;
       }
     }
@@ -1014,7 +1015,7 @@ class Parser {
   parseBareTheme(): ASTThemeDecl {
     const name = this.consume().value.toLowerCase();
     let variant = '';
-    if (this.peek().type === TokenType.IDENT) {
+    if (this.peek().type === TokenType.IDENT && this.peek().line === this.peek(-1).line) {
       const v = this.peek().value.toLowerCase();
       if (v === 'light' || v === 'dark') {
         variant = this.consume().value;

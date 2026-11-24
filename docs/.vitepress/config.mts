@@ -32,7 +32,7 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/mkyr/seldia' },
     ],
     footer: {
-      message: 'Released under AGPL-3.0-or-later or a commercial license.',
+      message: 'Released under AGPL-3.0-or-later.',
       copyright: 'Copyright © SelDiA',
     },
   },

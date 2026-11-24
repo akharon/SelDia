@@ -22,3 +22,6 @@ dist/node_modules/**/*.mts
 dist/node_modules/**/*.cts
 dist/node_modules/**/*.map
 dist/node_modules/**/*.md
+
+# icon source; only icon.png ships
+media/icon.svg

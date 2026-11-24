@@ -794,3 +794,19 @@ table "Revenue by region" {
 chart bar x=Region y=2024,2025
 }
 ```
+
+## C4 — Code
+
+The fourth C4 level zooms into one component as a UML class view. Nodes use
+the class-diagram label rows: name first, then attributes and operations.
+
+```seldia
+c4code "Account Repository" {
+    AccountRepository "«interface» AccountRepository\n+findById(id: UUID): Account\n+save(account: Account): void"
+    PostgresAccountRepository "PostgresAccountRepository\n-db: *sql.DB\n+findById(id: UUID): Account\n+save(account: Account): void"
+    Account "Account\n+id: UUID\n+balance: Money"
+
+    PostgresAccountRepository -> AccountRepository: "implements"
+    PostgresAccountRepository -> Account: "maps to"
+}
+```

@@ -26,7 +26,8 @@ import { ensureFlowCss, installTrace, stripClientArtifacts } from './trace.js';
 
 (() => {
   const zoomState = new Map<string, number>();
-  const pausedBlocks = new Set<string>();
+  // Animations start paused; a block plays only after the user presses play.
+  const playingBlocks = new Set<string>();
 
   // ── Table of Contents ─────────────────────────────────────────────────────
   // Built from the rendered DOM, not from markdown-it's `env` — a renderer
@@ -240,7 +241,7 @@ import { ensureFlowCss, installTrace, stripClientArtifacts } from './trace.js';
     }
     if (btn.classList.contains('seldia-btn-pause')) {
       e.preventDefault();
-      if (!pausedBlocks.delete(blockId)) pausedBlocks.add(blockId);
+      if (!playingBlocks.delete(blockId)) playingBlocks.add(blockId);
       applyInteractive();
       return;
     }
@@ -401,7 +402,7 @@ import { ensureFlowCss, installTrace, stripClientArtifacts } from './trace.js';
     ensureFlowCss(document);
     document.querySelectorAll<HTMLElement>('.seldia-diagram').forEach((container) => {
       const blockId = container.dataset.seldiaBlock || container.id;
-      const paused = pausedBlocks.has(blockId);
+      const paused = !playingBlocks.has(blockId);
       container.querySelectorAll<SVGSVGElement>('.seldia-diagram-svg svg.seldia-diagram-svg-el').forEach((svg) => {
         installTrace(svg);
         svg.classList.toggle('seldia-paused', paused);

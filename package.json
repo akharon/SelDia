@@ -3,7 +3,7 @@
   "version": "1.77.0",
   "private": true,
   "description": "Self-Diagramming Architecture — A unified text-based Diagram-as-Code tool",
-  "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",
+  "license": "AGPL-3.0-or-later",
   "workspaces": [
     "packages/core",
     "packages/interaction",

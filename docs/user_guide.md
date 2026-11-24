@@ -74,7 +74,7 @@ Anything can draw a diagram. The problem SelDiA is built for is what happens *af
 - **Your diagram is a structure, not a picture.** The IR sits between text and pixels, so a diagram can be queried ("what depends on auth-service?"), mutated, and written back — not just re-drawn from scratch.
 - **Mistakes surface instead of rendering.** LSP diagnostics mean a broken diagram *tells you*. Formats without an IR fail silently or render garbage; that matters most when the author is a model, because a model can be told it's wrong and fix itself.
 - **One engine, 35 diagram types (C4 levels and chart kinds counted separately).** Flowcharts, sequences, class, C4, BPMN, DMN, ER, gantt, mindmap, sankey, gitgraph, charts, forms — the SelDiA DSL is the engine's native format, available in full when you want it.
-- **The usual table stakes**, all present: plain-text and version-controllable, auto-layout with manual overrides, SVG output, PDF export from VS Code, VS Code integration, dual licensed (AGPL-3.0-or-later or commercial; see `LICENSE`).
+- **The usual table stakes**, all present: plain-text and version-controllable, auto-layout with manual overrides, SVG output, PDF export from VS Code, VS Code integration, licensed under AGPL-3.0-or-later (see `LICENSE`).
 
 ### File Extension
 

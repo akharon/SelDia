@@ -5,7 +5,7 @@
   "displayName": "SelDiA",
   "description": "Unified Diagram-as-Code with Rough.js — 21+ diagram types, interactive editing, Markdown integration, PDF export",
   "publisher": "ThalesoMilas",
-  "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",
+  "license": "AGPL-3.0-or-later",
   "author": "SelDiA",
   "repository": {
     "type": "git",

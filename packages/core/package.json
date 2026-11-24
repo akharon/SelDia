@@ -20,7 +20,7 @@
     "lint": "echo lint",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
-  "license": "(AGPL-3.0-or-later OR LicenseRef-Commercial)",
+  "license": "AGPL-3.0-or-later",
   "author": "SelDiA",
   "repository": {
     "type": "git",

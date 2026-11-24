@@ -6,6 +6,7 @@ One working example for every diagram type SelDiA supports. Each block renders i
 
 ```seldia
 diagram flowchart "User Login" {
+    theme comic
     start (Start)
     enter [Enter Credentials]
     validate diamond "Valid Credentials?"

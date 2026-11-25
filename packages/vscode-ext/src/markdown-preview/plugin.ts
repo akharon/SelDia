@@ -406,7 +406,7 @@ ${includeSprite ? ICON_SPRITE : ''}
     </span>
     <a class="seldia-btn seldia-btn-icon" title="Edit visually" aria-label="Edit visually" href="${deepLink('editBlockVisually', { blockId, doc: docUri })}">${icon('edit-visually')}</a>
     <span class="seldia-toolbar-spacer"></span>
-    <button class="seldia-btn seldia-btn-icon seldia-btn-pause seldia-paused-on" title="Play animations" aria-label="Pause animations" aria-pressed="true">${icon('pause')}${icon('play', 'seldia-icon-alt')}</button>
+    <button class="seldia-btn seldia-btn-icon seldia-btn-pause" data-anim="paused" data-next="play" title="Play animations" aria-label="Play animations">${icon('play', 'sd-i-play')}${icon('glow', 'sd-i-glow')}${icon('pause', 'sd-i-pause')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-in" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-out" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-reset" title="Reset Zoom" aria-label="Reset zoom">${icon('reset')}</button>
@@ -497,7 +497,7 @@ ${includeSprite ? ICON_SPRITE : ''}
     </span>
     <span class="seldia-diagram-badge seldia-badge-format" title="${formatLabel} source, rendered by SelDiA">${format}</span>
     <span class="seldia-toolbar-spacer"></span>
-    <button class="seldia-btn seldia-btn-icon seldia-btn-pause seldia-paused-on" title="Play animations" aria-label="Pause animations" aria-pressed="true">${icon('pause')}${icon('play', 'seldia-icon-alt')}</button>
+    <button class="seldia-btn seldia-btn-icon seldia-btn-pause" data-anim="paused" data-next="play" title="Play animations" aria-label="Play animations">${icon('play', 'sd-i-play')}${icon('glow', 'sd-i-glow')}${icon('pause', 'sd-i-pause')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-in" title="Zoom In" aria-label="Zoom in">${icon('zoom-in')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-zoom-out" title="Zoom Out" aria-label="Zoom out">${icon('zoom-out')}</button>
     <button class="seldia-btn seldia-btn-icon seldia-btn-reset" title="Reset Zoom" aria-label="Reset zoom">${icon('reset')}</button>

@@ -1294,9 +1294,17 @@ pay ~~> bill                     // same as an animated directed edge
 - **Shift+hover** or **Shift+click** traces the full upstream and downstream chain, up to 500 elements.
 - **Click** makes the trace sticky. Clicking an edge lights the edge and both of its ends. **Esc** or a click on the background clears it. Dragging to pan does not select.
 - In the visual editor, hover tracing applies only with the Select tool, not while dragging, and it follows the editor's selection.
-- The **pause/play** button in the diagram toolbar (preview and editor) pauses or resumes the flow animation.
+- The **animation** button in the diagram toolbar (preview and editor) cycles through three states: **paused → play → glowing light**. Its icon shows what the next click does. The preview starts paused and the editor starts in play.
 
-**Reduced motion and print.** With `prefers-reduced-motion: reduce`, the highlight stays but nothing moves. Printing disables the animation.
+**Glowing light.** A dot of light travels each edge from source to target and leaves the edge lit. Edges, labels and nodes the light has not reached yet stay dim. When every edge is lit, the diagram holds briefly, dims, and the walk starts again.
+
+- **Graph diagrams** (flowchart, state, activity, BPMN, C4, mind map and the rest) start the light at every node with no incoming edge. At a junction the light splits, so each outgoing edge gets its own dot at the same moment. Each edge is walked once per cycle, so loops end. A part of the graph that no start node reaches, such as a pure cycle, is walked after the rest.
+- **Sequence diagrams** play their messages one after another, in order.
+- **Colour** comes from each edge's own stroke, so it follows the diagram theme.
+- The button skips this state for diagrams with nothing to walk, such as charts, Gantt, timeline, pie and floorplan.
+- A hover trace takes over the dimming while the pointer is on the diagram. Exported SVG never contains the light.
+
+**Reduced motion and print.** With `prefers-reduced-motion: reduce`, the highlight stays but nothing moves. In the glowing-light state every edge is shown lit, with no travelling dot. Printing disables the animation.
 
 **Where the motion survives.**
 

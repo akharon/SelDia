@@ -184,12 +184,13 @@ export function installTrace(svg: SVGSVGElement, opts: TraceOptions = {}): void 
   document.addEventListener('keydown', onKey);
 }
 
-const CLIENT_CLASSES = ['sd-interactive', 'sd-trace', 'sd-on', 'sd-sel', 'seldia-paused'];
+const CLIENT_CLASSES = ['sd-interactive', 'sd-trace', 'sd-on', 'sd-sel', 'seldia-paused', 'sd-glowwalk', 'sd-lit'];
 
-/** Remove client-only artifacts (hit clones, trace/selection/pause classes,
- *  injected stylesheet) from a CLONED svg before serializing it for export. */
+/** Remove client-only artifacts (hit clones, glow-walk layer/halos,
+ *  trace/selection/pause classes, injected stylesheet) from a CLONED svg
+ *  before serializing it for export. */
 export function stripClientArtifacts<T extends Element>(clone: T): T {
-  clone.querySelectorAll('.sd-hit, #seldia-flow-css').forEach((n) => n.remove());
+  clone.querySelectorAll('.sd-hit, .sd-glow-layer, .sd-glow-halo, #seldia-flow-css').forEach((n) => n.remove());
   const els = [clone, ...Array.from(clone.querySelectorAll('.' + CLIENT_CLASSES.join(', .')))];
   for (const el of els) {
     el.classList.remove(...CLIENT_CLASSES);

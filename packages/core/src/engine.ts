@@ -735,7 +735,7 @@ class SelDiAEngine implements CoreEngine {
     const id = `sd${h.toString(36)}`;
     const labels = new Map(nodes.map((n) => [n.id as string, String(n.label ?? '').replace(/\s*\n\s*/g, ', ').trim()]));
     const out = raw.replace(/^(<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" class="seldia-diagram-svg-el[^>]*?)>/,
-      `$1 role="img" aria-labelledby="${id}-t ${id}-d">\n  <title id="${id}-t">${this.esc(title)}</title>\n  <desc id="${id}-d">${this.esc(desc)}</desc>`);
+      `$1 data-seldia-type="${this.esc(type)}" role="img" aria-labelledby="${id}-t ${id}-d">\n  <title id="${id}-t">${this.esc(title)}</title>\n  <desc id="${id}-d">${this.esc(desc)}</desc>`);
     return out.replace(/(<g class="seldia-node" data-seldia-node-id="([^"]*)"[^>]*>)(\n?)(?!\s*<title)/g, (m, open, nid, nl) => {
       const raw = nid.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
       const l = labels.get(raw);

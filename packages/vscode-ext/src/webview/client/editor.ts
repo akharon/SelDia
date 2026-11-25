@@ -11,6 +11,7 @@
 
 import { decideUpdate, isEditBlocked } from './stale-state.js';
 import { ensureFlowCss, installTrace, markSelection, showTrace, stripClientArtifacts } from '../../markdown-preview/trace.js';
+import { canGlowWalk, nextAnimMode, setGlowWalk, syncAnimButton, type AnimMode } from '../../markdown-preview/glow-walk.js';
 import { reduceInteraction, initialInteractionState, type InteractionEffect } from './interaction-reducer.js';
 
 interface SeldiaInit {
@@ -116,19 +117,15 @@ function syncTrace() {
   });
   showTrace(svg, pinnedTrace());
   markSelection(svg, { node: selectedNodeId, edge: selectedEdgeId });
-  svg.classList.toggle('seldia-paused', animPaused);
+  // Glow replaces the dash flow, so dashes stay still in that state.
+  svg.classList.toggle('seldia-paused', animMode !== 'play');
+  setGlowWalk(svg, animMode === 'glow');
+  syncAnimButton(document.getElementById('btnPause'), animMode, canGlowWalk(svg));
 }
-let animPaused = false;
+let animMode: AnimMode = 'play';
 window.toggleAnimations = () => {
-  animPaused = !animPaused;
-  const b = document.getElementById('btnPause');
-  if (b) {
-    b.classList.toggle('active', animPaused);
-    b.classList.toggle('seldia-paused-on', animPaused);
-    b.setAttribute('aria-pressed', String(animPaused));
-    b.setAttribute('title', animPaused ? 'Play animations' : 'Pause animations');
-    b.setAttribute('aria-label', animPaused ? 'Play animations' : 'Pause animations');
-  }
+  const svg = container.querySelector('svg.seldia-diagram-svg-el') || container.querySelector('svg');
+  animMode = nextAnimMode(animMode, canGlowWalk(svg));
   syncTrace();
 };
 

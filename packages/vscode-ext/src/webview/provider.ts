@@ -715,9 +715,10 @@ export class SelDiAInteractiveProvider {
     .toolbar .seg { display: inline-flex; gap: 1px; padding: 1px; border-radius: 6px; background: var(--hover-bg); }
     .toolbar .seg button { border-radius: 5px; }
     .toolbar #btnAutoLayout .seldia-icon { margin-right: 0; width: 16px; height: 16px; }
-    /* Pause/play toggle: shows the play glyph while paused. */
-    #btnPause .seldia-icon-alt, #btnPause.seldia-paused-on .seldia-icon { display: none; }
-    #btnPause.seldia-paused-on .seldia-icon-alt { display: inline-block; }
+    /* Animation cycle (paused → play → glow): shows the glyph of what a click switches to. */
+    #btnPause .seldia-icon { display: none; }
+    #btnPause[data-next="play"] .sd-i-play, #btnPause[data-next="glow"] .sd-i-glow, #btnPause[data-next="paused"] .sd-i-pause { display: inline-block; }
+    #btnPause[data-anim="glow"] { color: var(--vscode-focusBorder, #3b82f6); }
     #container.tool-pan, #container.tool-pan * { cursor: grab !important; }
     #container.is-panning, #container.is-panning * { cursor: grabbing !important; }
     #container.tool-select [data-type="node"] { cursor: move; }
@@ -804,7 +805,7 @@ export class SelDiAInteractiveProvider {
     <button class="icon-btn" data-cmd="resetZoom" title="Actual size (100%)" aria-label="Reset zoom">${icon('reset')}</button>
 
     <span class="sep"></span>
-    <button class="icon-btn" id="btnPause" data-cmd="toggleAnimations" title="Pause animations" aria-label="Pause animations" aria-pressed="false">${icon('pause')}${icon('play', 'seldia-icon-alt')}</button>
+    <button class="icon-btn" id="btnPause" data-cmd="toggleAnimations" data-anim="play" data-next="glow" title="Glowing light" aria-label="Glowing light">${icon('play', 'sd-i-play')}${icon('glow', 'sd-i-glow')}${icon('pause', 'sd-i-pause')}</button>
     <button class="icon-btn" id="btnAutoLayout" data-cmd="autoLayout" title="Auto-layout: arrange every node and route every edge automatically (Ctrl+Z to undo)" aria-label="Auto-layout">${icon('auto-layout')}</button>
 
     <span class="sep"></span>

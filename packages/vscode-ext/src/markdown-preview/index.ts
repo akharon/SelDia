@@ -23,11 +23,12 @@
 
 import { toCsv } from '../edit/table-patch.js';
 import { ensureFlowCss, installTrace, stripClientArtifacts } from './trace.js';
+import { canGlowWalk, nextAnimMode, setGlowWalk, syncAnimButton, type AnimMode } from './glow-walk.js';
 
 (() => {
   const zoomState = new Map<string, number>();
-  // Animations start paused; a block plays only after the user presses play.
-  const playingBlocks = new Set<string>();
+  // Animations start paused; the button cycles a block through play and glow.
+  const animModes = new Map<string, AnimMode>();
 
   // ── Table of Contents ─────────────────────────────────────────────────────
   // Built from the rendered DOM, not from markdown-it's `env` — a renderer
@@ -241,7 +242,8 @@ import { ensureFlowCss, installTrace, stripClientArtifacts } from './trace.js';
     }
     if (btn.classList.contains('seldia-btn-pause')) {
       e.preventDefault();
-      if (!playingBlocks.delete(blockId)) playingBlocks.add(blockId);
+      const svg = container.querySelector('.seldia-diagram-svg svg.seldia-diagram-svg-el');
+      animModes.set(blockId, nextAnimMode(animModes.get(blockId) ?? 'paused', canGlowWalk(svg)));
       applyInteractive();
       return;
     }
@@ -402,17 +404,16 @@ import { ensureFlowCss, installTrace, stripClientArtifacts } from './trace.js';
     ensureFlowCss(document);
     document.querySelectorAll<HTMLElement>('.seldia-diagram').forEach((container) => {
       const blockId = container.dataset.seldiaBlock || container.id;
-      const paused = !playingBlocks.has(blockId);
+      const mode = animModes.get(blockId) ?? 'paused';
+      let canGlow = false;
       container.querySelectorAll<SVGSVGElement>('.seldia-diagram-svg svg.seldia-diagram-svg-el').forEach((svg) => {
         installTrace(svg);
-        svg.classList.toggle('seldia-paused', paused);
+        // Glow replaces the dash flow, so dashes stay still in that state.
+        svg.classList.toggle('seldia-paused', mode !== 'play');
+        setGlowWalk(svg, mode === 'glow');
+        canGlow ||= canGlowWalk(svg);
       });
-      const b = container.querySelector('.seldia-btn-pause');
-      if (b) {
-        b.classList.toggle('seldia-paused-on', paused);
-        b.setAttribute('aria-pressed', String(paused));
-        b.setAttribute('title', paused ? 'Play animations' : 'Pause animations');
-      }
+      syncAnimButton(container.querySelector('.seldia-btn-pause'), mode, canGlow);
     });
   }
 

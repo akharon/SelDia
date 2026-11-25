@@ -543,7 +543,9 @@
   .seldia-table-scroll { max-height: none; overflow: visible; }
 }
 
-/* Pause/play toggle for flowing edges (WCAG 2.2.2): shows the play glyph while paused. */
-.seldia-btn-pause .seldia-icon-alt { display: none; }
-.seldia-btn-pause.seldia-paused-on .seldia-icon { display: none; }
-.seldia-btn-pause.seldia-paused-on .seldia-icon-alt { display: inline; }
+/* Animation cycle (WCAG 2.2.2): paused → play → glowing light. Shows the glyph of what a click switches to. */
+.seldia-btn-pause .seldia-icon { display: none; }
+.seldia-btn-pause[data-next="play"] .sd-i-play,
+.seldia-btn-pause[data-next="glow"] .sd-i-glow,
+.seldia-btn-pause[data-next="paused"] .sd-i-pause { display: inline; }
+.seldia-btn-pause[data-anim="glow"] { color: var(--vscode-focusBorder, #3b82f6); }

@@ -44,5 +44,21 @@ export const TRACE_CSS =
   `.sd-hit{fill:none;stroke:transparent;stroke-width:18;pointer-events:stroke;cursor:pointer}` +
   `@media (prefers-reduced-motion:reduce){.sd-trace *{transition:none!important}}`;
 
+/**
+ * Glowing-light walk (the animation button's "glow" state): the host script adds
+ * `.sd-glowwalk` on the root <svg>, `.sd-lit` on reached nodes/edges/heads/labels,
+ * a `.sd-glow-halo` clone behind each lit edge and `.sd-glow-dot`s in a top layer.
+ * A hover trace takes over the dimming while it is active.
+ */
+export const GLOW_WALK_CSS =
+  `.sd-glowwalk :is(.seldia-edge,.seldia-edge-head,.seldia-edge-label,.seldia-node){transition:opacity .35s}` +
+  `.sd-glowwalk:not(.sd-trace) :is(.seldia-edge,.seldia-edge-head,.seldia-edge-label):not(.sd-lit){opacity:.2}` +
+  `.sd-glowwalk:not(.sd-trace) .seldia-node:not(.sd-lit){opacity:.5}` +
+  `.sd-glowwalk .seldia-edge.sd-lit :is(${STROKES}):not(.sd-glow-halo):not(.sd-hit){stroke-width:${DS.stroke.emphasis}}` +
+  `.sd-glow-halo{fill:none!important;stroke-width:${DS.stroke.halo * 1.5}px!important;stroke-linecap:round;opacity:.35;animation:none!important;pointer-events:none}` +
+  `.sd-glow-layer,.sd-glow-dot{pointer-events:none}` +
+  `.sd-glow-dot{filter:drop-shadow(0 0 3px var(--sd-glow)) drop-shadow(0 0 8px var(--sd-glow))}` +
+  `@media print{.sd-glow-layer,.sd-glow-halo{display:none}}`;
+
 /** Everything an interactive host (preview / editor) needs. */
-export const INTERACTIVE_FLOW_CSS = FLOW_KEYFRAMES_CSS + TRACE_CSS;
+export const INTERACTIVE_FLOW_CSS = FLOW_KEYFRAMES_CSS + TRACE_CSS + GLOW_WALK_CSS;

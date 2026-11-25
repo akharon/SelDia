@@ -25,7 +25,7 @@ diagram flowchart "Login Flow" {
 
 ## See it in action
 
-▶️ **[Watch the sequence diagram demo](assets/SeldiaRecord.mp4)**
+![Sequence diagram demo](assets/SeldiaRecord.gif)
 
 *A sequence diagram rendered and edited with SelDiA.*
 

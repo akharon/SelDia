@@ -23,6 +23,12 @@ diagram flowchart "Login Flow" {
 
 *(The SelDiA DSL above is the engine's native format — its full power, for those who want it. It is not the price of admission.)*
 
+## See it in action
+
+<video src="assets/SeldiaRecord.mp4" controls muted width="100%"></video>
+
+*A sequence diagram rendered and edited with SelDiA.*
+
 ## Why an engine?
 
 Generating a diagram is solved and commoditized — every model writes Mermaid from memory. **Keeping a diagram true as the system drifts is not solved.** That takes an IR, diagnostics, and round-tripping: parse → structure → validate → write back. Mermaid is a parser bolted to a renderer; PlantUML is a Java monolith. Neither has the layer this needs. SelDiA does.

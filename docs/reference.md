@@ -14,8 +14,8 @@ The repo is an **npm workspaces + Turborepo** monorepo (Node >= 22, `packageMana
 | `packages/*/package.json` | Per-package scripts. Tests are Vitest (`vitest run`). The per-package `lint` script is a placeholder (`echo lint`); no ESLint or Prettier config is committed |
 | `packages/core/package.json` `exports` | Subpath `@seldia/core/render/flow-css` (`./render/flow-css`) exporting `FLOW_KEYFRAMES_CSS`, `TRACE_CSS` and `INTERACTIVE_FLOW_CSS` from `render/flow-css.ts`: the one CSS source for flow and trace rules, shared by the engine, the Markdown preview and the visual editor |
 | `packages/vscode-ext/package.json` | Extension manifest: commands, menus, keybindings, `seldia.*` settings, LM tools |
-| `packages/vscode-ext/scripts/build.mjs` | esbuild bundles: extension host, language server, and the webview client `media/editor.js` |
-| `packages/vscode-ext/turbo.json` | Extends root `turbo.json`; adds `media/editor.js` and `media/table-editor.js` to `build` outputs so cache hits restore them |
+| `packages/vscode-ext/scripts/build.mjs` | esbuild bundles: extension host, language server, and the webview clients `media/editor.js`, `media/table-editor.js` and `media/md-editor.js` (Markdown visual editor) |
+| `packages/vscode-ext/turbo.json` | Extends root `turbo.json`; adds `media/editor.js`, `media/table-editor.js` and `media/md-editor.js` to `build` outputs so cache hits restore them |
 | `.vscode/tasks.json` | `Build VSIX Package` (default build task, Ctrl+Shift+B) and a `--force` no-cache variant; runs `scripts/package-vsix.sh` with the repo-local Node in `.tools/`. A task, not a launch config: a `node` debug launch injects the js-debug bootloader into every child process |
 | `docs/.vitepress/config.mts` | Docs site (`user_guide.md` is served as the home page via `rewrites`) |
 | `.github/actions/seldia-render`, `.github/workflows/render-diagrams.yml.example` | GitHub Action that renders diagram blocks to SVG |

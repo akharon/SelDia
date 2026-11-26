@@ -1735,6 +1735,16 @@ Visual editing works in the **interactive editor for `.sld`/`.seldia` files** (`
 
 Floorplan diagrams also support dragging furniture with live clearance guides and rotating by 90 degrees.
 
+### 11.4.1 Markdown Visual Editor
+
+A Word-like editor for `.md` files: the document is shown as a column of blocks, rendered prose and rendered diagrams, and the `.md` file stays the only source of truth (save, undo and the dirty marker are VS Code's own).
+
+- **Open it** with the editor-title button, the command `SelDiA: Open Markdown Visual Editor`, or **Reopen Editor With… → SelDiA Markdown Visual Editor**. `SelDiA: Open Markdown Text Editor` switches back. To make it the default: `"workbench.editorAssociations": { "*.md": "seldia.markdownEditor" }`.
+- **Prose**: click a paragraph, heading, list or table to edit its Markdown in a text box. `Ctrl/Cmd+Enter` or clicking away applies it, `Esc` cancels. The `+` below each block (and the bar at the end) inserts a text, heading, SelDiA or Mermaid block.
+- **Diagrams** (`seldia`, `mermaid`, `plantuml` fences): the toolbar's **code** button opens the DSL under the diagram and re-renders as you type. The editor bar has **Open canvas**, **Delete diagram** (click twice) and **Done**.
+- **Canvas**: double-click a diagram to open the interactive canvas beside the editor.
+- **Limitations**: blocks render one at a time, so reference-style footnotes and list numbering across blocks can differ from the built-in preview. Text-editor features such as Copilot inline suggestions are not available inside it.
+
 ### 11.5 Markdown → PDF Export
 
 Export a Markdown document, including all its diagrams, as a PDF. Diagrams are compiled to SVG, embedded in the document, and printed by headless Chromium through Puppeteer.

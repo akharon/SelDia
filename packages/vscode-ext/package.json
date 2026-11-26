@@ -115,6 +115,19 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "seldia.markdownEditor",
+        "displayName": "SelDiA Markdown Visual Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "markdown.markdownItPlugins": true,
@@ -214,6 +227,16 @@
       {
         "command": "seldia.exportMarp",
         "title": "SelDiA: Export Marp Deck (PDF/PPTX/HTML)"
+      },
+      {
+        "command": "seldia.openMarkdownVisualEditor",
+        "title": "SelDiA: Open Markdown in Visual Editor",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "seldia.openMarkdownTextEditor",
+        "title": "SelDiA: Open Markdown in Text Editor",
+        "icon": "$(go-to-file)"
       }
     ],
     "snippets": [
@@ -255,6 +278,16 @@
           "command": "seldia.toggleView",
           "when": "editorLangId == seldia",
           "group": "navigation"
+        },
+        {
+          "command": "seldia.openMarkdownVisualEditor",
+          "when": "editorLangId == markdown && !activeCustomEditorId",
+          "group": "navigation@90"
+        },
+        {
+          "command": "seldia.openMarkdownTextEditor",
+          "when": "activeCustomEditorId == 'seldia.markdownEditor'",
+          "group": "navigation@90"
         }
       ],
       "commandPalette": [
@@ -297,6 +330,14 @@
         {
           "command": "seldia.exportMarp",
           "when": "editorLangId == markdown"
+        },
+        {
+          "command": "seldia.openMarkdownVisualEditor",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "seldia.openMarkdownTextEditor",
+          "when": "activeCustomEditorId == 'seldia.markdownEditor'"
         }
       ]
     },

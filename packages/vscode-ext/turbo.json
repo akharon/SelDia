@@ -3,7 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "outputs": ["dist/**", "media/editor.js", "media/table-editor.js"]
+      "outputs": ["dist/**", "media/editor.js", "media/table-editor.js", "media/md-editor.js"]
     }
   }
 }

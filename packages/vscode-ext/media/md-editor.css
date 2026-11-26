@@ -1,0 +1,127 @@
+/* SelDiA Markdown Visual Editor — document column, prose typography, editing UI. */
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 14px);
+  line-height: 1.6;
+}
+.mde-doc { max-width: 860px; margin: 0 auto; padding: 24px 32px 120px; }
+
+.mde-block {
+  position: relative;
+  border-radius: 4px;
+  outline: 1px solid transparent;
+  outline-offset: 4px;
+  margin: 0 0 12px;
+  cursor: text;
+}
+.mde-block:hover { outline-color: color-mix(in srgb, var(--vscode-foreground) 18%, transparent); }
+.mde-block.mde-editing { outline: 1px solid var(--vscode-focusBorder); }
+.mde-diagram { cursor: default; }
+
+/* Prose typography (GitHub-like) */
+.mde-view > :first-child { margin-top: 0; }
+.mde-view > :last-child { margin-bottom: 0; }
+.mde-view h1, .mde-view h2, .mde-view h3, .mde-view h4, .mde-view h5, .mde-view h6 {
+  font-weight: 600; line-height: 1.25; margin: 1.2em 0 .6em;
+}
+.mde-view h1 { font-size: 2em; padding-bottom: .3em; border-bottom: 1px solid var(--vscode-panel-border, #8884); }
+.mde-view h2 { font-size: 1.5em; padding-bottom: .3em; border-bottom: 1px solid var(--vscode-panel-border, #8884); }
+.mde-view h3 { font-size: 1.25em; }
+.mde-view p, .mde-view ul, .mde-view ol, .mde-view blockquote, .mde-view pre, .mde-view table { margin: 0 0 12px; }
+.mde-view a { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; }
+.mde-view a:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground)); }
+.mde-view code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: .9em;
+  background: var(--vscode-textCodeBlock-background, #8882);
+  padding: .15em .35em; border-radius: 3px;
+}
+.mde-view pre {
+  background: var(--vscode-textCodeBlock-background, #8882);
+  padding: 12px 14px; border-radius: 4px; overflow: auto;
+}
+.mde-view pre code { background: none; padding: 0; }
+.mde-view blockquote {
+  padding: 0 1em; border-left: .25em solid var(--vscode-textBlockQuote-border, #8886);
+  color: var(--vscode-descriptionForeground);
+}
+.mde-view table { border-collapse: collapse; display: block; overflow: auto; }
+.mde-view th, .mde-view td { border: 1px solid var(--vscode-panel-border, #8886); padding: 6px 13px; }
+.mde-view th { font-weight: 600; background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent); }
+.mde-view img { max-width: 100%; }
+.mde-view hr { border: 0; border-top: 1px solid var(--vscode-panel-border, #8886); margin: 18px 0; }
+.mde-view ul, .mde-view ol { padding-left: 2em; }
+
+.mde-frontmatter summary { cursor: pointer; color: var(--vscode-descriptionForeground); font-size: .9em; }
+.mde-frontmatter pre { font-family: var(--vscode-editor-font-family, monospace); }
+.mde-error {
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #c33);
+  background: var(--vscode-inputValidation-errorBackground, #c332);
+  padding: 8px 12px; border-radius: 4px;
+}
+.mde-fallback { cursor: pointer; }
+
+/* Textareas */
+.mde-textarea, .mde-src-text {
+  display: block; width: 100%; box-sizing: border-box; resize: none; overflow: hidden;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: 1.5; tab-size: 2;
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px; padding: 8px 10px; min-height: 3em;
+}
+.mde-textarea:focus, .mde-src-text:focus { outline: 1px solid var(--vscode-focusBorder); }
+
+/* Diagram source editor */
+.mde-src { margin-top: 8px; }
+.mde-src-bar {
+  display: flex; align-items: center; gap: 6px; padding: 4px 0;
+  font-size: .85em; color: var(--vscode-descriptionForeground);
+}
+.mde-spacer { flex: 1; }
+.mde-src-lang { font-family: var(--vscode-editor-font-family, monospace); }
+.mde-src-bar button, .mde-menu button, .mde-addbar button {
+  font: inherit; font-size: .85em; cursor: pointer; padding: 2px 10px; border-radius: 3px;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border, #8886));
+}
+.mde-src-bar button:hover, .mde-menu button:hover, .mde-addbar button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+}
+.mde-src-bar .mde-danger { color: var(--vscode-errorForeground); }
+
+/* Insert control */
+.mde-insert-wrap { position: absolute; left: 50%; bottom: -16px; transform: translateX(-50%); z-index: 5; }
+.mde-insert {
+  width: 20px; height: 20px; line-height: 1; padding: 0; border-radius: 50%; cursor: pointer;
+  opacity: 0; transition: opacity .12s;
+  color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0;
+}
+.mde-block:hover .mde-insert, .mde-insert:focus, .mde-insert-wrap:focus-within .mde-insert { opacity: 1; }
+.mde-menu {
+  position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 2px; padding: 4px; white-space: nowrap;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, #8886));
+  border-radius: 4px; box-shadow: 0 2px 8px #0005;
+}
+.mde-menu button { text-align: left; border: 0; background: transparent; }
+
+.mde-addbar { display: flex; gap: 8px; justify-content: center; margin-top: 24px; opacity: .5; }
+.mde-addbar:hover { opacity: 1; }
+.mde-addbar-empty { opacity: 1; margin-top: 80px; }
+
+.mde-toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100;
+  padding: 8px 14px; border-radius: 4px;
+  color: var(--vscode-notifications-foreground, var(--vscode-foreground));
+  background: var(--vscode-notifications-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-notifications-border, var(--vscode-panel-border, #8886));
+  box-shadow: 0 2px 8px #0005;
+}

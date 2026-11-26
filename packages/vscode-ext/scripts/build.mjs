@@ -64,6 +64,13 @@ const tableEditorClientConfig = {
   outfile: 'media/table-editor.js',
 };
 
+/** @type {esbuild.BuildOptions} */
+const mdEditorClientConfig = {
+  ...editorClientConfig,
+  entryPoints: ['src/md-editor/client.ts'],
+  outfile: 'media/md-editor.js',
+};
+
 async function main() {
   if (isWatch) {
     const extCtx = await esbuild.context(extensionConfig);
@@ -74,6 +81,8 @@ async function main() {
     await editorCtx.watch();
     const tableCtx = await esbuild.context(tableEditorClientConfig);
     await tableCtx.watch();
+    const mdEditorCtx = await esbuild.context(mdEditorClientConfig);
+    await mdEditorCtx.watch();
     console.log('[esbuild] Watching for changes...');
   } else {
     // Clean old dist files (keep only esbuild output)
@@ -119,6 +128,14 @@ async function main() {
       process.exit(1);
     }
     console.log('[esbuild] Table editor client build complete — media/table-editor.js');
+
+    // Build the Markdown visual editor client (browser target, loaded via asWebviewUri)
+    const mdEditorResult = await esbuild.build(mdEditorClientConfig);
+    if (mdEditorResult.errors.length > 0) {
+      console.error('[esbuild] Markdown editor client build failed:', mdEditorResult.errors);
+      process.exit(1);
+    }
+    console.log('[esbuild] Markdown editor client build complete — media/md-editor.js');
   }
 }
 

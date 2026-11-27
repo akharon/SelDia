@@ -20,7 +20,7 @@ import { SelDiATableEditorPanel } from './webview/table-provider.js';
 import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
 import { isMarpDocument } from './marp/detect.js';
 import { openMarpPreview, MarpPreviewProvider, MARP_VIEW_TYPE } from './marp/preview-panel.js';
-import { MarkdownVisualEditorProvider, MD_EDITOR_VIEW_TYPE } from './md-editor/provider.js';
+import { MarkdownVisualEditorProvider, MD_EDITOR_VIEW_TYPE, isMarkdownEditorEnabled, promptEnableMarkdownEditor } from './md-editor/provider.js';
 import { exportMarpToHtml, exportMarpToPdf } from './marp/export.js';
 import { exportMarpToPptx } from './marp/pptx.js';
 
@@ -266,12 +266,13 @@ export function activate(context: vscode.ExtensionContext) {
     new MarkdownVisualEditorProvider(engine, context.extensionUri),
     { webviewOptions: { retainContextWhenHidden: true } }
   );
-  const openMdVisualCmd = vscode.commands.registerCommand('seldia.openMarkdownVisualEditor', (arg?: vscode.Uri) => {
+  const openMdVisualCmd = vscode.commands.registerCommand('seldia.openMarkdownVisualEditor', async (arg?: vscode.Uri) => {
     const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
     if (!uri) {
       vscode.window.showWarningMessage('Open a Markdown file first.');
       return;
     }
+    if (!isMarkdownEditorEnabled() && !(await promptEnableMarkdownEditor())) return;
     return vscode.commands.executeCommand('vscode.openWith', uri, MD_EDITOR_VIEW_TYPE);
   });
   const openMdTextCmd = vscode.commands.registerCommand('seldia.openMarkdownTextEditor', (arg?: vscode.Uri) => {

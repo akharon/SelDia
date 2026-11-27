@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Markdown Visual Editor** — new custom editor (`seldia.markdownEditor`) that shows a `.md` file as rendered prose and diagrams. Click prose to edit its Markdown, edit `seldia`/`mermaid`/`plantuml` fences inline with live re-render, double-click a diagram for the interactive canvas. Open via the editor-title button, `SelDiA: Open Markdown Visual Editor`, or Reopen Editor With.
+- **Markdown Visual Editor** — new custom editor (`seldia.markdownEditor`) that shows a `.md` file as rendered prose and diagrams. Click prose to edit its Markdown, edit `seldia`/`mermaid`/`plantuml` fences inline with live re-render, double-click a diagram for the interactive canvas. Open via the editor-title button, `SelDiA: Open Markdown Visual Editor`, or Reopen Editor With. Opt-in: disabled by default via `seldia.markdownEditor.enabled`.
 
 ## 1.65.0
 

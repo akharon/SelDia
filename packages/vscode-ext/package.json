@@ -281,7 +281,7 @@
         },
         {
           "command": "seldia.openMarkdownVisualEditor",
-          "when": "editorLangId == markdown && !activeCustomEditorId",
+          "when": "editorLangId == markdown && !activeCustomEditorId && config.seldia.markdownEditor.enabled",
           "group": "navigation@90"
         },
         {
@@ -333,7 +333,7 @@
         },
         {
           "command": "seldia.openMarkdownVisualEditor",
-          "when": "editorLangId == markdown"
+          "when": "editorLangId == markdown && config.seldia.markdownEditor.enabled"
         },
         {
           "command": "seldia.openMarkdownTextEditor",
@@ -437,6 +437,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open the Marp slide preview when a Markdown file whose front-matter sets `marp: true` is opened. The built-in Markdown preview is left alone; this opens SelDiA's slide panel beside it."
+        },
+        "seldia.markdownEditor.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the SelDiA Markdown Visual Editor (rendered prose and diagrams, click to edit). Off by default: its editor-title button and command are hidden, and opening it via Reopen Editor With falls back to the text editor."
         },
         "seldia.interactive.enabled": {
           "type": "boolean",

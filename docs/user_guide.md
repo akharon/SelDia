@@ -1739,6 +1739,7 @@ Floorplan diagrams also support dragging furniture with live clearance guides an
 
 A Word-like editor for `.md` files: the document is shown as a column of blocks, rendered prose and rendered diagrams, and the `.md` file stays the only source of truth (save, undo and the dirty marker are VS Code's own).
 
+- **Off by default.** Enable it with `"seldia.markdownEditor.enabled": true`. While disabled, its button and command are hidden, and opening a file with it falls back to the text editor with an **Enable** prompt.
 - **Open it** with the editor-title button, the command `SelDiA: Open Markdown Visual Editor`, or **Reopen Editor With… → SelDiA Markdown Visual Editor**. `SelDiA: Open Markdown Text Editor` switches back. To make it the default: `"workbench.editorAssociations": { "*.md": "seldia.markdownEditor" }`.
 - **Prose**: click a paragraph, heading, list or table to edit its Markdown in a text box. `Ctrl/Cmd+Enter` or clicking away applies it, `Esc` cancels. The `+` below each block (and the bar at the end) inserts a text, heading, SelDiA or Mermaid block.
 - **Diagrams** (`seldia`, `mermaid`, `plantuml` fences): the toolbar's **code** button opens the DSL under the diagram and re-renders as you type. The editor bar has **Open canvas**, **Delete diagram** (click twice) and **Done**.

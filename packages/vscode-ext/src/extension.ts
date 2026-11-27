@@ -20,7 +20,7 @@ import { SelDiATableEditorPanel } from './webview/table-provider.js';
 import { exportMarkdownToPdf as runMd2PdfPipeline } from './md2pdf/index.js';
 import { isMarpDocument } from './marp/detect.js';
 import { openMarpPreview, MarpPreviewProvider, MARP_VIEW_TYPE } from './marp/preview-panel.js';
-import { MarkdownVisualEditorProvider, MD_EDITOR_VIEW_TYPE, isMarkdownEditorEnabled, promptEnableMarkdownEditor } from './md-editor/provider.js';
+import { MarkdownVisualEditorProvider, MD_EDITOR_VIEW_TYPE, activeMdVisualUri, isMarkdownEditorEnabled, promptEnableMarkdownEditor } from './md-editor/provider.js';
 import { exportMarpToHtml, exportMarpToPdf } from './marp/export.js';
 import { exportMarpToPptx } from './marp/pptx.js';
 
@@ -261,11 +261,10 @@ export function activate(context: vscode.ExtensionContext) {
     { webviewOptions: { retainContextWhenHidden: true } }
   );
 
-  const mdEditorSub = vscode.window.registerCustomEditorProvider(
-    MD_EDITOR_VIEW_TYPE,
-    new MarkdownVisualEditorProvider(engine, context.extensionUri),
-    { webviewOptions: { retainContextWhenHidden: true } }
-  );
+  // Not contributed as a customEditor (that would always show in "Reopen With");
+  // opened on demand as a webview panel driven by the same provider.
+  const mdEditorProvider = new MarkdownVisualEditorProvider(engine, context.extensionUri);
+  const mdEditorSub = new vscode.Disposable(() => {});
   const openMdVisualCmd = vscode.commands.registerCommand('seldia.openMarkdownVisualEditor', async (arg?: vscode.Uri) => {
     const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
     if (!uri) {
@@ -273,16 +272,21 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     if (!isMarkdownEditorEnabled() && !(await promptEnableMarkdownEditor())) return;
-    return vscode.commands.executeCommand('vscode.openWith', uri, MD_EDITOR_VIEW_TYPE);
+    const document = await vscode.workspace.openTextDocument(uri);
+    const panel = vscode.window.createWebviewPanel(
+      MD_EDITOR_VIEW_TYPE,
+      `${uri.path.split('/').pop()} (Visual)`,
+      vscode.ViewColumn.Active,
+      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [context.extensionUri] }
+    );
+    const cts = new vscode.CancellationTokenSource();
+    panel.onDidDispose(() => cts.dispose());
+    return mdEditorProvider.resolveCustomTextEditor(document, panel, cts.token);
   });
   const openMdTextCmd = vscode.commands.registerCommand('seldia.openMarkdownTextEditor', (arg?: vscode.Uri) => {
-    let uri = arg instanceof vscode.Uri ? arg : undefined;
-    if (!uri) {
-      const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-      if (input instanceof vscode.TabInputCustom) uri = input.uri;
-    }
+    const uri = arg instanceof vscode.Uri ? arg : activeMdVisualUri;
     if (!uri) return;
-    return vscode.commands.executeCommand('vscode.openWith', uri, 'default');
+    return vscode.window.showTextDocument(uri);
   });
 
   const openMarpPreviewCmd = vscode.commands.registerCommand('seldia.openMarpPreview', () => {

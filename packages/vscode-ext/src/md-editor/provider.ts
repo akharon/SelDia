@@ -50,6 +50,9 @@ export async function promptEnableMarkdownEditor(): Promise<boolean> {
   return true;
 }
 
+/** Document shown in the most recently focused visual-editor panel. */
+export let activeMdVisualUri: vscode.Uri | undefined;
+
 export class MarkdownVisualEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly marked = new Marked({ gfm: true, breaks: false });
   private readonly diagramCache = new Map<string, string>();
@@ -60,17 +63,15 @@ export class MarkdownVisualEditorProvider implements vscode.CustomTextEditorProv
   ) {}
 
   resolveCustomTextEditor(doc: vscode.TextDocument, panel: vscode.WebviewPanel, _token: vscode.CancellationToken): void {
-    // Opt-in feature: when disabled (default), fall back to the text editor.
-    // The customEditors contribution can't be gated by a `when`, so a
-    // "Reopen Editor With" or editorAssociations entry still lands here.
-    if (!isMarkdownEditorEnabled()) {
-      panel.dispose();
-      void vscode.commands.executeCommand('vscode.openWith', doc.uri, 'default');
-      void promptEnableMarkdownEditor().then((enabled) => {
-        if (enabled) void vscode.commands.executeCommand('vscode.openWith', doc.uri, MD_EDITOR_VIEW_TYPE);
-      });
-      return;
-    }
+    // Opened only via seldia.openMarkdownVisualEditor (webview panel, not a
+    // contributed customEditor, so it never appears in "Reopen Editor With").
+    panel.onDidChangeViewState(() => {
+      void vscode.commands.executeCommand('setContext', 'seldia.mdVisualEditorActive', panel.active);
+      if (panel.active) activeMdVisualUri = doc.uri;
+    });
+    void vscode.commands.executeCommand('setContext', 'seldia.mdVisualEditorActive', true);
+    activeMdVisualUri = doc.uri;
+    panel.onDidDispose(() => void vscode.commands.executeCommand('setContext', 'seldia.mdVisualEditorActive', false));
     const webview = panel.webview;
     const docDir = vscode.Uri.joinPath(doc.uri, '..');
     const folder = vscode.workspace.getWorkspaceFolder(doc.uri);

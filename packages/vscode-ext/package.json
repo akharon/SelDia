@@ -115,19 +115,6 @@
           }
         ],
         "priority": "option"
-      },
-      {
-        "viewType": "seldia.markdownEditor",
-        "displayName": "SelDiA Markdown Visual Editor",
-        "selector": [
-          {
-            "filenamePattern": "*.md"
-          },
-          {
-            "filenamePattern": "*.markdown"
-          }
-        ],
-        "priority": "option"
       }
     ],
     "markdown.markdownItPlugins": true,
@@ -286,7 +273,7 @@
         },
         {
           "command": "seldia.openMarkdownTextEditor",
-          "when": "activeCustomEditorId == 'seldia.markdownEditor'",
+          "when": "seldia.mdVisualEditorActive",
           "group": "navigation@90"
         }
       ],
@@ -337,7 +324,7 @@
         },
         {
           "command": "seldia.openMarkdownTextEditor",
-          "when": "activeCustomEditorId == 'seldia.markdownEditor'"
+          "when": "seldia.mdVisualEditorActive"
         }
       ]
     },
